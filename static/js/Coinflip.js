@@ -194,6 +194,9 @@ const MountCoinViewer = (Container) =>
     Renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     Renderer.outputColorSpace = THREE.SRGBColorSpace;
     Renderer.domElement.className = "viewer_canvas";
+    Renderer.domElement.style.display = "block";
+    Renderer.domElement.style.width = "100%";
+    Renderer.domElement.style.height = "100%";
     Container.appendChild(Renderer.domElement);
 
     const Camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
