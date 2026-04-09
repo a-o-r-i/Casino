@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Gambling{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap"
+    >
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    {% block head %}{% endblock %}
+    <style>
+      html
+      {
+        scrollbar-color: rgba(255, 255, 255, 0.28) rgba(255, 255, 255, 0.06);
+        scrollbar-width: thin;
+      }
+
+      ::-webkit-scrollbar
+      {
+        width: 10px;
+      }
+
+      ::-webkit-scrollbar-track
+      {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      ::-webkit-scrollbar-thumb
+      {
+        border: 2px solid rgba(10, 12, 16, 0.95);
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.26);
+      }
+
+      ::-webkit-scrollbar-thumb:hover
+      {
+        background: rgba(255, 255, 255, 0.38);
+      }
+
+      [data-route-card]
+      {
+        transform-origin: center top;
+        will-change: opacity, transform, filter;
+      }
+
+      body[data-route-busy="true"] [data-app-main]
+      {
+        pointer-events: none;
+      }
+
+      [data-app-main]
+      {
+        transition:
+          filter 360ms cubic-bezier(0.22, 1, 0.36, 1),
+          opacity 280ms cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: filter, opacity;
+      }
+
+      body[data-auth-locked="true"] [data-app-main]
+      {
+        filter: blur(18px);
+        opacity: 0.82;
+        pointer-events: none;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body
+    class="min-h-screen overflow-x-hidden bg-[#07090d] text-zinc-100 antialiased font-[Geist]"
+    {% if not is_authenticated %}data-auth-locked="true"{% endif %}
+  >
+    <div
+      aria-hidden="true"
+      class="pointer-events-none fixed inset-0 -z-20 bg-[radial-gradient(circle_at_14%_18%,rgba(96,165,250,0.10),transparent_24%),radial-gradient(circle_at_84%_14%,rgba(255,255,255,0.04),transparent_22%),linear-gradient(180deg,#171714_0%,#0d0e11_26%,#07080b_100%)]"
+    ></div>
+    <div
+      aria-hidden="true"
+      class="pointer-events-none fixed inset-0 -z-10 opacity-30 [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_38px,rgba(255,255,255,0.018)_38px,rgba(255,255,255,0.018)_39px)]"
+    ></div>
+
+    <header data-app-header class="relative z-10 px-4 pt-6 md:px-6">
+      <nav
+        class="mx-auto flex w-full max-w-[940px] items-center justify-between gap-6 rounded-[28px] border border-white/8 bg-black/80 px-5 py-3 shadow-[0_22px_60px_rgba(0,0,0,0.34)]"
+        aria-label="Primary"
+      >
+        <a
+          class="shrink-0 text-lg font-semibold tracking-[-0.04em] text-white md:text-xl"
+          href="{{ url_for('play') }}"
+        >
+          Gambling
+        </a>
+
+        <div class="hidden items-center gap-8 md:flex">
+          <a
+            class="text-sm font-medium transition {% if active_page == 'play' %}text-white{% else %}text-white/45 hover:text-white/80{% endif %}"
+            href="{{ url_for('play') }}"
+          >
+            Play
+          </a>
+          <a
+            class="text-sm font-medium transition {% if active_page == 'leaderboard' %}text-white{% else %}text-white/45 hover:text-white/80{% endif %}"
+            href="{{ url_for('leaderboard') }}"
+          >
+            Leaderboard
+          </a>
+          <a
+            class="text-sm font-medium transition {% if active_page == 'profile' %}text-white{% else %}text-white/45 hover:text-white/80{% endif %}"
+            href="{{ url_for('profile') }}"
+          >
+            Profile
+          </a>
+        </div>
+
+        <div class="flex items-center gap-3 border-l border-white/8 pl-4">
+          {% if is_authenticated %}
+            <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-right">
+              <p class="text-sm font-semibold text-white" data-balance-display>{{ current_balance_display }}</p>
+            </div>
+            <a
+              class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-white transition hover:bg-white/10"
+              href="{{ url_for('profile') }}"
+            >
+              {% if discord_user.avatar_url %}
+                <img
+                  alt="{{ discord_user.display_name }}"
+                  class="h-9 w-9 rounded-full object-cover"
+                  src="{{ discord_user.avatar_url }}"
+                >
+              {% else %}
+                <span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-sm font-semibold uppercase text-white">
+                  {{ discord_user.display_name[0] }}
+                </span>
+              {% endif %}
+              <span class="max-w-[140px] truncate text-sm font-medium text-white">
+                {{ discord_user.display_name }}
+              </span>
+            </a>
+          {% else %}
+            <a
+              class="inline-flex h-9 w-9 items-center justify-center rounded-xl text-white/55 transition hover:bg-white/5 hover:text-white/85"
+              href="{% if discord_oauth_ready %}{{ url_for('discord_login', next=request.path) }}{% else %}{{ url_for('play') }}{% endif %}"
+              aria-label="Discord"
+            >
+              <svg viewBox="0 0 24 24" class="h-[17px] w-[17px]" role="presentation">
+                <path
+                  d="M19.54 5.57A16.67 16.67 0 0 0 15.4 4.3a.07.07 0 0 0-.07.03c-.18.33-.38.76-.52 1.1a15.44 15.44 0 0 0-4.62 0c-.14-.35-.35-.78-.53-1.1a.08.08 0 0 0-.07-.03A16.58 16.58 0 0 0 5.46 5.57a.07.07 0 0 0-.03.03C2.8 9.52 2.08 13.35 2.43 17.13a.08.08 0 0 0 .03.06 16.8 16.8 0 0 0 5.05 2.55.08.08 0 0 0 .09-.03c.39-.53.73-1.08 1.02-1.67a.08.08 0 0 0-.04-.1 10.9 10.9 0 0 1-1.55-.74.08.08 0 0 1-.01-.13c.1-.08.2-.17.29-.26a.08.08 0 0 1 .08-.02c3.27 1.49 6.8 1.49 10.03 0a.08.08 0 0 1 .08.02c.09.09.19.18.29.26a.08.08 0 0 1-.01.13c-.49.29-1.01.54-1.55.74a.08.08 0 0 0-.04.1c.29.59.63 1.14 1.02 1.67a.08.08 0 0 0 .09.03 16.74 16.74 0 0 0 5.06-2.55.08.08 0 0 0 .03-.06c.42-4.37-.71-8.16-3-11.53a.06.06 0 0 0-.03-.03ZM9.32 14.81c-.98 0-1.78-.9-1.78-2s.79-2 1.78-2c1 0 1.8.9 1.78 2 0 1.1-.79 2-1.78 2Zm5.36 0c-.98 0-1.78-.9-1.78-2s.79-2 1.78-2 1.79.9 1.78 2c0 1.1-.79 2-1.78 2Z"
+                  fill="currentColor"
+                ></path>
+              </svg>
+            </a>
+            <a
+              class="inline-flex h-10 items-center rounded-2xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10"
+              href="{% if discord_oauth_ready %}{{ url_for('discord_login', next=url_for('profile')) }}{% else %}{{ url_for('play') }}{% endif %}"
+            >
+              Sign in
+            </a>
+          {% endif %}
+        </div>
+      </nav>
+    </header>
+
+    <main
+      data-app-main
+      data-page-key="{% block page_key %}base{% endblock %}"
+      class="relative z-10 {% if active_page == 'play' %}min-h-[calc(100vh-104px)]{% endif %}"
+    >
+      {% block content %}{% endblock %}
+    </main>
+
+    <div data-app-overlay-shell>
+      {% block overlays %}{% endblock %}
+    </div>
+
+    <div data-app-auth-shell>
+      {% if not is_authenticated %}
+        <section
+          class="pointer-events-none fixed inset-0 z-40 flex items-center justify-center px-4 py-10 opacity-0"
+          data-auth-modal
+          data-modal="auth-sign-in"
+          data-modal-locked="true"
+          data-modal-passthrough="true"
+        >
+          <div
+            aria-hidden="true"
+            class="absolute inset-0 bg-black/0"
+            data-modal-overlay
+          ></div>
+
+          <section
+            aria-describedby="auth-sign-in-copy"
+            aria-labelledby="auth-sign-in-title"
+            class="pointer-events-auto relative z-10 w-full max-w-[430px] translate-y-6 scale-[0.96] rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,16,0.98)_0%,rgba(5,6,9,0.97)_100%)] p-8 opacity-0 shadow-[0_32px_100px_rgba(0,0,0,0.58)]"
+            data-modal-panel
+            role="dialog"
+          >
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                <div class="mb-6 space-y-3">
+                  {% for category, message in messages %}
+                    <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+                      {{ message }}
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            {% endwith %}
+
+            <div>
+              <h1
+                class="mt-3 text-[3.05rem] font-semibold leading-none tracking-[-0.06em] text-white"
+                id="auth-sign-in-title"
+              >
+                Sign in
+              </h1>
+              <p class="mt-4 max-w-[22rem] text-[15px] leading-8 text-white/56" id="auth-sign-in-copy">
+                Connect your Discord account to access the dashboard.
+              </p>
+            </div>
+
+            {% if discord_oauth_ready %}
+              <a
+                class="mt-8 inline-flex h-12 w-full items-center justify-center gap-3 rounded-[16px] bg-[linear-gradient(180deg,#6c78ff_0%,#5e69f2_100%)] px-5 text-[17px] font-semibold text-white shadow-[0_18px_42px_rgba(78,92,255,0.26)] transition hover:translate-y-[-1px] hover:shadow-[0_22px_46px_rgba(78,92,255,0.32)]"
+                href="{{ url_for('discord_login', next=request.path) }}"
+              >
+                <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" role="presentation">
+                  <path
+                    d="M19.54 5.57A16.67 16.67 0 0 0 15.4 4.3a.07.07 0 0 0-.07.03c-.18.33-.38.76-.52 1.1a15.44 15.44 0 0 0-4.62 0c-.14-.35-.35-.78-.53-1.1a.08.08 0 0 0-.07-.03A16.58 16.58 0 0 0 5.46 5.57a.07.07 0 0 0-.03.03C2.8 9.52 2.08 13.35 2.43 17.13a.08.08 0 0 0 .03.06 16.8 16.8 0 0 0 5.05 2.55.08.08 0 0 0 .09-.03c.39-.53.73-1.08 1.02-1.67a.08.08 0 0 0-.04-.1 10.9 10.9 0 0 1-1.55-.74.08.08 0 0 1-.01-.13c.1-.08.2-.17.29-.26a.08.08 0 0 1 .08-.02c3.27 1.49 6.8 1.49 10.03 0a.08.08 0 0 1 .08.02c.09.09.19.18.29.26a.08.08 0 0 1-.01.13c-.49.29-1.01.54-1.55.74a.08.08 0 0 0-.04.1c.29.59.63 1.14 1.02 1.67a.08.08 0 0 0 .09.03 16.74 16.74 0 0 0 5.06-2.55.08.08 0 0 0 .03-.06c.42-4.37-.71-8.16-3-11.53a.06.06 0 0 0-.03-.03ZM9.32 14.81c-.98 0-1.78-.9-1.78-2s.79-2 1.78-2c1 0 1.8.9 1.78 2 0 1.1-.79 2-1.78 2Zm5.36 0c-.98 0-1.78-.9-1.78-2s.79-2 1.78-2 1.79.9 1.78 2c0 1.1-.79 2-1.78 2Z"
+                    fill="currentColor"
+                  ></path>
+                </svg>
+                Continue with Discord
+              </a>
+            {% else %}
+              <div class="mt-8 rounded-[16px] border border-amber-400/20 bg-amber-500/10 px-5 py-4 text-sm leading-6 text-amber-100">
+                Discord OAuth is not configured yet. Copy <span class="font-mono text-[13px]">.env.example</span> to
+                <span class="font-mono text-[13px]">.env</span> and fill in your Discord app credentials.
+              </div>
+            {% endif %}
+
+            <p class="mt-8 border-t border-white/8 pt-5 text-center text-[15px] leading-8 text-white/42">
+              By signing in you agree to our terms. Only users with a valid license will have full
+              access.
+            </p>
+          </section>
+        </section>
+      {% endif %}
+    </div>
+    <script src="{{ url_for('static', filename='js/AppShell.js') }}"></script>
+    <div hidden data-page-scripts>
+      {% block scripts %}{% endblock %}
+    </div>
+  </body>
+</html>

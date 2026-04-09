@@ -1,0 +1,318 @@
+{
+  "asset": {
+    "generator": "OpenSceneGraph 3.5.6",
+    "version": "2.0"
+  },
+  "accessors": [
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 20104,
+      "max": [
+        1.0000026226043701,
+        0.999997615814209,
+        0.9995059370994568
+      ],
+      "min": [
+        -0.9998220205307007,
+        -1,
+        -0.9995059967041016
+      ],
+      "bufferView": 0,
+      "byteOffset": 0
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 20104,
+      "bufferView": 0,
+      "byteOffset": 12
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5123,
+      "count": 45496,
+      "bufferView": 1,
+      "byteOffset": 0
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5123,
+      "count": 15538,
+      "bufferView": 1,
+      "byteOffset": 90992
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 7077,
+      "max": [
+        0.9800034165382385,
+        0.9799975156784058,
+        0.9800000190734863
+      ],
+      "min": [
+        -0.9799991846084595,
+        -0.9799991846084595,
+        -0.9799991846084595
+      ],
+      "bufferView": 2,
+      "byteOffset": 0
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 7077,
+      "bufferView": 2,
+      "byteOffset": 12
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 482496,
+      "byteStride": 24,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 482496,
+      "byteLength": 122068,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 604564,
+      "byteLength": 169848,
+      "byteStride": 24,
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "Dice.bin",
+      "byteLength": 774412
+    }
+  ],
+  "materials": [
+    {
+      "name": "cube",
+      "extras": {
+        "SKETCHFAB_reflection": 0.1
+      },
+      "doubleSided": true,
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "roughnessFactor": 0.16914337262742132,
+        "metallicFactor": 0
+      },
+      "extensions": {
+        "KHR_materials_specular": {
+          "specularColorFactor": [
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "name": "numbers",
+      "extras": {
+        "SKETCHFAB_reflection": 0.1
+      },
+      "doubleSided": true,
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.8,
+          0.8,
+          0.8,
+          1
+        ],
+        "roughnessFactor": 0.1788854381999832,
+        "metallicFactor": 0
+      },
+      "extensions": {
+        "KHR_materials_specular": {
+          "specularColorFactor": [
+            0.2,
+            0.2,
+            0.2
+          ]
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "dice_cube_0",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "mode": 5,
+          "material": 0,
+          "indices": 2
+        }
+      ]
+    },
+    {
+      "name": "dice_numbers_0",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4,
+            "NORMAL": 5
+          },
+          "mode": 5,
+          "material": 1,
+          "indices": 3
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "dice.fbx",
+      "rotation": [
+        0.7071067811865475,
+        0,
+        0,
+        0.7071067811865476
+      ],
+      "scale": [
+        0.009999999776482582,
+        0.009999999776482582,
+        0.009999999776482582
+      ],
+      "children": [
+        1
+      ]
+    },
+    {
+      "name": "RootNode",
+      "children": [
+        2
+      ]
+    },
+    {
+      "name": "dice",
+      "translation": [
+        0.23409900069236755,
+        1.2765699625015259,
+        0
+      ],
+      "rotation": [
+        -0.502422903785665,
+        0.49916847642982204,
+        0.5042911286284828,
+        0.49405718072670424
+      ],
+      "scale": [
+        1.1868651935862709,
+        1.1868669025739185,
+        1.1868642624198769
+      ],
+      "children": [
+        3
+      ]
+    },
+    {
+      "name": "dice",
+      "children": [
+        4,
+        5
+      ]
+    },
+    {
+      "name": "dice_cube_0",
+      "extras": {
+        "userData": {
+          "attributes": 55,
+          "vertex_bits": 20,
+          "vertex_mode": 3,
+          "uv_0_bits": 14,
+          "uv_0_mode": 3,
+          "epsilon": 0.25,
+          "nphi": 720,
+          "triangle_mode": 7,
+          "vertex_obits": 20,
+          "vtx_bbl_x": -0.999822,
+          "vtx_bbl_y": -1,
+          "vtx_bbl_z": -0.999506,
+          "vtx_h_x": 0.00000381437,
+          "vtx_h_y": 0.0000038147,
+          "vtx_h_z": 0.00000381282,
+          "uv_0_bbl_x": 0,
+          "uv_0_bbl_y": 0,
+          "uv_0_h_x": 0.000106825,
+          "uv_0_h_y": 0.000122085
+        }
+      },
+      "mesh": 0
+    },
+    {
+      "name": "dice_numbers_0",
+      "extras": {
+        "userData": {
+          "attributes": 55,
+          "vertex_bits": 16,
+          "vertex_mode": 3,
+          "uv_0_bits": 14,
+          "uv_0_mode": 3,
+          "epsilon": 0.25,
+          "nphi": 720,
+          "triangle_mode": 7,
+          "vertex_obits": 19,
+          "vtx_bbl_x": -0.980003,
+          "vtx_bbl_y": -0.980003,
+          "vtx_bbl_z": -0.980003,
+          "vtx_h_x": 0.00000381437,
+          "vtx_h_y": 0.0000038147,
+          "vtx_h_z": 0.00000381282,
+          "uv_0_bbl_x": 0.177083,
+          "uv_0_bbl_y": 0.05,
+          "uv_0_h_x": 0.0000788467,
+          "uv_0_h_y": 0.000103772
+        }
+      },
+      "mesh": 1
+    },
+    {
+      "name": "Sketchfab_model",
+      "translation": [
+        -0.001070227357558906,
+        -0.009697262197732925,
+        -0.059144776314496994
+      ],
+      "rotation": [
+        -0.4608833726652436,
+        0.11062359799359699,
+        0.2055143419188373,
+        0.8562200604435978
+      ],
+      "children": [
+        0
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        6
+      ]
+    }
+  ],
+  "extensionsUsed": [
+    "KHR_materials_specular"
+  ]
+}

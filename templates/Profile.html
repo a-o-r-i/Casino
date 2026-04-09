@@ -1,0 +1,98 @@
+{% extends "Base.html" %}
+
+{% block title %}Profile | Gambling{% endblock %}
+{% block page_key %}profile{% endblock %}
+
+{% block content %}
+  <section class="mx-auto w-full max-w-[900px] px-4 py-8 md:px-6">
+    <div class="rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+      <div class="flex items-start gap-6">
+        {% if discord_user.avatar_url %}
+          <img
+            alt="{{ discord_user.display_name }}"
+            class="h-16 w-16 rounded-2xl border border-white/10 object-cover"
+            src="{{ discord_user.avatar_url }}"
+          >
+        {% else %}
+          <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-2xl font-semibold uppercase text-white">
+            {{ discord_user.display_name[0] }}
+          </span>
+        {% endif %}
+
+        <div class="flex-1">
+          <h1 class="text-[2.8rem] font-semibold leading-none tracking-[-0.06em] text-white">
+            {{ discord_user.display_name }}
+          </h1>
+          <p class="mt-2 text-[15px] leading-8 text-white/58">
+            Signed in as <span class="text-white/88">{{ discord_user.username }}</span>.
+          </p>
+        </div>
+      </div>
+
+      <dl class="mt-8 space-y-4 rounded-[24px] border border-white/8 bg-white/[0.03] p-5 text-sm text-white/72">
+        <div class="flex items-center justify-between gap-4">
+          <dt class="text-white/44">UID</dt>
+          <dd class="font-mono text-[13px] text-white/88">{{ discord_user.id }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <dt class="text-white/44">Access</dt>
+          <dd class="text-white/88">Authenticated</dd>
+        </div>
+      </dl>
+
+      <div class="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="rounded-[24px] border border-white/8 bg-white/[0.03] p-5 transition hover:bg-white/[0.05]">
+          <p class="text-[13px] uppercase tracking-wider text-white/40">Total Wagered</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ user_stats_formatted.total_wagered }}</p>
+        </div>
+        <div class="rounded-[24px] border border-white/8 bg-white/[0.03] p-5 transition hover:bg-white/[0.05]">
+          <p class="text-[13px] uppercase tracking-wider text-white/40">Total Bets</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ user_stats_formatted.total_bets }}</p>
+        </div>
+        <div class="rounded-[24px] border border-white/8 bg-white/[0.03] p-5 transition hover:bg-white/[0.05]">
+          <p class="text-[13px] uppercase tracking-wider text-white/40">Win Rate</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ user_stats_formatted.win_rate }}%</p>
+        </div>
+        {% if user_stats_formatted.bets_won > 0 %}
+          <div class="rounded-[24px] border border-emerald-400/10 bg-emerald-500/[0.04] p-5 transition hover:bg-emerald-500/[0.08]">
+            <p class="text-[13px] uppercase tracking-wider text-emerald-400/55">Wins</p>
+            <p class="mt-2 text-2xl font-semibold text-emerald-400">{{ user_stats_formatted.bets_won }}</p>
+          </div>
+        {% endif %}
+        {% if user_stats_formatted.bets_lost > 0 %}
+          <div class="rounded-[24px] border border-red-400/10 bg-red-500/[0.04] p-5 transition hover:bg-red-500/[0.08]">
+            <p class="text-[13px] uppercase tracking-wider text-red-400/55">Losses</p>
+            <p class="mt-2 text-2xl font-semibold text-red-400">{{ user_stats_formatted.bets_lost }}</p>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="mt-8 flex items-center gap-3">
+        <button
+          id="bet-history-btn"
+          class="inline-flex h-11 items-center rounded-[16px] cursor-pointerblob:https://imgur.com/2f2cb020-059d-45f9-92f6-29f6326d4a36 border border-violet-400/15 bg-violet-500/10 px-5 text-sm font-medium text-violet-100 transition hover:bg-violet-500/16"
+          type="button"
+        >
+          <svg class="pointer-events-none mr-2 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18"/>
+            <path d="m19 9-5 5-4-4-3 3"/>
+          </svg>
+          Bet History
+        </button>
+        <a
+          class="inline-flex h-11 cursor-pointer items-center rounded-[16px] border border-red-400/15 bg-red-500/10 px-5 text-sm font-medium text-red-100 transition hover:bg-red-500/16"
+          href="{{ url_for('logout') }}"
+        >
+          Log out
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <script type="application/json" data-profile-state>{{ profile_state | tojson }}</script>
+{% endblock %}
+
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/Profile.js') }}"></script>
+{% endblock %}

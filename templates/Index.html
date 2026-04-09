@@ -1,0 +1,56 @@
+{% extends "Base.html" %}
+
+{% block title %}Play | Gambling{% endblock %}
+{% block page_key %}play-home{% endblock %}
+
+{% block content %}
+  <section class="relative isolate min-h-[calc(100vh-104px)]">
+    <div class="mx-auto w-full max-w-[900px] px-4 py-8 md:px-6">
+      <div class="rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+        <div>
+          <h1 class="mt-2 text-4xl font-semibold tracking-[-0.05em] text-white">Choose a game</h1>
+        </div>
+
+        <div class="mt-6 grid gap-5 sm:grid-cols-2">
+          <a
+            class="flex min-h-[360px] flex-col justify-between rounded-[28px] border border-white/10 bg-white/[0.03] p-6 text-white transition hover:bg-white/[0.05]"
+            href="{{ url_for('coinflip_game') }}"
+            data-route-card
+          >
+            <div>
+              <h2 class="text-5xl font-semibold tracking-[-0.06em] text-white">Coinflip</h2>
+              <p class="mt-5 max-w-[16rem] text-[15px] leading-8 text-white/58">
+                Head or tails with live sessions, fast starts, and direct 1v1 bets.
+              </p>
+            </div>
+
+            <div>
+              <span class="inline-flex rounded-2xl border border-white/10 px-4 py-2 text-sm font-medium text-white/84">
+                Open game
+              </span>
+            </div>
+          </a>
+
+          <a
+            class="flex min-h-[360px] flex-col justify-between rounded-[28px] border border-white/10 bg-white/[0.03] p-6 text-white transition hover:bg-white/[0.05]"
+            href="{{ url_for('dice_game') }}"
+            data-route-card
+          >
+            <div>
+              <h2 class="text-5xl font-semibold tracking-[-0.06em] text-white">Dice</h2>
+              <p class="mt-5 max-w-[16rem] text-[15px] leading-8 text-white/58">
+                Quick rounds built for simple dice bets and fast result pacing.
+              </p>
+            </div>
+
+            <div>
+              <span class="inline-flex rounded-2xl border border-white/10 px-4 py-2 text-sm font-medium text-white/84">
+                Open game
+              </span>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock %}

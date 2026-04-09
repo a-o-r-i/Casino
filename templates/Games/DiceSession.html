@@ -1,0 +1,354 @@
+{% extends "Base.html" %}
+
+{% block title %}Dice Session | Gambling{% endblock %}
+{% block page_key %}dice-session{% endblock %}
+
+{% block content %}
+  <style>
+    .dice-session-grid
+    {
+      align-items: start;
+    }
+
+    .dice-scene
+    {
+      border-radius: 1.5rem;
+      isolation: isolate;
+      overflow: hidden;
+      position: relative;
+      height: 23rem;
+      min-height: 23rem;
+    }
+
+    .dice-indicators
+    {
+      inset: 0;
+      pointer-events: none;
+      position: absolute;
+      z-index: 2;
+    }
+
+    .dice-indicator
+    {
+      align-items: center;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      min-width: 0;
+      opacity: 0;
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: translate(-50%, -100%);
+      transition: opacity 180ms ease, transform 180ms ease;
+      will-change: transform, opacity;
+    }
+
+    .dice-indicator[data-visible="true"]
+    {
+      opacity: 1;
+    }
+
+    .dice-indicator-badge
+    {
+      align-items: center;
+      backdrop-filter: blur(18px);
+      background: rgba(7, 10, 16, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      box-shadow: 0 16px 38px rgba(0, 0, 0, 0.26);
+      display: inline-flex;
+      gap: 0.5rem;
+      max-width: 12rem;
+      padding: 0.55rem 0.9rem;
+    }
+
+    .dice-indicator-arrow
+    {
+      color: rgba(255, 255, 255, 0.55);
+      height: 0.95rem;
+      width: 0.95rem;
+    }
+
+    .dice-status-card
+    {
+      backdrop-filter: blur(18px);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .dice-canvas
+    {
+      display: block;
+      max-width: 100%;
+      width: 100%;
+      height: 23rem;
+    }
+
+    .dice-side-panel
+    {
+      background: rgba(0, 0, 0, 0.35);
+      border-color: rgba(255, 255, 255, 0.08);
+      min-height: 0;
+      transition:
+        background-color 260ms cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 260ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .dice-side-panel[data-result-state="win"]
+    {
+      background: rgba(6, 78, 59, 0.32);
+      border-color: rgba(52, 211, 153, 0.22);
+      box-shadow: inset 0 1px 0 rgba(110, 231, 183, 0.08);
+    }
+
+    .dice-side-panel[data-result-state="loss"]
+    {
+      background: rgba(127, 29, 29, 0.28);
+      border-color: rgba(248, 113, 113, 0.18);
+      box-shadow: inset 0 1px 0 rgba(252, 165, 165, 0.06);
+    }
+
+    .dice-main-panel
+    {
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    @media (max-width: 767px)
+    {
+      .dice-scene
+      {
+        height: 19rem;
+        min-height: 19rem;
+      }
+
+      .dice-canvas
+      {
+        height: 19rem;
+      }
+
+      .dice-side-panel
+      {
+        min-height: auto;
+      }
+
+      .dice-main-panel
+      {
+        min-height: auto;
+      }
+    }
+  </style>
+
+  <section class="mx-auto w-full max-w-[1280px] px-4 py-8 md:px-6">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <section
+      class="dice-session-grid grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)_280px]"
+      data-dice-session
+      data-state-url="{{ url_for('dice_session_state', session_id=session_state.id) }}"
+      data-dice-double-roll="{{ 'true' if session_state.is_double_roll else 'false' }}"
+      data-dice-mode="{{ session_state.mode }}"
+    >
+      <aside
+        class="dice-side-panel rounded-3xl border p-6"
+        data-dice-panel="creator"
+        data-result-state="{% if session_state.status == 'resolved' %}{% if session_state.winner_id == session_state.creator.id %}win{% else %}loss{% endif %}{% else %}neutral{% endif %}"
+        data-route-card
+      >
+        <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Creator</p>
+
+        <div class="mt-8 flex flex-col items-center text-center">
+          {% if session_state.creator.avatar_url %}
+            <img
+              alt="{{ session_state.creator.display_name }}"
+              class="h-28 w-28 rounded-full border border-white/10 object-cover"
+              src="{{ session_state.creator.avatar_url }}"
+            >
+          {% else %}
+            <div class="flex h-28 w-28 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-3xl font-semibold text-white">
+              {{ session_state.creator.display_name[0] }}
+            </div>
+          {% endif %}
+          <p class="mt-5 text-lg font-semibold text-white">{{ session_state.creator.display_name }}</p>
+          <p class="mt-1 text-sm text-white/45">
+            {% if session_state.is_creator %}You{% else %}Session creator{% endif %}
+          </p>
+        </div>
+
+        <div class="mt-8 text-center {% if not session_state.is_first_to %}hidden{% endif %}" data-first-to-score-wrap>
+          <p class="text-[2.75rem] font-semibold tracking-[-0.06em] text-white" data-creator-score>{{ session_state.creator_score }}</p>
+          <p class="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-white/38" data-creator-score-label>Round wins</p>
+          <div class="mt-4 {% if not session_state.is_double_roll %}hidden{% endif %}" data-double-roll-result-wrap="creator">
+            <p class="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-white/34">Current Roll</p>
+            <p class="mt-2 text-sm font-medium text-white/62" data-double-roll-result="creator">Awaiting roll</p>
+          </div>
+        </div>
+      </aside>
+
+      <section class="dice-main-panel rounded-3xl border border-white/8 bg-black/35 px-6 py-8" data-route-card>
+        <div class="flex items-center justify-between gap-4 text-sm text-white/45">
+          <p>Bet {{ session_state.bet_display }}</p>
+          <p>{{ session_state.mode_label }}</p>
+          <p>Pot {{ session_state.pot_display }}</p>
+        </div>
+
+        <section class="dice-scene mt-6" data-dice-viewer data-dice-scene aria-label="Rolling die viewer">
+          {% if session_state.is_first_to %}
+            <div class="dice-indicators" data-dice-indicators {% if session_state.status != 'resolved' %}hidden{% endif %}>
+              <div class="dice-indicator" data-dice-indicator-wrap="creator">
+                <div class="dice-indicator-badge">
+                  <span class="truncate text-sm font-medium text-white" data-dice-indicator-label="creator">
+                    {% if session_state.is_creator %}You{% else %}{{ session_state.creator.display_name }}{% endif %}
+                  </span>
+                </div>
+                <svg viewBox="0 0 20 20" class="dice-indicator-arrow" role="presentation" aria-hidden="true">
+                  <path d="M10 15.2 4.6 8.8h10.8L10 15.2Z" fill="currentColor"></path>
+                </svg>
+              </div>
+
+              <div class="dice-indicator" data-dice-indicator-wrap="opponent">
+                <div class="dice-indicator-badge">
+                  <span class="truncate text-sm font-medium text-white" data-dice-indicator-label="opponent">
+                    {% if session_state.opponent %}{{ session_state.opponent.display_name }}{% else %}Opponent{% endif %}
+                  </span>
+                </div>
+                <svg viewBox="0 0 20 20" class="dice-indicator-arrow" role="presentation" aria-hidden="true">
+                  <path d="M10 15.2 4.6 8.8h10.8L10 15.2Z" fill="currentColor"></path>
+                </svg>
+              </div>
+            </div>
+          {% endif %}
+
+          <canvas class="dice-canvas" data-dice-canvas></canvas>
+        </section>
+
+        <div class="dice-status-card mt-6 rounded-2xl border border-white/8 px-5 py-5 text-center">
+          <p class="text-[0.7rem] font-medium uppercase tracking-[0.2em] text-white/35" data-session-phase>
+            {% if session_state.status == 'resolved' %}Complete{% elif session_state.status == 'countdown' %}Countdown{% else %}Open{% endif %}
+          </p>
+          <p class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white" data-session-status>{{ session_state.status_text }}</p>
+          <p class="mt-2 text-sm leading-7 text-white/48" data-session-detail>
+            {% if session_state.status == 'resolved' %}
+              {% if session_state.is_first_to %}
+                Final score {{ session_state.creator_score }}-{{ session_state.opponent_score }}.
+              {% else %}
+                Final face {{ session_state.result_face }} decided the winner.
+              {% endif %}
+            {% elif session_state.status == 'countdown' %}
+              {% if session_state.is_first_to %}
+                {% if session_state.is_double_roll %}
+                  Creator rolls two dice first each round. Higher total takes the point.
+                {% else %}
+                  Creator rolls first every round. Higher face takes the round.
+                {% endif %}
+              {% else %}
+                The die will roll once the countdown finishes.
+              {% endif %}
+            {% else %}
+              {% if session_state.is_first_to %}
+                {% if session_state.is_double_roll %}
+                  Waiting for an opponent before the two-dice first-to match begins.
+                {% else %}
+                  Waiting for an opponent. Creator starts the match once someone joins.
+                {% endif %}
+              {% else %}
+                Waiting for an opponent before the die roll begins.
+              {% endif %}
+            {% endif %}
+          </p>
+        </div>
+      </section>
+
+      <aside
+        class="dice-side-panel rounded-3xl border p-6"
+        data-dice-panel="opponent"
+        data-result-state="{% if session_state.status == 'resolved' and session_state.opponent %}{% if session_state.winner_id == session_state.opponent.id %}win{% else %}loss{% endif %}{% else %}neutral{% endif %}"
+        data-route-card
+      >
+        <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Opponent</p>
+
+        <div class="mt-8 flex flex-col items-center text-center">
+          <img
+            alt=""
+            class="{% if session_state.opponent and session_state.opponent.avatar_url %}flex{% else %}hidden{% endif %} h-28 w-28 rounded-full border border-white/10 object-cover"
+            data-opponent-avatar
+            src="{% if session_state.opponent and session_state.opponent.avatar_url %}{{ session_state.opponent.avatar_url }}{% endif %}"
+          >
+          <div
+            class="{% if session_state.opponent and not session_state.opponent.avatar_url %}flex{% else %}hidden{% endif %} h-28 w-28 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-3xl font-semibold text-white"
+            data-opponent-fallback
+          >
+            {% if session_state.opponent %}{{ session_state.opponent.display_name[0] }}{% else %}?{% endif %}
+          </div>
+          <p class="mt-5 text-lg font-semibold text-white" data-opponent-name>
+            {% if session_state.opponent %}{{ session_state.opponent.display_name }}{% else %}Waiting for player...{% endif %}
+          </p>
+          <p class="mt-1 text-sm text-white/45" data-opponent-subtitle>
+            {% if session_state.opponent %}
+              {% if session_state.opponent.id == 'bot-house' %}Auto joined{% else %}Joined session{% endif %}
+            {% else %}
+              Open slot
+            {% endif %}
+          </p>
+        </div>
+
+        <div class="mt-8" data-call-bot-wrap {% if not session_state.can_call_bot %}hidden{% endif %}>
+          <form method="post" action="{{ url_for('call_dice_bot', session_id=session_state.id) }}">
+            <button
+              class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+              type="submit"
+            >
+              Call a bot
+            </button>
+          </form>
+        </div>
+
+        <div class="mt-8 text-center {% if not session_state.is_first_to %}hidden{% endif %}" data-first-to-score-wrap>
+          <p class="text-[2.75rem] font-semibold tracking-[-0.06em] text-white" data-opponent-score>{{ session_state.opponent_score }}</p>
+          <p class="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-white/38" data-opponent-score-label>Round wins</p>
+          <div class="mt-4 {% if not session_state.is_double_roll %}hidden{% endif %}" data-double-roll-result-wrap="opponent">
+            <p class="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-white/34">Current Roll</p>
+            <p class="mt-2 text-sm font-medium text-white/62" data-double-roll-result="opponent">Awaiting roll</p>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <div
+      class="mt-8 {% if session_state.status == 'resolved' %}flex{% else %}hidden{% endif %} justify-center"
+      data-session-return-wrap
+    >
+      <a
+        class="inline-flex h-12 items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white opacity-0 scale-[0.92] pointer-events-none transition hover:bg-white/10"
+        href="{{ url_for('dice_game') }}"
+        data-session-return-link
+      >
+        <svg viewBox="0 0 20 20" class="h-4 w-4" role="presentation" aria-hidden="true">
+          <path
+            d="M9.78 4.22a.75.75 0 0 1 0 1.06L5.81 9.25H16a.75.75 0 0 1 0 1.5H5.81l3.97 3.97a.75.75 0 1 1-1.06 1.06l-5.25-5.25a.75.75 0 0 1 0-1.06l5.25-5.25a.75.75 0 0 1 1.06 0Z"
+            fill="currentColor"
+          ></path>
+        </svg>
+        <span>Go back to session list</span>
+      </a>
+    </div>
+
+    <script data-dice-state type="application/json">{{ session_state | tojson }}</script>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script type="module" src="{{ asset_url('js/Dice.js') }}"></script>
+  <script src="{{ asset_url('js/DiceSession.js') }}"></script>
+{% endblock %}

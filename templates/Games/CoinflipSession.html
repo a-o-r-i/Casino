@@ -1,0 +1,136 @@
+{% extends "Base.html" %}
+
+{% block title %}Coinflip Session | Gambling{% endblock %}
+{% block page_key %}coinflip-session{% endblock %}
+
+{% block content %}
+  <section class="mx-auto w-full max-w-[1240px] px-4 py-8 md:px-6">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <section
+      class="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)_260px]"
+      data-coinflip-session
+      data-state-url="{{ url_for('coinflip_session_state', session_id=session_state.id) }}"
+    >
+      <aside class="rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+        <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Creator</p>
+        <p class="mt-4 text-xl font-semibold text-white" data-creator-choice>{{ session_state.creator_choice }}</p>
+
+        <div class="mt-8 flex flex-col items-center text-center">
+          {% if session_state.creator.avatar_url %}
+            <img
+              alt="{{ session_state.creator.display_name }}"
+              class="h-28 w-28 rounded-full border border-white/10 object-cover"
+              src="{{ session_state.creator.avatar_url }}"
+            >
+          {% else %}
+            <div class="flex h-28 w-28 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-3xl font-semibold text-white">
+              {{ session_state.creator.display_name[0] }}
+            </div>
+          {% endif %}
+          <p class="mt-5 text-lg font-semibold text-white">{{ session_state.creator.display_name }}</p>
+          <p class="mt-1 text-sm text-white/45">
+            {% if session_state.is_creator %}You{% else %}Session creator{% endif %}
+          </p>
+        </div>
+      </aside>
+
+      <section class="rounded-3xl border border-white/8 bg-black/35 px-6 py-8 text-center" data-route-card>
+        <div class="flex items-center justify-between gap-4 text-sm text-white/45">
+          <p>Bet {{ session_state.bet_display }}</p>
+          <p>Pot {{ session_state.pot_display }}</p>
+        </div>
+
+        <div class="mt-8 flex justify-center">
+          <div
+            class="h-[420px] w-full max-w-[420px]"
+            data-coin-viewer
+          ></div>
+        </div>
+
+        <div class="mt-8 space-y-2">
+          <p class="text-2xl font-semibold text-white" data-session-status>{{ session_state.status_text }}</p>
+        </div>
+      </section>
+
+      <aside class="rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+        <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Opponent</p>
+        <p class="mt-4 text-xl font-semibold text-white" data-opponent-choice>
+          {% if session_state.opponent %}{{ session_state.opponent_choice }}{% else %}{{ session_state.opponent_choice }}{% endif %}
+        </p>
+
+        <div class="mt-8 flex flex-col items-center text-center">
+          <img
+            alt=""
+            class="{% if session_state.opponent and session_state.opponent.avatar_url %}flex{% else %}hidden{% endif %} h-28 w-28 rounded-full border border-white/10 object-cover"
+            data-opponent-avatar
+            src="{% if session_state.opponent and session_state.opponent.avatar_url %}{{ session_state.opponent.avatar_url }}{% endif %}"
+          >
+          <div
+            class="{% if session_state.opponent and not session_state.opponent.avatar_url %}flex{% else %}hidden{% endif %} h-28 w-28 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-3xl font-semibold text-white"
+            data-opponent-fallback
+          >
+            {% if session_state.opponent %}{{ session_state.opponent.display_name[0] }}{% else %}?{% endif %}
+          </div>
+          <p class="mt-5 text-lg font-semibold text-white" data-opponent-name>
+            {% if session_state.opponent %}{{ session_state.opponent.display_name }}{% else %}Waiting for player...{% endif %}
+          </p>
+          <p class="mt-1 text-sm text-white/45" data-opponent-subtitle>
+            {% if session_state.opponent %}
+              {% if session_state.opponent.id == 'bot-house' %}Auto joined{% else %}Joined session{% endif %}
+            {% else %}
+              Open slot
+            {% endif %}
+          </p>
+        </div>
+
+        <div class="mt-8" data-call-bot-wrap {% if not session_state.can_call_bot %}hidden{% endif %}>
+          <form method="post" action="{{ url_for('call_coinflip_bot', session_id=session_state.id) }}">
+            <button
+              class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+              type="submit"
+            >
+              Call a bot
+            </button>
+          </form>
+        </div>
+      </aside>
+    </section>
+
+    <div
+      class="mt-8 {% if session_state.status == 'resolved' %}flex{% else %}hidden{% endif %} justify-center"
+      data-session-return-wrap
+    >
+      <a
+        class="inline-flex h-12 items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white opacity-0 scale-[0.92] pointer-events-none transition hover:bg-white/10"
+        href="{{ url_for('coinflip_game') }}"
+        data-session-return-link
+      >
+        <svg viewBox="0 0 20 20" class="h-4 w-4" role="presentation" aria-hidden="true">
+          <path
+            d="M9.78 4.22a.75.75 0 0 1 0 1.06L5.81 9.25H16a.75.75 0 0 1 0 1.5H5.81l3.97 3.97a.75.75 0 1 1-1.06 1.06l-5.25-5.25a.75.75 0 0 1 0-1.06l5.25-5.25a.75.75 0 0 1 1.06 0Z"
+            fill="currentColor"
+          ></path>
+        </svg>
+        <span>Go back to session list</span>
+      </a>
+    </div>
+
+    <script data-coinflip-state type="application/json">{{ session_state | tojson }}</script>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script type="module" src="{{ url_for('static', filename='js/Coinflip.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/CoinflipSession.js') }}"></script>
+{% endblock %}

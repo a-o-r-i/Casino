@@ -1,0 +1,41 @@
+{% extends "Base.html" %}
+
+{% block title %}Leaderboard | Gambling{% endblock %}
+{% block page_key %}leaderboard{% endblock %}
+
+{% block content %}
+  <section class="mx-auto w-full max-w-[900px] px-4 py-8 md:px-6">
+    <div
+      class="rounded-3xl border border-white/8 bg-black/35 p-6"
+      data-leaderboard
+      data-route-card
+      data-state-url="{{ url_for('leaderboard_state') }}"
+    >
+      <h1 class="text-4xl font-semibold tracking-[-0.05em] text-white">Top balances</h1>
+
+      <div class="mt-6 space-y-3" data-leaderboard-list>
+        {% if leaderboard_rows %}
+          {% for row in leaderboard_rows %}
+            <div class="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4" data-route-card>
+              <div>
+                <p class="text-lg font-semibold text-white">{{ row.display_name }}</p>
+                <p class="text-sm text-white/40">{{ row.id }}</p>
+              </div>
+              <p class="text-lg font-semibold text-white">{{ row.balance_display }}</p>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
+            No balances yet.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <script data-leaderboard-state type="application/json">{{ leaderboard_state | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/Leaderboard.js') }}"></script>
+{% endblock %}

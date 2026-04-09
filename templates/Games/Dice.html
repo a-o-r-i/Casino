@@ -1,0 +1,312 @@
+{% extends "Base.html" %}
+
+{% block title %}Dice | Gambling{% endblock %}
+{% block page_key %}dice-lobby{% endblock %}
+
+{% block content %}
+  <section class="mx-auto w-full max-w-[900px] px-4 py-8 md:px-6">
+    <h1 class="mb-8 text-4xl font-semibold tracking-[-0.05em] text-white">Sessions</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <section
+      class="rounded-3xl border border-white/8 bg-black/35 p-6"
+      data-dice-lobby
+      data-route-card
+      data-state-url="{{ url_for('dice_lobby_state') }}"
+    >
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-sm text-white/45" data-session-summary>
+          {{ session_summary.open }} open
+          {% if session_summary.live %}&middot; {{ session_summary.live }} live{% endif %}
+          {% if session_summary.resolved %}&middot; {{ session_summary.resolved }} finished{% endif %}
+        </p>
+        <button
+          class="inline-flex items-center justify-center text-[2rem] leading-none font-light text-white/75 transition hover:text-white"
+          data-open-create-modal
+          data-open-modal="dice-create"
+          type="button"
+        >
+          +
+        </button>
+      </div>
+
+      <div class="mt-6 space-y-3" data-session-list>
+        {% if dice_sessions %}
+          {% for dice_session in dice_sessions %}
+            <div class="flex flex-col gap-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 transition-opacity {% if dice_session.status == 'resolved' %}opacity-40{% else %}opacity-100{% endif %} md:flex-row md:items-center md:justify-between" data-route-card>
+              <div>
+                <p class="text-lg font-semibold text-white">{{ dice_session.creator_name }}</p>
+                <p class="mt-1 text-sm text-white/55">
+                  {{ dice_session.session_label }} &middot; Bet {{ dice_session.bet_display }} &middot; Pot {{ dice_session.pot_display }}
+                </p>
+                <p class="mt-1 text-sm text-white/40" data-session-card-status="{{ dice_session.id }}">{{ dice_session.status_text }}</p>
+              </div>
+
+              {% if dice_session.is_joinable %}
+                <button
+                  class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+                  data-dice-join-action="{{ url_for('join_dice_session', session_id=dice_session.id) }}"
+                  data-dice-join-copy="{{ dice_session.join_description }}"
+                  data-open-dice-join-modal
+                  type="button"
+                >
+                  Join session
+                </button>
+              {% else %}
+                <a
+                  class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+                  href="{{ url_for('dice_session', session_id=dice_session.id) }}"
+                >
+                  View session
+                </a>
+              {% endif %}
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
+            No sessions yet. Create the first one.
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  </section>
+
+  <script data-dice-lobby-state type="application/json">{{ dice_lobby_state | tojson }}</script>
+{% endblock %}
+
+{% block overlays %}
+  <div
+    class="pointer-events-none fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-8 pt-28 opacity-0 md:pt-42"
+    data-create-modal
+    data-modal="dice-create"
+  >
+    <div
+      class="absolute inset-0 bg-black/0"
+      data-close-create-modal
+      data-close-modal
+      data-modal-overlay
+    ></div>
+
+    <section
+      class="relative z-10 w-full max-w-[420px] translate-y-6 scale-[0.96] rounded-3xl border border-white/8 bg-[#0b0c10] p-6 opacity-0 shadow-[0_28px_80px_rgba(0,0,0,0.48)]"
+      data-create-modal-panel
+      data-modal-panel
+    >
+      <div>
+        <h2 class="mt-2 text-2xl font-semibold tracking-[-0.05em] text-white">New dice session</h2>
+      </div>
+
+      <form
+        class="mt-6 space-y-6"
+        method="post"
+        action="{{ url_for('create_dice_session') }}"
+        data-balance-cents="{{ current_balance_cents }}"
+        data-dice-create-session-form
+      >
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-white/80" for="dice_bet_amount">
+            Bet amount
+          </label>
+          <div class="flex items-stretch gap-2">
+            <div class="relative min-w-0 flex-1">
+              <span class="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+                <svg viewBox="0 0 2000 2000" class="h-5 w-5" role="presentation" aria-hidden="true">
+                  <path d="M1000 2000c554.17 0 1000-445.83 1000-1000S1554.17 0 1000 0 0 445.83 0 1000s445.83 1000 1000 1000z" fill="#2775ca"></path>
+                  <path d="M1275 1158.33c0-145.83-87.5-195.83-262.5-216.66-125-16.67-150-50-150-108.34s41.67-95.83 125-95.83c75 0 116.67 25 137.5 87.5 4.17 12.5 16.67 20.83 29.17 20.83h66.66c16.67 0 29.17-12.5 29.17-29.16v-4.17c-16.67-91.67-91.67-162.5-187.5-170.83v-100c0-16.67-12.5-29.17-33.33-33.34h-62.5c-16.67 0-29.17 12.5-33.34 33.34v95.83c-125 16.67-204.16 100-204.16 204.17 0 137.5 83.33 191.66 258.33 212.5 116.67 20.83 154.17 45.83 154.17 112.5s-58.34 112.5-137.5 112.5c-108.34 0-145.84-45.84-158.34-108.34-4.16-16.66-16.66-25-29.16-25h-70.84c-16.66 0-29.16 12.5-29.16 29.17v4.17c16.66 104.16 83.33 179.16 220.83 200v100c0 16.66 12.5 29.16 33.33 33.33h62.5c16.67 0 29.17-12.5 33.34-33.33v-100c125-20.84 208.33-108.34 208.33-220.84z" fill="#fff"></path>
+                  <path d="M787.5 1595.83c-325-116.66-491.67-479.16-370.83-800 62.5-175 200-308.33 370.83-370.83 16.67-8.33 25-20.83 25-41.67V325c0-16.67-8.33-29.17-25-33.33-4.17 0-12.5 0-16.67 4.16-395.83 125-612.5 545.84-487.5 941.67 75 233.33 254.17 412.5 487.5 487.5 16.67 8.33 33.34 0 37.5-16.67 4.17-4.16 4.17-8.33 4.17-16.66v-58.34c0-12.5-12.5-29.16-25-37.5zM1229.17 295.83c-16.67-8.33-33.34 0-37.5 16.67-4.17 4.17-4.17 8.33-4.17 16.67v58.33c0 16.67 12.5 33.33 25 41.67 325 116.66 491.67 479.16 370.83 800-62.5 175-200 308.33-370.83 370.83-16.67 8.33-25 20.83-25 41.67V1700c0 16.67 8.33 29.17 25 33.33 4.17 0 12.5 0 16.67-4.16 395.83-125 612.5-545.84 487.5-941.67-75-237.5-258.34-416.67-487.5-491.67z" fill="#fff"></path>
+                </svg>
+              </span>
+              <input
+                class="h-12 min-w-0 w-full rounded-2xl border border-white/10 bg-white/[0.03] pl-12 pr-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+                id="dice_bet_amount"
+                max="{{ '%.2f' | format(current_balance_cents / 100) }}"
+                min="1"
+                name="bet_amount"
+                placeholder="10"
+                step="0.01"
+                type="number"
+                data-dice-bet-amount-input
+              >
+            </div>
+            <div class="flex shrink-0 items-stretch justify-end gap-2">
+              <button
+                class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-white/78 transition hover:bg-white/[0.06] hover:text-white"
+                data-dice-use-previous-bet
+                type="button"
+                aria-label="Use previous bet"
+                title="Use previous bet"
+              >
+                <svg viewBox="0 0 20 20" class="h-[18px] w-[18px]" role="presentation" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+                  <path d="M8.25 6.5 4.75 10l3.5 3.5"></path>
+                  <path d="M5.25 10h7a3.25 3.25 0 0 1 3.25 3.25v2.25"></path>
+                </svg>
+              </button>
+              <button
+                class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-[15px] font-semibold tracking-[-0.04em] text-white/80 transition hover:bg-white/[0.06] hover:text-white"
+                data-dice-adjust-bet="half"
+                type="button"
+                aria-label="Halve bet"
+                title="Halve bet"
+              >
+                1&#8260;2
+              </button>
+              <button
+                class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-[15px] font-semibold tracking-[-0.04em] text-white/80 transition hover:bg-white/[0.06] hover:text-white"
+                data-dice-adjust-bet="double"
+                type="button"
+                aria-label="Double bet"
+                title="Double bet"
+              >
+                2&times;
+              </button>
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <p class="text-xs text-white/40" data-create-balance-max>Max {{ current_balance_display }}</p>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <p class="text-sm font-medium text-white/80">Game mode</p>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block cursor-pointer">
+              <input class="peer sr-only" data-dice-mode-option name="mode" type="radio" value="classic" checked>
+              <span class="flex h-14 flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] peer-checked:border-white/0 peer-checked:bg-white peer-checked:text-black peer-checked:hover:bg-white">
+                <span>Classic</span>
+                <span class="text-xs opacity-65">Low or High</span>
+              </span>
+            </label>
+            <label class="block cursor-pointer">
+              <input class="peer sr-only" data-dice-mode-option name="mode" type="radio" value="first_to">
+              <span class="flex h-14 flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] peer-checked:border-white/0 peer-checked:bg-white peer-checked:text-black peer-checked:hover:bg-white">
+                <span>First To</span>
+                <span class="text-xs opacity-65">FT1, FT3, FT5</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="space-y-3" data-dice-classic-options>
+          <p class="text-sm font-medium text-white/80">Choose your side</p>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block cursor-pointer">
+              <input class="peer sr-only" name="side" type="radio" value="Low" checked>
+              <span class="flex h-14 flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] peer-checked:border-white/0 peer-checked:bg-white peer-checked:text-black peer-checked:hover:bg-white">
+                <span>Low</span>
+                <span class="text-xs opacity-65">1 to 3</span>
+              </span>
+            </label>
+            <label class="block cursor-pointer">
+              <input class="peer sr-only" name="side" type="radio" value="High">
+              <span class="flex h-14 flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] peer-checked:border-white/0 peer-checked:bg-white peer-checked:text-black peer-checked:hover:bg-white">
+                <span>High</span>
+                <span class="text-xs opacity-65">4 to 6</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="space-y-3" data-dice-first-to-options hidden>
+          <p class="text-sm font-medium text-white/80">Match format</p>
+          <div class="grid grid-cols-3 gap-3">
+            <label class="block cursor-pointer">
+              <input class="peer sr-only" name="target_wins" type="radio" value="1" checked>
+              <span class="flex h-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] peer-checked:border-white/0 peer-checked:bg-white peer-checked:text-black peer-checked:hover:bg-white">
+                FT1
+              </span>
+            </label>
+            <label class="block cursor-pointer">
+              <input class="peer sr-only" name="target_wins" type="radio" value="3">
+              <span class="flex h-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] peer-checked:border-white/0 peer-checked:bg-white peer-checked:text-black peer-checked:hover:bg-white">
+                FT3
+              </span>
+            </label>
+            <label class="block cursor-pointer">
+              <input class="peer sr-only" name="target_wins" type="radio" value="5">
+              <span class="flex h-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-white/72 transition hover:bg-white/[0.05] peer-checked:border-white/0 peer-checked:bg-white peer-checked:text-black peer-checked:hover:bg-white">
+                FT5
+              </span>
+            </label>
+          </div>
+          <label class="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:border-white/16 hover:bg-white/[0.05]">
+            <input class="peer sr-only" name="double_roll" type="checkbox" value="1">
+            <span class="min-w-0">
+              <span class="block text-sm font-medium text-white/82">Roll 2 dice per player</span>
+              <span class="mt-1 block text-xs leading-6 text-white/45">Each round uses two dice and the higher combined total takes the point.</span>
+            </span>
+            <span class="relative inline-flex h-7 w-12 shrink-0 rounded-full bg-white/10 transition duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] peer-checked:bg-white/95 after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:content-[''] after:rounded-full after:bg-white after:shadow-[0_4px_14px_rgba(0,0,0,0.24)] after:transition after:duration-300 after:ease-[cubic-bezier(0.22,1,0.36,1)] peer-checked:after:translate-x-5 peer-checked:after:bg-black"></span>
+          </label>
+          <p class="text-xs leading-6 text-white/45">
+            Higher face wins the round. Ties reroll until one player reaches the target.
+          </p>
+        </div>
+
+        <button
+          class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+          type="submit"
+        >
+          Create session
+        </button>
+      </form>
+    </section>
+  </div>
+
+  <div
+    class="pointer-events-none fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-8 pt-28 opacity-0 md:pt-32"
+    data-join-modal
+    data-modal="dice-join"
+  >
+    <div
+      class="absolute inset-0 bg-black/0"
+      data-close-join-modal
+      data-close-modal
+      data-modal-overlay
+    ></div>
+
+    <section
+      class="relative z-10 w-full max-w-[420px] translate-y-6 scale-[0.96] rounded-3xl border border-white/8 bg-[#0b0c10] p-6 opacity-0 shadow-[0_28px_80px_rgba(0,0,0,0.48)]"
+      data-join-modal-panel
+      data-modal-panel
+    >
+      <div>
+        <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Join session</p>
+        <h2 class="mt-2 text-2xl font-semibold tracking-[-0.05em] text-white">
+          Are you sure you want to join this session?
+        </h2>
+        <p class="mt-4 text-sm leading-7 text-white/56" data-dice-join-modal-copy></p>
+      </div>
+
+      <form class="mt-6 grid grid-cols-2 gap-3" data-dice-join-modal-form method="post">
+        <button
+          class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+          data-close-join-modal
+          data-close-modal
+          type="button"
+        >
+          Cancel
+        </button>
+        <button
+          class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+          type="submit"
+        >
+          Join session
+        </button>
+      </form>
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ asset_url('js/DiceLobby.js') }}"></script>
+{% endblock %}
