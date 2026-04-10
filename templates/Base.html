@@ -364,7 +364,20 @@
 
       [data-chat-subtitle]
       {
-        display: none;
+        min-height: 1rem;
+        margin-top: 0.22rem;
+        color: rgba(255, 255, 255, 0.46);
+        font-size: 0.72rem;
+        line-height: 1.35;
+        opacity: 0;
+        transform: translateY(-2px);
+        transition: opacity 160ms ease, transform 160ms ease;
+      }
+
+      [data-chat-subtitle][data-active="true"]
+      {
+        opacity: 1;
+        transform: translateY(0);
       }
 
       [data-chat-status-pill]
@@ -541,7 +554,50 @@
 
       [data-chat-message]
       {
+        position: relative;
         max-width: min(260px, 100%);
+      }
+
+      [data-chat-reply-trigger]
+      {
+        position: absolute;
+        top: -0.1rem;
+        right: -0.12rem;
+        z-index: 1;
+        display: inline-flex;
+        width: 1.7rem;
+        height: 1.7rem;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 9999px;
+        background: rgba(10, 12, 18, 0.92);
+        color: rgba(255, 255, 255, 0.72);
+        cursor: pointer;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(4px) scale(0.96);
+        transition:
+          opacity 160ms ease,
+          transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+          border-color 160ms ease,
+          background-color 160ms ease,
+          color 160ms ease;
+      }
+
+      [data-chat-message]:hover [data-chat-reply-trigger],
+      [data-chat-reply-trigger]:focus-visible
+      {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0) scale(1);
+      }
+
+      [data-chat-reply-trigger]:hover
+      {
+        border-color: rgba(255, 255, 255, 0.16);
+        background: rgba(16, 19, 27, 0.98);
+        color: #fff;
       }
 
       [data-chat-author]
@@ -625,6 +681,31 @@
       {
         background: rgba(255, 255, 255, 0.07);
         border-color: rgba(255, 255, 255, 0.1);
+      }
+
+      [data-chat-reply-context]
+      {
+        margin-bottom: 0.55rem;
+        padding: 0.48rem 0.58rem;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-left: 2px solid rgba(96, 165, 250, 0.44);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      [data-chat-reply-context-author]
+      {
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      [data-chat-reply-context-preview]
+      {
+        margin-top: 0.18rem;
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.74rem;
+        line-height: 1.45;
       }
 
       [data-chat-mention]
@@ -732,13 +813,108 @@
 
       [data-chat-composer]
       {
-        display: flex;
         position: relative;
-        align-items: flex-end;
-        gap: 0.55rem;
         padding: 0.72rem 0.85rem 0.85rem;
         border-top: 1px solid rgba(255, 255, 255, 0.06);
         background: rgba(255, 255, 255, 0.015);
+      }
+
+      [data-chat-reply]
+      {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        max-height: 0;
+        margin-bottom: 0;
+        padding: 0 0.74rem;
+        border: 0 solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.035);
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(6px);
+        transition:
+          max-height 180ms ease,
+          margin-bottom 180ms ease,
+          padding 180ms ease,
+          border-width 180ms ease,
+          opacity 160ms ease,
+          transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      [data-chat-reply][data-open="true"]
+      {
+        max-height: 6rem;
+        margin-bottom: 0.6rem;
+        padding: 0.68rem 0.74rem;
+        border-width: 1px;
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+      }
+
+      [data-chat-reply-copy]
+      {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      [data-chat-reply-label]
+      {
+        color: rgba(255, 255, 255, 0.42);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      [data-chat-reply-name]
+      {
+        margin-top: 0.18rem;
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+
+      [data-chat-reply-preview]
+      {
+        margin-top: 0.18rem;
+        color: rgba(255, 255, 255, 0.52);
+        font-size: 0.75rem;
+        line-height: 1.45;
+        word-break: break-word;
+      }
+
+      [data-chat-reply-clear]
+      {
+        display: inline-flex;
+        width: 1.8rem;
+        height: 1.8rem;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        color: rgba(255, 255, 255, 0.68);
+        cursor: pointer;
+        transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+      }
+
+      [data-chat-reply-clear]:hover
+      {
+        border-color: rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+      }
+
+      [data-chat-compose-row]
+      {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.55rem;
       }
 
       [data-chat-suggestions]
@@ -1597,6 +1773,7 @@
           <header data-chat-header>
             <div data-chat-header-copy>
               <strong data-chat-title>Chat</strong>
+              <div aria-atomic="true" aria-live="polite" data-active="false" data-chat-subtitle></div>
             </div>
             <div data-chat-header-actions>
               <div data-chat-status-pill>
@@ -1619,21 +1796,36 @@
           <div data-chat-error></div>
 
           <form data-chat-composer novalidate>
+            <div aria-hidden="true" data-chat-reply data-open="false">
+              <div data-chat-reply-copy>
+                <div data-chat-reply-label>Replying To</div>
+                <div data-chat-reply-name></div>
+                <div data-chat-reply-preview></div>
+              </div>
+              <button aria-label="Cancel reply" data-chat-reply-clear type="button">
+                <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" aria-hidden="true">
+                  <path d="m5 5 10 10"></path>
+                  <path d="M15 5 5 15"></path>
+                </svg>
+              </button>
+            </div>
             <div data-chat-suggestions aria-hidden="true" data-open="false"></div>
-            <input
-              autocomplete="off"
-              data-chat-input
-              maxlength="280"
-              name="message"
-              placeholder="Message..."
-              type="text"
-            >
-            <button data-chat-send type="submit" aria-label="Send message">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
-                <path d="M22 2 11 13"></path>
-                <path d="m22 2-7 20-4-9-9-4Z"></path>
-              </svg>
-            </button>
+            <div data-chat-compose-row>
+              <input
+                autocomplete="off"
+                data-chat-input
+                maxlength="280"
+                name="message"
+                placeholder="Message..."
+                type="text"
+              >
+              <button data-chat-send type="submit" aria-label="Send message">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+                  <path d="M22 2 11 13"></path>
+                  <path d="m22 2-7 20-4-9-9-4Z"></path>
+                </svg>
+              </button>
+            </div>
           </form>
         </div>
 

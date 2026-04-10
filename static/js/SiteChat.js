@@ -10,6 +10,7 @@
     const HiddenPollMultiplier = 2.4;
     const ChatDragStorageKey = "gambling.chat.drag-position";
     const ChatDragViewportMargin = 16;
+    const LocalTypingWindowMs = 3200;
     const PresenceHeartbeatIntervalMs = 4000;
     const ProfileCacheTtlMs = 1500;
     const ProfileHideDelayMs = 110;
@@ -30,7 +31,11 @@
     const ChatOnlineCount = ChatShell.querySelector("[data-chat-online-count]");
     const ChatPanel = ChatShell.querySelector("[data-site-chat]");
     const ChatProfileCard = ChatShell.querySelector("[data-chat-profile-card]");
+    const ChatReplyBanner = ChatShell.querySelector("[data-chat-reply]");
+    const ChatReplyName = ChatShell.querySelector("[data-chat-reply-name]");
+    const ChatReplyPreview = ChatShell.querySelector("[data-chat-reply-preview]");
     const ChatCloseButton = ChatShell.querySelector("[data-chat-close]");
+    const ChatSubtitle = ChatShell.querySelector("[data-chat-subtitle]");
     const ChatSendButton = ChatShell.querySelector("[data-chat-send]");
     const ChatSuggestionShell = ChatShell.querySelector("[data-chat-suggestions]");
     const ChatToggleButton = ChatShell.querySelector("[data-chat-toggle]");
@@ -68,18 +73,22 @@
     let ComposerSuggestionRequestToken = 0;
     let ComposerSuggestions = [];
     let ComposerSuggestionType = "";
+    let ActiveReplyMessage = null;
     let HoveredUserId = "";
     let HoverAnchor = null;
     let HoverHideTimeout = 0;
     let HoverRequestToken = 0;
+    let IsTyping = false;
     let IsSending = false;
     let LastStatePayload = null;
+    let LastTypingInputAt = 0;
     let LatestMessageId = 0;
     let PresenceHeartbeatInterval = 0;
     let PollTimeout = 0;
     let RelativeTimeInterval = 0;
     let RenderedProfileUserId = "";
     let SentOfflinePresence = false;
+    let TypingResetTimeout = 0;
     let IsSendingTip = false;
     let ChatDragPosition = {
         x: 0,
@@ -137,6 +146,66 @@
     const Clamp = (Value, Min, Max) =>
     {
         return Math.min(Math.max(Value, Min), Max);
+    };
+
+    const TruncateText = (Value, MaxLength = 90) =>
+    {
+        const NormalizedValue = String(Value ?? "").replace(/\s+/g, " ").trim();
+
+        if (NormalizedValue.length <= MaxLength)
+        {
+            return NormalizedValue;
+        }
+
+        return `${NormalizedValue.slice(0, MaxLength - 3).trimEnd()}...`;
+    };
+
+    const BuildReplyPreviewText = (Value) =>
+    {
+        if (typeof Value?.preview === "string" && Value.preview.trim())
+        {
+            return TruncateText(Value.preview);
+        }
+
+        if (typeof Value?.body === "string" && Value.body.trim())
+        {
+            return TruncateText(Value.body);
+        }
+
+        if (typeof Value?.session_share?.title === "string" && Value.session_share.title.trim())
+        {
+            return TruncateText(Value.session_share.title);
+        }
+
+        return "Original message";
+    };
+
+    const FormatTypingSummary = (TypingUsers) =>
+    {
+        const Names = Array.isArray(TypingUsers)
+            ? TypingUsers
+                .map((User) => String(User?.display_name || "").trim())
+                .filter(Boolean)
+            : [];
+
+        if (!Names.length)
+        {
+            return "";
+        }
+
+        if (Names.length === 1)
+        {
+            return `${Names[0]} is typing...`;
+        }
+
+        if (Names.length === 2)
+        {
+            return `${Names[0]} and ${Names[1]} are typing...`;
+        }
+
+        const RemainingCount = Names.length - 2;
+        const OthersLabel = RemainingCount === 1 ? "1 other" : `${RemainingCount} others`;
+        return `${Names[0]}, ${Names[1]}, and ${OthersLabel} are typing...`;
     };
 
     const Wait = (Delay) =>
@@ -345,6 +414,7 @@
         {
             HideComposerSuggestions();
             HideProfileCard();
+            ResetTypingState();
             return;
         }
 
@@ -357,6 +427,64 @@
                 ChatInput?.focus();
             }
         });
+    };
+
+    const SetTypingSummary = (TypingUsers) =>
+    {
+        if (!ChatSubtitle)
+        {
+            return;
+        }
+
+        const Summary = FormatTypingSummary(TypingUsers);
+        ChatSubtitle.textContent = Summary;
+        ChatSubtitle.dataset.active = Summary ? "true" : "false";
+        ChatSubtitle.setAttribute("aria-hidden", Summary ? "false" : "true");
+    };
+
+    const SetActiveReplyMessage = (Message) =>
+    {
+        ActiveReplyMessage = Message
+            ? {
+                author: Message.author,
+                id: Number(Message.id),
+                preview: BuildReplyPreviewText(Message),
+            }
+            : null;
+
+        if (!ChatReplyBanner || !ChatReplyName || !ChatReplyPreview)
+        {
+            return;
+        }
+
+        if (!ActiveReplyMessage)
+        {
+            ChatReplyBanner.dataset.open = "false";
+            ChatReplyBanner.setAttribute("aria-hidden", "true");
+            ChatReplyName.textContent = "";
+            ChatReplyPreview.textContent = "";
+            return;
+        }
+
+        ChatReplyBanner.dataset.open = "true";
+        ChatReplyBanner.setAttribute("aria-hidden", "false");
+        ChatReplyName.textContent = ActiveReplyMessage.author?.display_name || "Unknown";
+        ChatReplyPreview.textContent = ActiveReplyMessage.preview;
+    };
+
+    const ClearActiveReplyMessage = ({ focusComposer = false } = {}) =>
+    {
+        SetActiveReplyMessage(null);
+
+        if (focusComposer)
+        {
+            ChatInput?.focus();
+        }
+    };
+
+    const FindMessageById = (MessageId) =>
+    {
+        return CurrentMessages.find((Message) => Message.id === MessageId) || null;
     };
 
     const StartChatDrag = (EventValue) =>
@@ -496,6 +624,21 @@
         }).join("");
     };
 
+    const BuildReplyContextMarkup = (Reply) =>
+    {
+        if (!Reply?.author)
+        {
+            return "";
+        }
+
+        return `
+            <div data-chat-reply-context>
+              <div data-chat-reply-context-author>${EscapeHtml(Reply.author.display_name || "Unknown")}</div>
+              <div data-chat-reply-context-preview>${EscapeHtml(BuildReplyPreviewText(Reply))}</div>
+            </div>
+        `;
+    };
+
     const BuildSessionShareMarkup = (Share) =>
     {
         if (!Share)
@@ -595,11 +738,27 @@
             <div data-chat-row data-grouped="${IsGrouped ? "true" : "false"}" data-self="${Message.is_self ? "true" : "false"}">
               <article
                 data-chat-message
+                data-message-id="${EscapeHtml(Message.id)}"
                 data-mentioned="${Message.is_current_user_mentioned ? "true" : "false"}"
                 data-user-id="${EscapeHtml(Message.author.id)}"
               >
+                <button
+                  aria-label="Reply to ${EscapeHtml(Message.author.display_name)}"
+                  data-chat-reply-trigger
+                  data-message-id="${EscapeHtml(Message.id)}"
+                  title="Reply"
+                  type="button"
+                >
+                  <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+                    <path d="M7.25 6 3.5 10l3.75 4"></path>
+                    <path d="M4 10h7.25c2.62 0 4.75 2.13 4.75 4.75"></path>
+                  </svg>
+                </button>
                 ${AuthorMarkup}
-                <div data-chat-bubble>${BuildHighlightedBodyMarkup(Message)}</div>
+                <div data-chat-bubble>
+                  ${BuildReplyContextMarkup(Message.reply_to)}
+                  ${BuildHighlightedBodyMarkup(Message)}
+                </div>
                 ${RenderSessionShareMarkup(Message.session_share)}
               </article>
             </div>
@@ -732,6 +891,7 @@
             is_current_user_mentioned: Message.is_current_user_mentioned,
             is_self: Message.is_self,
             mention_tokens: Message.mention_tokens,
+            reply_to: Message.reply_to,
             session_share: Message.session_share,
             timestamp: Message.timestamp,
         });
@@ -779,6 +939,7 @@
     {
         LastStatePayload = Payload;
         ApplyOnlineCount(Payload.online_count);
+        SetTypingSummary(Payload.typing_users);
 
         if (Number.isFinite(Payload.latest_message_id))
         {
@@ -844,10 +1005,79 @@
         PresenceHeartbeatInterval = 0;
     };
 
+    const ClearTypingResetTimeout = () =>
+    {
+        if (!TypingResetTimeout)
+        {
+            return;
+        }
+
+        window.clearTimeout(TypingResetTimeout);
+        TypingResetTimeout = 0;
+    };
+
+    const ShouldBroadcastTyping = () =>
+    {
+        return Boolean(
+            ChatInput?.value.trim() &&
+            ChatShell.dataset.chatOpen === "true" &&
+            document.visibilityState !== "hidden" &&
+            Date.now() - LastTypingInputAt <= LocalTypingWindowMs,
+        );
+    };
+
+    const SyncTypingState = ({ forceHeartbeat = false } = {}) =>
+    {
+        const NextTypingState = ShouldBroadcastTyping();
+        const DidChange = NextTypingState !== IsTyping;
+
+        IsTyping = NextTypingState;
+
+        if ((!DidChange && !forceHeartbeat) || !PresenceHeartbeatUrl || document.visibilityState === "hidden")
+        {
+            return;
+        }
+
+        SendPresenceHeartbeat().catch((ErrorValue) =>
+        {
+            console.error(ErrorValue);
+        });
+    };
+
+    const ScheduleTypingReset = () =>
+    {
+        ClearTypingResetTimeout();
+
+        if (!ChatInput?.value.trim())
+        {
+            return;
+        }
+
+        TypingResetTimeout = window.setTimeout(() =>
+        {
+            SyncTypingState();
+        }, LocalTypingWindowMs + 120);
+    };
+
+    const ResetTypingState = ({ notify = true } = {}) =>
+    {
+        LastTypingInputAt = 0;
+        ClearTypingResetTimeout();
+
+        if (!notify)
+        {
+            IsTyping = false;
+            return;
+        }
+
+        SyncTypingState();
+    };
+
     const BuildPresencePayload = () =>
     {
         return JSON.stringify({
             path: `${window.location.pathname}${window.location.search}`,
+            typing: IsTyping,
         });
     };
 
@@ -923,6 +1153,9 @@
 
         SentOfflinePresence = true;
         StopPresenceHeartbeat();
+        ResetTypingState({
+            notify: false,
+        });
         ProfileCache.clear();
 
         const Payload = BuildPresencePayload();
@@ -1591,6 +1824,7 @@
             const Response = await fetch(SendUrl, {
                 body: JSON.stringify({
                     body: MessageBody,
+                    reply_to_message_id: ActiveReplyMessage?.id || null,
                 }),
                 headers: {
                     "Accept": "application/json",
@@ -1602,12 +1836,19 @@
 
             if (!Response.ok)
             {
+                if (Payload.error === "That message can no longer be replied to.")
+                {
+                    ClearActiveReplyMessage();
+                }
+
                 SetChatError(Payload.error || "Message could not be sent.");
                 return;
             }
 
             ChatInput.value = "";
             HideComposerSuggestions();
+            ClearActiveReplyMessage();
+            ResetTypingState();
             ApplyOnlineCount(Payload.online_count);
 
             if (Payload.message)
@@ -1651,6 +1892,21 @@
         SendMessage().catch((ErrorValue) =>
         {
             console.error(ErrorValue);
+        });
+    });
+
+    ChatComposer?.addEventListener("click", (EventValue) =>
+    {
+        const ClearButton = EventValue.target.closest("[data-chat-reply-clear]");
+
+        if (!ClearButton || !ChatComposer.contains(ClearButton))
+        {
+            return;
+        }
+
+        EventValue.preventDefault();
+        ClearActiveReplyMessage({
+            focusComposer: true,
         });
     });
 
@@ -1709,6 +1965,18 @@
     {
         SetChatError("");
         UpdateComposerState();
+
+        if (ChatInput.value.trim())
+        {
+            LastTypingInputAt = Date.now();
+            ScheduleTypingReset();
+            SyncTypingState();
+        }
+        else
+        {
+            ResetTypingState();
+        }
+
         UpdateComposerSuggestions().catch((ErrorValue) =>
         {
             console.error(ErrorValue);
@@ -1729,6 +1997,11 @@
         {
             console.error(ErrorValue);
         });
+    });
+
+    ChatInput?.addEventListener("blur", () =>
+    {
+        ResetTypingState();
     });
 
     ChatInput?.addEventListener("keyup", (EventValue) =>
@@ -1768,6 +2041,29 @@
         {
             HideComposerSuggestions();
         }
+    });
+
+    ChatMessages?.addEventListener("click", (EventValue) =>
+    {
+        const ReplyTrigger = EventValue.target.closest("[data-chat-reply-trigger]");
+
+        if (!ReplyTrigger || !ChatMessages.contains(ReplyTrigger))
+        {
+            return;
+        }
+
+        EventValue.preventDefault();
+        const MessageId = Number.parseInt(ReplyTrigger.dataset.messageId || "0", 10);
+        const Message = FindMessageById(MessageId);
+
+        if (!Message)
+        {
+            return;
+        }
+
+        SetActiveReplyMessage(Message);
+        ChatInput?.focus();
+        HideComposerSuggestions();
     });
 
     ChatMessages?.addEventListener("mouseover", (EventValue) =>
@@ -1882,6 +2178,7 @@
         {
             ClearPollTimeout();
             HideProfileCard();
+            SetTypingSummary([]);
             SendOfflinePresence();
             return;
         }
@@ -1899,6 +2196,7 @@
     });
 
     UpdateComposerState();
+    SetTypingSummary([]);
     SetChatOpen(!IsMobileViewport(), { FocusComposer: false });
     SyncChatDragPosition({
         useStoredPosition: true,

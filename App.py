@@ -83,6 +83,8 @@ CHAT_POLL_INTERVAL_MS = 2200
 CHAT_MENTION_NOTIFICATION_COOLDOWN_SECONDS = 30
 CHAT_MENTION_RESOLUTION_MIN_LENGTH = 3
 CHAT_MENTION_SUGGESTION_LIMIT = 6
+CHAT_REPLY_PREVIEW_MAX_LENGTH = 90
+CHAT_TYPING_WINDOW_SECONDS = 5
 NEXT_CHAT_MESSAGE_ID = 1
 CHAT_MENTION_PATTERN = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]{2,32})")
 CHAT_EMOJI_SHORTCODE_PATTERN = re.compile(r":([A-Za-z0-9_+\-]{2,32}):")
@@ -1066,7 +1068,15 @@ def user_presence_is_online(presence):
     )
 
 
-def touch_user_presence(user_profile, current_path=None):
+def user_presence_is_typing(presence):
+    return bool(
+        presence
+        and user_presence_is_online(presence)
+        and presence.get("typing_until", 0) > time.time()
+    )
+
+
+def touch_user_presence(user_profile, current_path=None, is_typing=None):
     if not user_profile:
         return None
 
@@ -1080,11 +1090,21 @@ def touch_user_presence(user_profile, current_path=None):
     else:
         connected_at = now
 
+    existing_typing_until = previous_presence.get("typing_until", 0) if previous_presence else 0
+
+    if is_typing is True:
+        typing_until = now + CHAT_TYPING_WINDOW_SECONDS
+    elif is_typing is False:
+        typing_until = 0
+    else:
+        typing_until = existing_typing_until if existing_typing_until > now else 0
+
     presence = {
         "connected_at": connected_at,
-        "current_path": current_path,
+        "current_path": current_path or (previous_presence or {}).get("current_path"),
         "is_online": True,
         "last_seen": now,
+        "typing_until": typing_until,
     }
     USER_PRESENCE[user_id] = presence
     record_user_site_visit(user_id, now)
@@ -1101,6 +1121,7 @@ def mark_user_presence_offline(user_id):
         "disconnected_at": now,
         "is_online": False,
         "last_seen": now,
+        "typing_until": 0,
     })
     USER_PRESENCE[user_id] = presence
     return presence
@@ -1123,6 +1144,71 @@ def get_online_player_count():
         for user_id, presence in USER_PRESENCE.items()
         if user_id != BOT_PROFILE["id"] and user_presence_is_online(presence)
     )
+
+
+def build_chat_reply_preview(chat_message):
+    body_text = " ".join(str(chat_message.get("body") or "").split())
+
+    if not body_text:
+        return "Original message"
+
+    if len(body_text) <= CHAT_REPLY_PREVIEW_MAX_LENGTH:
+        return body_text
+
+    return f"{body_text[:CHAT_REPLY_PREVIEW_MAX_LENGTH - 3].rstrip()}..."
+
+
+def find_chat_message_by_id(message_id):
+    for chat_message in reversed(CHAT_MESSAGES):
+        if chat_message["id"] == message_id:
+            return chat_message
+
+    return None
+
+
+def build_chat_reply_snapshot(chat_message):
+    if not chat_message:
+        return None
+
+    author_profile = USER_PROFILES.get(chat_message["author_id"])
+
+    if not author_profile:
+        return None
+
+    return {
+        "author": make_user_snapshot(author_profile),
+        "id": chat_message["id"],
+        "preview": build_chat_reply_preview(chat_message),
+    }
+
+
+def build_chat_typing_users(current_user_id=None):
+    typing_users = []
+
+    for user_id, presence in USER_PRESENCE.items():
+        if user_id in {BOT_PROFILE["id"], current_user_id} or not user_presence_is_typing(presence):
+            continue
+
+        user_profile = USER_PROFILES.get(user_id)
+
+        if not user_profile:
+            continue
+
+        typing_users.append({
+            "display_name": user_profile.get("display_name") or user_profile.get("username") or "Someone",
+            "id": user_id,
+            "typing_until": presence.get("typing_until", 0),
+        })
+
+    typing_users.sort(key=lambda user: (-user["typing_until"], user["display_name"].lower()))
+
+    return [
+        {
+            "display_name": user["display_name"],
+            "id": user["id"],
+        }
+        for user in typing_users
+    ]
 
 
 def serialize_chat_message(chat_message, current_user_id):
@@ -1151,6 +1237,7 @@ def serialize_chat_message(chat_message, current_user_id):
         ),
         "is_self": chat_message["author_id"] == current_user_id,
         "mention_tokens": mention_tokens,
+        "reply_to": chat_message.get("reply_to"),
         "session_share": (
             build_chat_session_share_payload(
                 session_share.get("game"),
@@ -1164,12 +1251,24 @@ def serialize_chat_message(chat_message, current_user_id):
     }
 
 
-def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=None):
+def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=None, reply_to_message_id=None):
     global NEXT_CHAT_MESSAGE_ID
 
     author_snapshot = remember_user_profile(author_user)
     normalized_body = replace_chat_emoji_shortcodes(str(body or "").strip())
+    reply_snapshot = None
     session_share = None
+
+    if reply_to_message_id is not None:
+        reply_target = find_chat_message_by_id(reply_to_message_id)
+
+        if not reply_target:
+            raise ValueError("That message can no longer be replied to.")
+
+        reply_snapshot = build_chat_reply_snapshot(reply_target)
+
+        if not reply_snapshot:
+            raise ValueError("That message can no longer be replied to.")
 
     if shared_game or shared_session_id:
         if shared_game not in {"coinflip", "dice"}:
@@ -1204,6 +1303,7 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
         "body": normalized_body,
         "id": NEXT_CHAT_MESSAGE_ID,
         "mentions": mentions,
+        "reply_to": reply_snapshot,
         "session_share": (
             {
                 "game": session_share["game"],
@@ -1265,6 +1365,7 @@ def build_chat_state_payload(current_user_id, since_id):
         "online_count": get_online_player_count(),
         "poll_interval_ms": CHAT_POLL_INTERVAL_MS,
         "reset": should_reset or since_id <= 0,
+        "typing_users": build_chat_typing_users(current_user_id),
     }
 
 
@@ -2618,17 +2719,26 @@ def chat_mention_suggestions():
 def chat_messages():
     payload = request.get_json(silent=True) or {}
     raw_body = payload.get("body", "") if isinstance(payload, dict) else ""
+    raw_reply_to_message_id = payload.get("reply_to_message_id") if isinstance(payload, dict) else None
     session_share = payload.get("session_share") if isinstance(payload, dict) else None
     current_user = make_user_snapshot(get_current_user())
+
+    try:
+        reply_to_message_id = int(raw_reply_to_message_id) if raw_reply_to_message_id is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "That message can no longer be replied to."}), 400
 
     try:
         with STATE_LOCK:
             message = add_chat_message(
                 current_user,
                 raw_body,
+                reply_to_message_id=reply_to_message_id,
                 shared_game=session_share.get("game") if isinstance(session_share, dict) else None,
                 shared_session_id=session_share.get("session_id") if isinstance(session_share, dict) else None,
             )
+            current_presence_path = (USER_PRESENCE.get(current_user["id"]) or {}).get("current_path")
+            touch_user_presence(current_user, current_path=current_presence_path, is_typing=False)
             response_payload = {
                 "latest_message_id": get_latest_chat_message_id(),
                 "message": serialize_chat_message(message, current_user["id"]),
@@ -2678,12 +2788,16 @@ def tip_chat_user(user_id):
 def presence_heartbeat():
     payload = request.get_json(silent=True) or {}
     current_path = payload.get("path") if isinstance(payload, dict) else None
+    is_typing = payload.get("typing") if isinstance(payload, dict) else None
 
     if not isinstance(current_path, str) or not current_path.startswith("/"):
         current_path = request.path
 
+    if not isinstance(is_typing, bool):
+        is_typing = None
+
     with STATE_LOCK:
-        touch_user_presence(get_current_user(), current_path)
+        touch_user_presence(get_current_user(), current_path, is_typing=is_typing)
         online_count = get_online_player_count()
 
     return jsonify({"online_count": online_count})
