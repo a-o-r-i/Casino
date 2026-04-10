@@ -136,6 +136,7 @@ const BuildSessionActionMarkup = (CoinflipSession) =>
               data-join-bet="${EscapeHtml(CoinflipSession.bet_display)}"
               data-join-choice="${EscapeHtml(CoinflipSession.creator_choice)}"
               data-join-creator="${EscapeHtml(CoinflipSession.creator_name)}"
+              data-join-view-url="${EscapeHtml(CoinflipSession.view_url)}"
               data-open-join-modal
               type="button"
             >
@@ -319,6 +320,7 @@ const InitializeCoinflipLobbyPage = ({ main }) =>
     const JoinModalController = window.GamblingApp?.getModalController(JoinModal);
     const JoinModalCopy = OverlayRoot.querySelector("[data-join-modal-copy]");
     const JoinModalForm = OverlayRoot.querySelector("[data-join-modal-form]");
+    const JoinModalViewLink = OverlayRoot.querySelector("[data-join-view-link]");
     const CreateForm = OverlayRoot.querySelector("[data-create-session-form]");
     const BetAmountInput = OverlayRoot.querySelector("[data-bet-amount-input]");
     const UsePreviousBetButton = OverlayRoot.querySelector("[data-use-previous-bet]");
@@ -414,12 +416,13 @@ const InitializeCoinflipLobbyPage = ({ main }) =>
             return;
         }
 
-        if (!JoinModalController || !JoinModalForm || !JoinModalCopy)
+        if (!JoinModalController || !JoinModalForm || !JoinModalCopy || !JoinModalViewLink)
         {
             return;
         }
 
         JoinModalForm.action = Button.dataset.joinAction || "";
+        JoinModalViewLink.href = Button.dataset.joinViewUrl || Button.dataset.joinAction || window.location.href;
         JoinModalCopy.textContent =
             `${Button.dataset.joinCreator} picked ${Button.dataset.joinChoice}. ` +
             `You will join for ${Button.dataset.joinBet}.`;

@@ -84,6 +84,177 @@
             : BaseDelay;
     };
 
+    const EscapeHtml = (Value) =>
+    {
+        return String(Value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll("\"", "&quot;")
+            .replaceAll("'", "&#39;");
+    };
+
+    const FormatRelativeTime = (Timestamp) =>
+    {
+        if (!Timestamp)
+        {
+            return "Unknown";
+        }
+
+        const Delta = Math.max(0, Math.floor(Date.now() / 1000 - Number(Timestamp)));
+
+        if (Delta < 60)
+        {
+            return `${Delta}s ago`;
+        }
+
+        if (Delta < 3600)
+        {
+            return `${Math.floor(Delta / 60)}m ago`;
+        }
+
+        if (Delta < 86400)
+        {
+            return `${Math.floor(Delta / 3600)}h ago`;
+        }
+
+        return `${Math.floor(Delta / 86400)}d ago`;
+    };
+
+    const BuildUserProfileAvatarMarkup = (Profile) =>
+    {
+        const FallbackUrl = Profile?.avatar_static_url || Profile?.avatar_url || "";
+        const AvatarUrl = Profile?.avatar_url || FallbackUrl;
+
+        if (AvatarUrl)
+        {
+            return `
+                <img
+                  alt="${EscapeHtml(Profile.display_name)}"
+                  data-fallback-src="${EscapeHtml(FallbackUrl)}"
+                  onerror="if (this.dataset.fallbackSrc && this.currentSrc !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
+                  src="${EscapeHtml(AvatarUrl)}"
+                >
+            `;
+        }
+
+        return EscapeHtml((Profile?.display_name || Profile?.username || "?").slice(0, 1));
+    };
+
+    const FormatPercent = (Value) =>
+    {
+        const NumberValue = Number(Value);
+
+        if (!Number.isFinite(NumberValue))
+        {
+            return "0%";
+        }
+
+        return `${Number.isInteger(NumberValue) ? NumberValue.toFixed(0) : NumberValue.toFixed(1)}%`;
+    };
+
+    const BuildUserProfileCardMarkup = (Profile, Options = {}) =>
+    {
+        const IncludeTipControls = Options.includeTipControls === true;
+        const BadgeMarkup = Profile.reward_badge
+            ? `<div data-chat-profile-badge>Lvl ${EscapeHtml(Profile.reward_level)} &middot; ${EscapeHtml(Profile.reward_badge)}</div>`
+            : "";
+        const StatusLabel = Profile.is_online ? "Online" : "Offline";
+        const ActivityLabel = Profile.is_online
+            ? (
+                Profile.connected_since
+                    ? `Here since ${FormatRelativeTime(Profile.connected_since)}`
+                    : "Active right now"
+            )
+            : (
+                Profile.last_seen
+                    ? `Last seen ${FormatRelativeTime(Profile.last_seen)}`
+                    : "Away right now"
+            );
+        const CanTip = Boolean(IncludeTipControls && Profile.can_tip && Profile.tip_url);
+        const TipButtonMarkup = CanTip
+            ? `
+                <button
+                  data-chat-tip-toggle
+                  data-open="false"
+                  title="Tip ${EscapeHtml(Profile.display_name)}"
+                  type="button"
+                  aria-label="Tip ${EscapeHtml(Profile.display_name)}"
+                >
+                  <span>Tip</span>
+                  <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+                    <path d="M10 2.5v15"></path>
+                    <path d="M13.75 5.25H8.4a2.15 2.15 0 0 0 0 4.3h3.2a2.15 2.15 0 0 1 0 4.3H6.25"></path>
+                  </svg>
+                </button>
+            `
+            : "";
+        const ProfileBadgesMarkup = BadgeMarkup || TipButtonMarkup
+            ? `
+                <div data-chat-profile-badges>
+                  ${BadgeMarkup}
+                  ${TipButtonMarkup}
+                </div>
+            `
+            : "";
+        const TipFormMarkup = CanTip
+            ? `
+                <div data-chat-tip-panel data-open="false" aria-hidden="true">
+                  <div data-chat-tip-panel-inner>
+                    <form data-chat-tip-form data-tip-url="${EscapeHtml(Profile.tip_url)}">
+                      <div data-chat-tip-row>
+                        <input
+                          autocomplete="off"
+                          data-chat-tip-input
+                          inputmode="decimal"
+                          min="0.01"
+                          name="amount"
+                          placeholder="$5"
+                          step="0.01"
+                          type="number"
+                        >
+                        <button data-chat-tip-submit type="submit">Send</button>
+                      </div>
+                      <div data-chat-tip-message></div>
+                    </form>
+                  </div>
+                </div>
+            `
+            : "";
+
+        return `
+            <div data-chat-profile-head>
+              <span data-chat-profile-avatar>${BuildUserProfileAvatarMarkup(Profile)}</span>
+              <div data-chat-profile-copy>
+                <div data-chat-profile-name>${EscapeHtml(Profile.display_name)}</div>
+                <div data-chat-profile-meta>
+                  <span
+                    data-chat-profile-status
+                    data-online="${Profile.is_online ? "true" : "false"}"
+                    aria-label="${EscapeHtml(StatusLabel)}"
+                    title="${EscapeHtml(StatusLabel)}"
+                  ></span>
+                  <span data-chat-profile-status-copy>${EscapeHtml(StatusLabel)}</span>
+                  <div data-chat-profile-username>@${EscapeHtml(Profile.username)}</div>
+                </div>
+                <div data-chat-profile-subline>${EscapeHtml(ActivityLabel)}</div>
+              </div>
+            </div>
+            ${ProfileBadgesMarkup}
+            <div data-chat-profile-grid>
+              <div data-chat-profile-stat>
+                <div data-chat-profile-stat-label>Registered</div>
+                <div data-chat-profile-stat-value>${EscapeHtml(FormatRelativeTime(Profile.registered_at))}</div>
+              </div>
+              <div data-chat-profile-stat>
+                <div data-chat-profile-stat-label>Wagered</div>
+                <div data-chat-profile-stat-value>${EscapeHtml(Profile.total_wagered_display || "$0")}</div>
+              </div>
+            </div>
+            ${TipFormMarkup}
+        `;
+    };
+
     const ApplyGlobalBalanceDisplay = (Value) =>
     {
         if (!Value)
@@ -382,8 +553,9 @@
             const JoinModalController = GetModalController("notification-session-join");
             const JoinForm = document.querySelector("[data-notification-join-form]");
             const JoinCopy = document.querySelector("[data-notification-join-copy]");
+            const JoinViewLink = document.querySelector("[data-notification-view-link]");
 
-            if (!JoinModalController || !JoinForm || !JoinCopy)
+            if (!JoinModalController || !JoinForm || !JoinCopy || !JoinViewLink)
             {
                 return false;
             }
@@ -395,6 +567,7 @@
 
             JoinForm.action = Action.join_url || Action.view_url || window.location.href;
             JoinCopy.textContent = Action.join_copy || "You can join this session now.";
+            JoinViewLink.href = Action.view_url || window.location.href;
 
             if (ToastElement)
             {
@@ -407,6 +580,23 @@
             }
 
             await JoinModalController.open();
+            return true;
+        }
+
+        if (Action.type === "open_chat")
+        {
+            window.dispatchEvent(new CustomEvent("site-chat:open"));
+
+            if (ToastElement)
+            {
+                DismissToast(ToastElement, {
+                    immediate: true,
+                }).catch((ErrorValue) =>
+                {
+                    console.error(ErrorValue);
+                });
+            }
+
             return true;
         }
 
@@ -2013,6 +2203,8 @@
     window.GamblingApp = {
         ...ExistingApp,
         ModalControllers,
+        buildUserProfileCardMarkup: BuildUserProfileCardMarkup,
+        formatRelativeTime: FormatRelativeTime,
         holdGlobalBalanceDisplay: HoldGlobalBalanceDisplay,
         getModalController: GetModalController,
         PageInitializers,

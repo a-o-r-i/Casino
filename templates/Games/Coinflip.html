@@ -60,6 +60,7 @@
                   data-join-bet="{{ coinflip_session.bet_display }}"
                   data-join-choice="{{ coinflip_session.creator_choice }}"
                   data-join-creator="{{ coinflip_session.creator_name }}"
+                  data-join-view-url="{{ url_for('coinflip_session', session_id=coinflip_session.id) }}"
                   data-open-join-modal
                   type="button"
                 >
@@ -238,14 +239,13 @@
       </div>
 
       <form class="mt-6 grid grid-cols-2 gap-3" data-join-modal-form method="post">
-        <button
+        <a
           class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-          data-close-join-modal
-          data-close-modal
-          type="button"
+          data-join-view-link
+          href="#"
         >
-          Cancel
-        </button>
+          View session
+        </a>
         <button
           class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
           type="submit"

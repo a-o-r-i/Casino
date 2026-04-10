@@ -58,6 +58,7 @@
                   class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
                   data-dice-join-action="{{ url_for('join_dice_session', session_id=dice_session.id) }}"
                   data-dice-join-copy="{{ dice_session.join_description }}"
+                  data-dice-view-url="{{ url_for('dice_session', session_id=dice_session.id) }}"
                   data-open-dice-join-modal
                   type="button"
                 >
@@ -288,14 +289,13 @@
       </div>
 
       <form class="mt-6 grid grid-cols-2 gap-3" data-dice-join-modal-form method="post">
-        <button
+        <a
           class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-          data-close-join-modal
-          data-close-modal
-          type="button"
+          data-dice-join-view-link
+          href="#"
         >
-          Cancel
-        </button>
+          View session
+        </a>
         <button
           class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
           type="submit"

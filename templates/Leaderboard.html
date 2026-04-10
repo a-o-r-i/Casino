@@ -16,7 +16,7 @@
       <div class="mt-6 space-y-3" data-leaderboard-list>
         {% if leaderboard_rows %}
           {% for row in leaderboard_rows %}
-            <div class="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4" data-route-card>
+            <div class="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 transition hover:border-white/14 hover:bg-white/[0.05]" data-leaderboard-user-id="{{ row.id }}" data-route-card>
               <div>
                 <p class="text-lg font-semibold text-white">{{ row.display_name }}</p>
                 <p class="text-sm text-white/40">{{ row.id }}</p>
@@ -33,9 +33,10 @@
     </div>
   </section>
 
+  <section data-leaderboard-profile-card aria-hidden="true"></section>
   <script data-leaderboard-state type="application/json">{{ leaderboard_state | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
-  <script src="{{ url_for('static', filename='js/Leaderboard.js') }}"></script>
+  <script src="{{ asset_url('js/Leaderboard.js') }}"></script>
 {% endblock %}

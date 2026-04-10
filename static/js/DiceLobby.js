@@ -134,6 +134,7 @@ const BuildSessionActionMarkup = (DiceSession) =>
               class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
               data-dice-join-action="${EscapeHtml(DiceSession.join_url)}"
               data-dice-join-copy="${EscapeHtml(DiceSession.join_description)}"
+              data-dice-view-url="${EscapeHtml(DiceSession.view_url)}"
               data-open-dice-join-modal
               type="button"
             >
@@ -317,6 +318,7 @@ const InitializeDiceLobbyPage = ({ main }) =>
     const JoinModalController = window.GamblingApp?.getModalController(JoinModal);
     const JoinModalCopy = OverlayRoot.querySelector("[data-dice-join-modal-copy]");
     const JoinModalForm = OverlayRoot.querySelector("[data-dice-join-modal-form]");
+    const JoinModalViewLink = OverlayRoot.querySelector("[data-dice-join-view-link]");
     const CreateForm = OverlayRoot.querySelector("[data-dice-create-session-form]");
     const BetAmountInput = OverlayRoot.querySelector("[data-dice-bet-amount-input]");
     const UsePreviousBetButton = OverlayRoot.querySelector("[data-dice-use-previous-bet]");
@@ -431,12 +433,13 @@ const InitializeDiceLobbyPage = ({ main }) =>
             return;
         }
 
-        if (!JoinModalController || !JoinModalForm || !JoinModalCopy)
+        if (!JoinModalController || !JoinModalForm || !JoinModalCopy || !JoinModalViewLink)
         {
             return;
         }
 
         JoinModalForm.action = Button.dataset.diceJoinAction || "";
+        JoinModalViewLink.href = Button.dataset.diceViewUrl || Button.dataset.diceJoinAction || window.location.href;
         JoinModalCopy.textContent = Button.dataset.diceJoinCopy || "";
         JoinModalController.open().catch((ErrorValue) =>
         {

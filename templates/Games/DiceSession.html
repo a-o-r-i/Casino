@@ -314,6 +314,32 @@
       </aside>
     </section>
 
+    <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+      <button
+        class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+        data-share-chat-session
+        data-share-game="dice"
+        data-share-session-id="{{ session_state.id }}"
+        type="button"
+      >
+        Share in chat
+      </button>
+
+      <form
+        action="{{ session_state.redo_url or '#' }}"
+        class="{% if not session_state.can_redo %}hidden{% else %}flex{% endif %}"
+        data-session-redo-form
+        method="post"
+      >
+        <button
+          class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+          type="submit"
+        >
+          Redo match
+        </button>
+      </form>
+    </div>
+
     <div
       class="mt-8 {% if session_state.status == 'resolved' %}flex{% else %}hidden{% endif %} justify-center"
       data-session-return-wrap

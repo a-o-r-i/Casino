@@ -422,10 +422,29 @@ const HideSessionReturnLink = async (ReturnLink) =>
     ReturnLink.classList.add("opacity-0", "scale-[0.92]", "pointer-events-none");
 };
 
+const SetRedoVisibility = (Main, State) =>
+{
+    const RedoForm = Main.querySelector("[data-session-redo-form]");
+
+    if (!RedoForm)
+    {
+        return;
+    }
+
+    if (State?.redo_url)
+    {
+        RedoForm.action = State.redo_url;
+    }
+
+    RedoForm.classList.toggle("hidden", !State?.can_redo);
+    RedoForm.classList.toggle("flex", Boolean(State?.can_redo));
+};
+
 const ApplyResolvedState = (Main, State) =>
 {
     SetSessionStatus(Main, State.status_text);
     RevealSessionReturnLink(Main);
+    SetRedoVisibility(Main, State);
 };
 
 const GetResultStateName = (State) =>
@@ -446,6 +465,7 @@ const GetResultStateName = (State) =>
 const RenderUnresolvedState = (Main, State) =>
 {
     SetSessionStatus(Main, State.status_text);
+    SetRedoVisibility(Main, State);
 };
 
 const PollSessionState = async (StateUrl, OnState) =>

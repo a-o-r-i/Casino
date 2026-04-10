@@ -3,8 +3,10 @@ import hashlib
 import json
 import math
 import os
+import re
 import secrets
 import time
+from difflib import SequenceMatcher
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
 from threading import Lock, RLock
@@ -76,8 +78,43 @@ CHAT_MESSAGES = []
 MAX_CHAT_MESSAGES = 180
 CHAT_INITIAL_MESSAGE_LIMIT = 60
 CHAT_MAX_MESSAGE_LENGTH = 280
+CHAT_MAX_MENTIONS = 6
 CHAT_POLL_INTERVAL_MS = 2200
+CHAT_MENTION_NOTIFICATION_COOLDOWN_SECONDS = 30
+CHAT_MENTION_RESOLUTION_MIN_LENGTH = 3
+CHAT_MENTION_SUGGESTION_LIMIT = 6
 NEXT_CHAT_MESSAGE_ID = 1
+CHAT_MENTION_PATTERN = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]{2,32})")
+CHAT_EMOJI_SHORTCODE_PATTERN = re.compile(r":([A-Za-z0-9_+\-]{2,32}):")
+CHAT_EMOJI_ALIASES = {
+    "+1": "\U0001f44d",
+    "100": "\U0001f4af",
+    "angry": "\U0001f620",
+    "broken_heart": "\U0001f494",
+    "clap": "\U0001f44f",
+    "cry": "\U0001f622",
+    "eyes": "\U0001f440",
+    "fire": "\U0001f525",
+    "flushed": "\U0001f633",
+    "grin": "\U0001f600",
+    "heart": "\u2764\ufe0f",
+    "joy": "\U0001f602",
+    "laughing": "\U0001f606",
+    "ok_hand": "\U0001f44c",
+    "pleading": "\U0001f97a",
+    "pray": "\U0001f64f",
+    "rocket": "\U0001f680",
+    "skull": "\U0001f480",
+    "sleepy": "\U0001f62a",
+    "smile": "\U0001f604",
+    "sob": "\U0001f62d",
+    "sparkles": "\u2728",
+    "thinking": "\U0001f914",
+    "thumbs_up": "\U0001f44d",
+    "thumbsup": "\U0001f44d",
+    "wave": "\U0001f44b",
+}
+CHAT_MENTION_NOTIFICATION_HISTORY = {}
 USER_PRESENCE = {}
 PRESENCE_ONLINE_WINDOW_SECONDS = 12
 USER_REWARDS = {}
@@ -722,6 +759,14 @@ def build_dice_session_join_copy(creator_name, mode, side, bet_cents, target_win
     return f"{creator_name} picked {side}. You will join for {wager_label}."
 
 
+def build_coinflip_session_notification_message(creator_name, choice, bet_cents):
+    return f"{creator_name} opened a {choice} coinflip for {format_money(bet_cents)}."
+
+
+def build_coinflip_session_join_copy(creator_name, choice, bet_cents):
+    return f"{creator_name} picked {choice}. You will join for {format_money(bet_cents)}."
+
+
 def build_session_notification_action(game, session_id, join_copy):
     if game == "coinflip":
         view_url = url_for("coinflip_session", session_id=session_id)
@@ -736,6 +781,281 @@ def build_session_notification_action(game, session_id, join_copy):
         "type": "join_session_prompt",
         "view_url": view_url,
     }
+
+
+def normalize_chat_mention_name(value):
+    return str(value or "").strip().lower()
+
+
+def normalize_chat_emoji_alias(value):
+    return str(value or "").strip().lower().replace("-", "_")
+
+
+def replace_chat_emoji_shortcodes(value):
+    def replace_shortcode(match):
+        alias = normalize_chat_emoji_alias(match.group(1))
+        return CHAT_EMOJI_ALIASES.get(alias, match.group(0))
+
+    return CHAT_EMOJI_SHORTCODE_PATTERN.sub(replace_shortcode, str(value or ""))
+
+
+def build_chat_mention_lookup():
+    mention_lookup = {}
+
+    for user_profile in USER_PROFILES.values():
+        user_id = user_profile.get("id")
+
+        if not user_id:
+            continue
+
+        aliases = {
+            normalize_chat_mention_name(user_profile.get("username")),
+        }
+        display_name = str(user_profile.get("display_name") or "").strip()
+        normalized_display_name = normalize_chat_mention_name(display_name)
+
+        if normalized_display_name and " " not in display_name:
+            aliases.add(normalized_display_name)
+
+        compact_display_name = normalize_chat_mention_name(display_name.replace(" ", ""))
+
+        if compact_display_name:
+            aliases.add(compact_display_name)
+
+        for alias in aliases:
+            if not alias or alias in mention_lookup:
+                continue
+
+            mention_lookup[alias] = user_profile
+
+    return mention_lookup
+
+
+def build_chat_mention_search_fields(user_profile):
+    username = normalize_chat_mention_name(user_profile.get("username"))
+    display_name = normalize_chat_mention_name(user_profile.get("display_name"))
+    compact_display_name = normalize_chat_mention_name(
+        str(user_profile.get("display_name") or "").replace(" ", "")
+    )
+
+    return {
+        "compact_display_name": compact_display_name,
+        "display_name": display_name,
+        "username": username,
+    }
+
+
+def score_chat_mention_candidate(query, user_profile):
+    normalized_query = normalize_chat_mention_name(query)
+
+    if not normalized_query:
+        return 0
+
+    search_fields = build_chat_mention_search_fields(user_profile)
+    score = 0
+
+    for field_name, exact_score, prefix_score, contains_score in (
+        ("username", 480, 360, 240),
+        ("display_name", 450, 340, 220),
+        ("compact_display_name", 430, 320, 200),
+    ):
+        candidate = search_fields[field_name]
+
+        if not candidate:
+            continue
+
+        if candidate == normalized_query:
+            score = max(score, exact_score)
+            continue
+
+        if candidate.startswith(normalized_query):
+            score = max(score, prefix_score - min(len(candidate) - len(normalized_query), 24))
+            continue
+
+        if normalized_query in candidate:
+            score = max(score, contains_score - candidate.index(normalized_query))
+            continue
+
+        similarity = SequenceMatcher(None, normalized_query, candidate).ratio()
+
+        if similarity >= 0.74:
+            score = max(score, int(similarity * 180))
+
+    if score and user_presence_is_online(USER_PRESENCE.get(user_profile["id"])):
+        score += 12
+
+    return score
+
+
+def rank_chat_mention_candidates(query, current_user_id=None, limit=CHAT_MENTION_SUGGESTION_LIMIT):
+    normalized_query = normalize_chat_mention_name(query)
+    candidates = []
+
+    for user_profile in USER_PROFILES.values():
+        user_id = user_profile.get("id")
+
+        if not user_id or user_id in {BOT_PROFILE["id"], current_user_id}:
+            continue
+
+        presence = USER_PRESENCE.get(user_id)
+        is_online = user_presence_is_online(presence)
+        last_seen = presence.get("last_seen", 0) if presence else 0
+
+        if normalized_query:
+            score = score_chat_mention_candidate(normalized_query, user_profile)
+
+            if score <= 0:
+                continue
+        else:
+            score = 120 if is_online else 80
+
+        display_name = str(user_profile.get("display_name") or user_profile.get("username") or "").lower()
+        candidates.append((score, is_online, last_seen, display_name, user_profile))
+
+    candidates.sort(key=lambda item: (-item[0], not item[1], -item[2], item[3]))
+    return candidates[:limit]
+
+
+def build_chat_mention_suggestions(query, current_user_id=None, limit=CHAT_MENTION_SUGGESTION_LIMIT):
+    suggestions = []
+
+    for score, is_online, _last_seen, _display_name, user_profile in rank_chat_mention_candidates(
+        query,
+        current_user_id,
+        limit,
+    ):
+        suggestions.append({
+            "avatar_static_url": user_profile.get("avatar_static_url"),
+            "avatar_url": user_profile.get("avatar_url"),
+            "display_name": user_profile.get("display_name") or user_profile.get("username"),
+            "id": user_profile["id"],
+            "is_online": is_online,
+            "score": score,
+            "username": user_profile.get("username"),
+        })
+
+    return suggestions
+
+
+def resolve_chat_mention_profile(raw_token, author_user_id, mention_lookup=None):
+    mention_lookup = mention_lookup or build_chat_mention_lookup()
+    normalized_token = normalize_chat_mention_name(raw_token)
+
+    if not normalized_token:
+        return None
+
+    matched_profile = mention_lookup.get(normalized_token)
+
+    if matched_profile and matched_profile["id"] not in {author_user_id, BOT_PROFILE["id"]}:
+        return matched_profile
+
+    if len(normalized_token) < CHAT_MENTION_RESOLUTION_MIN_LENGTH:
+        return None
+
+    ranked_candidates = rank_chat_mention_candidates(normalized_token, author_user_id, limit=2)
+
+    if not ranked_candidates:
+        return None
+
+    top_score = ranked_candidates[0][0]
+
+    if top_score < 220:
+        return None
+
+    if len(ranked_candidates) > 1 and top_score - ranked_candidates[1][0] < 24:
+        return None
+
+    return ranked_candidates[0][4]
+
+
+def parse_chat_mentions(body, author_user_id):
+    mention_lookup = build_chat_mention_lookup()
+    mentions_by_user_id = {}
+
+    for match in CHAT_MENTION_PATTERN.finditer(body):
+        raw_token = match.group(1)
+        matched_profile = resolve_chat_mention_profile(
+            raw_token,
+            author_user_id,
+            mention_lookup=mention_lookup,
+        )
+
+        if (
+            not matched_profile
+            or matched_profile["id"] in {author_user_id, BOT_PROFILE["id"]}
+        ):
+            continue
+
+        mention_record = mentions_by_user_id.setdefault(matched_profile["id"], {
+            "display_name": matched_profile.get("display_name") or matched_profile.get("username"),
+            "id": matched_profile["id"],
+            "tokens": [],
+            "username": matched_profile.get("username"),
+        })
+        mention_token = f"@{raw_token}"
+
+        if mention_token not in mention_record["tokens"]:
+            mention_record["tokens"].append(mention_token)
+
+        if len(mentions_by_user_id) >= CHAT_MAX_MENTIONS:
+            break
+
+    return list(mentions_by_user_id.values())
+
+
+def can_send_chat_mention_notification(author_user_id, recipient_user_id, now=None):
+    if not author_user_id or not recipient_user_id or author_user_id == recipient_user_id:
+        return False
+
+    current_time = now or time.time()
+    key = (author_user_id, recipient_user_id)
+    last_sent_at = CHAT_MENTION_NOTIFICATION_HISTORY.get(key, 0)
+
+    if current_time - last_sent_at < CHAT_MENTION_NOTIFICATION_COOLDOWN_SECONDS:
+        return False
+
+    CHAT_MENTION_NOTIFICATION_HISTORY[key] = current_time
+    stale_cutoff = current_time - CHAT_MENTION_NOTIFICATION_COOLDOWN_SECONDS * 8
+
+    for pair_key, sent_at in list(CHAT_MENTION_NOTIFICATION_HISTORY.items()):
+        if sent_at < stale_cutoff:
+            del CHAT_MENTION_NOTIFICATION_HISTORY[pair_key]
+
+    return True
+
+
+def build_chat_mention_notification_message(author_name, message_body):
+    message_preview = str(message_body or "").strip()
+
+    if len(message_preview) > 110:
+        message_preview = f"{message_preview[:107].rstrip()}..."
+
+    return f"{author_name} mentioned you: {message_preview}"
+
+
+def add_chat_mention_notifications(author_user, chat_message):
+    mentions = chat_message.get("mentions") or []
+
+    if not mentions:
+        return
+
+    author_name = author_user.get("display_name") or author_user.get("username") or "Someone"
+    author_user_id = author_user.get("id")
+
+    for mention in mentions:
+        recipient_id = mention.get("id")
+
+        if not recipient_id or not can_send_chat_mention_notification(author_user_id, recipient_id):
+            continue
+
+        add_app_notification(
+            action={"type": "open_chat"},
+            actor_user=author_user,
+            event_type="chat_mention",
+            message=build_chat_mention_notification_message(author_name, chat_message.get("body")),
+            recipient_user_id=recipient_id,
+            title="You were mentioned",
+        )
 
 
 def user_presence_is_online(presence):
@@ -811,20 +1131,65 @@ def serialize_chat_message(chat_message, current_user_id):
     if not author_profile:
         return None
 
+    mention_records = chat_message.get("mentions") or []
+    mention_tokens = []
+
+    for mention in mention_records:
+        for mention_token in mention.get("tokens") or []:
+            if mention_token not in mention_tokens:
+                mention_tokens.append(mention_token)
+
+    session_share = chat_message.get("session_share")
+
     return {
         "author": make_user_snapshot(author_profile),
         "body": chat_message["body"],
         "id": chat_message["id"],
+        "is_current_user_mentioned": any(
+            mention.get("id") == current_user_id
+            for mention in mention_records
+        ),
         "is_self": chat_message["author_id"] == current_user_id,
+        "mention_tokens": mention_tokens,
+        "session_share": (
+            build_chat_session_share_payload(
+                session_share.get("game"),
+                session_share.get("session_id"),
+                current_user_id,
+            )
+            if session_share
+            else None
+        ),
         "timestamp": chat_message["timestamp"],
     }
 
 
-def add_chat_message(author_user, body):
+def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=None):
     global NEXT_CHAT_MESSAGE_ID
 
     author_snapshot = remember_user_profile(author_user)
-    normalized_body = str(body or "").strip()
+    normalized_body = replace_chat_emoji_shortcodes(str(body or "").strip())
+    session_share = None
+
+    if shared_game or shared_session_id:
+        if shared_game not in {"coinflip", "dice"}:
+            raise ValueError("Choose a valid session to share.")
+
+        session_share = build_chat_session_share_payload(
+            shared_game,
+            shared_session_id,
+            author_snapshot["id"],
+        )
+
+        if not session_share:
+            raise ValueError("That session could not be shared.")
+
+        if not normalized_body:
+            normalized_body = (
+                "Shared a coinflip session."
+                if shared_game == "coinflip"
+                else "Shared a dice session."
+            )
 
     if not normalized_body:
         raise ValueError("Write a message before sending it.")
@@ -832,10 +1197,21 @@ def add_chat_message(author_user, body):
     if len(normalized_body) > CHAT_MAX_MESSAGE_LENGTH:
         raise ValueError(f"Messages can be up to {CHAT_MAX_MESSAGE_LENGTH} characters.")
 
+    mentions = parse_chat_mentions(normalized_body, author_snapshot["id"])
+
     message = {
         "author_id": author_snapshot["id"],
         "body": normalized_body,
         "id": NEXT_CHAT_MESSAGE_ID,
+        "mentions": mentions,
+        "session_share": (
+            {
+                "game": session_share["game"],
+                "session_id": session_share["session_id"],
+            }
+            if session_share
+            else None
+        ),
         "timestamp": time.time(),
     }
     CHAT_MESSAGES.append(message)
@@ -843,6 +1219,8 @@ def add_chat_message(author_user, body):
 
     if len(CHAT_MESSAGES) > MAX_CHAT_MESSAGES:
         del CHAT_MESSAGES[:-MAX_CHAT_MESSAGES]
+
+    add_chat_mention_notifications(author_snapshot, message)
 
     return message
 
@@ -862,7 +1240,16 @@ def build_chat_state_payload(current_user_id, since_id):
     if since_id <= 0 or should_reset:
         candidate_messages = CHAT_MESSAGES[-CHAT_INITIAL_MESSAGE_LIMIT:]
     else:
-        candidate_messages = [message for message in CHAT_MESSAGES if message["id"] > since_id]
+        refreshed_share_message_ids = {
+            message["id"]
+            for message in CHAT_MESSAGES[-CHAT_INITIAL_MESSAGE_LIMIT:]
+            if message.get("session_share")
+        }
+        candidate_messages = [
+            message
+            for message in CHAT_MESSAGES
+            if message["id"] > since_id or message["id"] in refreshed_share_message_ids
+        ]
 
     messages = []
 
@@ -894,6 +1281,8 @@ def build_chat_user_profile_payload(user_id, current_user_id=None):
     can_tip = bool(current_user_id and current_user_id != user_id and user_id != BOT_PROFILE["id"])
 
     return {
+        "bets_lost": stats["bets_lost"],
+        "bets_won": stats["bets_won"],
         "can_tip": can_tip,
         "connected_since": presence.get("connected_at") if presence else None,
         "display_name": user_profile["display_name"],
@@ -903,6 +1292,7 @@ def build_chat_user_profile_payload(user_id, current_user_id=None):
         "registered_at": user_profile.get("registered_at"),
         "reward_badge": reward_state["badge"],
         "reward_level": reward_state["level"],
+        "total_bets": stats["total_bets"],
         "total_deposited_cents": stats["total_deposited_cents"],
         "total_deposited_display": format_money(stats["total_deposited_cents"]),
         "total_wagered_cents": stats["total_wagered_cents"],
@@ -911,6 +1301,7 @@ def build_chat_user_profile_payload(user_id, current_user_id=None):
         "username": user_profile["username"],
         "avatar_static_url": user_profile.get("avatar_static_url"),
         "avatar_url": user_profile.get("avatar_url"),
+        "win_rate": round(stats["bets_won"] / stats["total_bets"] * 100 if stats["total_bets"] else 0, 1),
     }
 
 
@@ -1001,6 +1392,232 @@ def build_dice_session_id():
 
 def other_dice_side(side_name):
     return "High" if side_name == "Low" else "Low"
+
+
+def create_coinflip_session_record(creator_user, choice, bet_cents, *, opponent=None, countdown_started_at=None):
+    creator_snapshot = remember_user_profile(creator_user)
+    opponent_snapshot = remember_user_profile(opponent) if opponent else None
+    session_id = build_coinflip_session_id()
+
+    return {
+        "bet_cents": bet_cents,
+        "countdown_started_at": countdown_started_at if opponent_snapshot else None,
+        "created_at": time.time(),
+        "creator": creator_snapshot,
+        "creator_choice": choice,
+        "id": session_id,
+        "opponent": opponent_snapshot,
+        "opponent_choice": other_coin_side(choice),
+        "redo_session_id": None,
+        "rematch_source_session_id": None,
+        "resolved_at": None,
+        "result_side": None,
+        "winner_id": None,
+        "winner_name": None,
+    }
+
+
+def create_dice_session_record(
+    creator_user,
+    bet_cents,
+    mode,
+    *,
+    side=None,
+    target_wins=None,
+    double_roll=False,
+    opponent=None,
+    countdown_started_at=None,
+):
+    creator_snapshot = remember_user_profile(creator_user)
+    opponent_snapshot = remember_user_profile(opponent) if opponent else None
+    session_id = build_dice_session_id()
+
+    return {
+        "bet_cents": bet_cents,
+        "countdown_started_at": countdown_started_at if opponent_snapshot else None,
+        "created_at": time.time(),
+        "creator": creator_snapshot,
+        "creator_score": 0,
+        "creator_side": side if mode == "classic" else None,
+        "double_roll": bool(double_roll) if mode == "first_to" else False,
+        "id": session_id,
+        "mode": mode,
+        "opponent": opponent_snapshot,
+        "opponent_score": 0,
+        "opponent_side": other_dice_side(side) if mode == "classic" and side in {"Low", "High"} else None,
+        "redo_session_id": None,
+        "rematch_source_session_id": None,
+        "rounds": [],
+        "resolved_at": None,
+        "result_face": None,
+        "target_wins": target_wins if mode == "first_to" else None,
+        "winner_id": None,
+        "winner_name": None,
+    }
+
+
+def get_coinflip_choice_for_user(coinflip_session, user_id):
+    if not user_id:
+        return None
+
+    if coinflip_session["creator"]["id"] == user_id:
+        return coinflip_session["creator_choice"]
+
+    if coinflip_session.get("opponent") and coinflip_session["opponent"]["id"] == user_id:
+        return coinflip_session.get("opponent_choice")
+
+    return None
+
+
+def get_coinflip_rematch_opponent(coinflip_session, user_id):
+    if not user_id:
+        return None
+
+    if coinflip_session["creator"]["id"] == user_id:
+        return coinflip_session.get("opponent")
+
+    if coinflip_session.get("opponent") and coinflip_session["opponent"]["id"] == user_id:
+        return coinflip_session["creator"]
+
+    return None
+
+
+def build_session_participant_ids(session_record):
+    participant_ids = {
+        session_record["creator"]["id"],
+    }
+    opponent = session_record.get("opponent")
+
+    if opponent:
+        participant_ids.add(opponent["id"])
+
+    return participant_ids
+
+
+def coinflip_session_is_resolved(coinflip_session):
+    return bool(coinflip_session.get("winner_id") or coinflip_session.get("result_side"))
+
+
+def join_coinflip_session_record(coinflip_session_data, joining_user):
+    joining_user = remember_user_profile(joining_user)
+    joining_user_id = joining_user["id"]
+    sync_coinflip_session_state(coinflip_session_data)
+
+    if coinflip_session_is_resolved(coinflip_session_data) or coinflip_session_data["opponent"]:
+        raise ValueError("This session is no longer available.")
+
+    if coinflip_session_data["creator"]["id"] == joining_user_id:
+        return False
+
+    current_balance = get_user_balance(joining_user_id)
+    bet_cents = coinflip_session_data["bet_cents"]
+
+    if bet_cents > current_balance:
+        raise ValueError("You do not have enough balance to join that session.")
+
+    set_user_balance(joining_user_id, current_balance - bet_cents)
+    coinflip_session_data["opponent"] = joining_user
+    coinflip_session_data["countdown_started_at"] = time.time()
+    return True
+
+
+def get_active_coinflip_redo_session(source_session):
+    redo_session_id = source_session.get("redo_session_id")
+
+    if not redo_session_id:
+        return None
+
+    redo_session = COINFLIP_SESSIONS.get(redo_session_id)
+
+    if not redo_session:
+        source_session["redo_session_id"] = None
+        return None
+
+    sync_coinflip_session_state(redo_session)
+
+    if (
+        redo_session.get("rematch_source_session_id") != source_session["id"]
+        or not build_session_participant_ids(redo_session).issubset(build_session_participant_ids(source_session))
+        or coinflip_session_is_resolved(redo_session)
+    ):
+        source_session["redo_session_id"] = None
+        return None
+
+    return redo_session
+
+
+def get_dice_side_for_user(dice_session, user_id):
+    if not user_id or get_dice_session_mode(dice_session) != "classic":
+        return None
+
+    if dice_session["creator"]["id"] == user_id:
+        return dice_session["creator_side"]
+
+    if dice_session.get("opponent") and dice_session["opponent"]["id"] == user_id:
+        return dice_session.get("opponent_side")
+
+    return None
+
+
+def get_dice_rematch_opponent(dice_session, user_id):
+    if not user_id:
+        return None
+
+    if dice_session["creator"]["id"] == user_id:
+        return dice_session.get("opponent")
+
+    if dice_session.get("opponent") and dice_session["opponent"]["id"] == user_id:
+        return dice_session["creator"]
+
+    return None
+
+
+def join_dice_session_record(dice_session_data, joining_user):
+    joining_user = remember_user_profile(joining_user)
+    joining_user_id = joining_user["id"]
+    sync_dice_session_state(dice_session_data)
+
+    if dice_session_is_resolved(dice_session_data) or dice_session_data["opponent"]:
+        raise ValueError("This session is no longer available.")
+
+    if dice_session_data["creator"]["id"] == joining_user_id:
+        return False
+
+    current_balance = get_user_balance(joining_user_id)
+    bet_cents = dice_session_data["bet_cents"]
+
+    if bet_cents > current_balance:
+        raise ValueError("You do not have enough balance to join that session.")
+
+    set_user_balance(joining_user_id, current_balance - bet_cents)
+    dice_session_data["opponent"] = joining_user
+    dice_session_data["countdown_started_at"] = time.time()
+    return True
+
+
+def get_active_dice_redo_session(source_session):
+    redo_session_id = source_session.get("redo_session_id")
+
+    if not redo_session_id:
+        return None
+
+    redo_session = DICE_SESSIONS.get(redo_session_id)
+
+    if not redo_session:
+        source_session["redo_session_id"] = None
+        return None
+
+    sync_dice_session_state(redo_session)
+
+    if (
+        redo_session.get("rematch_source_session_id") != source_session["id"]
+        or not build_session_participant_ids(redo_session).issubset(build_session_participant_ids(source_session))
+        or dice_session_is_resolved(redo_session)
+    ):
+        source_session["redo_session_id"] = None
+        return None
+
+    return redo_session
 
 
 def roll_die_face():
@@ -1403,6 +2020,10 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
     creator = make_user_snapshot(coinflip_session["creator"])
     opponent = make_user_snapshot(coinflip_session["opponent"]) if coinflip_session["opponent"] else None
     is_creator = current_user_id == creator["id"]
+    is_participant = current_user_id in {
+        creator["id"],
+        opponent["id"] if opponent else None,
+    }
     countdown_ends_at = None
     current_user_choice = None
 
@@ -1449,10 +2070,17 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         "did_win": did_win,
         "id": coinflip_session["id"],
         "is_creator": is_creator,
+        "is_participant": is_participant,
         "opponent": opponent,
         "opponent_choice": coinflip_session["opponent_choice"],
         "pot_cents": coinflip_session["bet_cents"] * 2,
         "pot_display": format_money(coinflip_session["bet_cents"] * 2),
+        "can_redo": status == "resolved" and is_participant,
+        "redo_url": (
+            url_for("redo_coinflip_session", session_id=coinflip_session["id"])
+            if status == "resolved" and is_participant and has_request_context()
+            else None
+        ),
         "result_side": coinflip_session["result_side"],
         "status": status,
         "status_text": status_text,
@@ -1548,6 +2176,10 @@ def build_dice_session_state(dice_session, current_user_id):
     creator = make_user_snapshot(dice_session["creator"])
     opponent = make_user_snapshot(dice_session["opponent"]) if dice_session["opponent"] else None
     is_creator = current_user_id == creator["id"]
+    is_participant = current_user_id in {
+        creator["id"],
+        opponent["id"] if opponent else None,
+    }
     countdown_ends_at = None
     mode = get_dice_session_mode(dice_session)
     is_first_to = is_first_to_dice_session(dice_session)
@@ -1609,6 +2241,7 @@ def build_dice_session_state(dice_session, current_user_id):
         "is_creator": is_creator,
         "is_double_roll": is_double_roll,
         "is_first_to": is_first_to,
+        "is_participant": is_participant,
         "mode": mode,
         "mode_label": get_dice_mode_label(dice_session),
         "opponent": opponent,
@@ -1617,6 +2250,12 @@ def build_dice_session_state(dice_session, current_user_id):
         "opponent_score": dice_session.get("opponent_score", 0),
         "pot_cents": dice_session["bet_cents"] * 2,
         "pot_display": format_money(dice_session["bet_cents"] * 2),
+        "can_redo": status == "resolved" and is_participant,
+        "redo_url": (
+            url_for("redo_dice_session", session_id=dice_session["id"])
+            if status == "resolved" and is_participant and has_request_context()
+            else None
+        ),
         "result_face": dice_session["result_face"],
         "rounds": dice_session.get("rounds", []),
         "status": status,
@@ -1728,6 +2367,68 @@ def build_dice_lobby_payload(current_user_id):
     }
 
 
+def build_chat_session_share_payload(game, session_id, current_user_id):
+    if game == "coinflip":
+        coinflip_session = COINFLIP_SESSIONS.get(session_id)
+
+        if not coinflip_session:
+            return None
+
+        session_state = build_coinflip_session_state(coinflip_session, current_user_id)
+        creator = session_state["creator"]
+
+        return {
+            "bet_display": session_state["bet_display"],
+            "creator_name": creator["display_name"],
+            "game": "coinflip",
+            "is_joinable": (
+                session_state["status"] == "open"
+                and current_user_id not in {creator["id"], session_state["opponent"]["id"] if session_state["opponent"] else None}
+            ),
+            "join_url": url_for("join_coinflip_session", session_id=session_state["id"]) if has_request_context() else None,
+            "label": session_state["creator_choice"],
+            "pot_display": session_state["pot_display"],
+            "session_id": session_state["id"],
+            "status": session_state["status"],
+            "status_text": session_state["status_text"],
+            "title": f"{creator['display_name']}'s coinflip",
+            "view_url": url_for("coinflip_session", session_id=session_state["id"]) if has_request_context() else None,
+        }
+
+    if game == "dice":
+        dice_session = DICE_SESSIONS.get(session_id)
+
+        if not dice_session:
+            return None
+
+        session_state = build_dice_session_state(dice_session, current_user_id)
+        creator = session_state["creator"]
+
+        return {
+            "bet_display": session_state["bet_display"],
+            "creator_name": creator["display_name"],
+            "game": "dice",
+            "is_joinable": (
+                session_state["status"] == "open"
+                and current_user_id not in {creator["id"], session_state["opponent"]["id"] if session_state["opponent"] else None}
+            ),
+            "join_url": url_for("join_dice_session", session_id=session_state["id"]) if has_request_context() else None,
+            "label": (
+                session_state["mode_label"]
+                if session_state["is_first_to"]
+                else session_state["creator_label"]
+            ),
+            "pot_display": session_state["pot_display"],
+            "session_id": session_state["id"],
+            "status": session_state["status"],
+            "status_text": session_state["status_text"],
+            "title": f"{creator['display_name']}'s dice session",
+            "view_url": url_for("dice_session", session_id=session_state["id"]) if has_request_context() else None,
+        }
+
+    return None
+
+
 def build_leaderboard_rows():
     leaderboard_rows = []
 
@@ -1805,18 +2506,18 @@ def load_current_user():
 def inject_auth_state():
     discord_user = g.get("discord_user") or get_current_user()
     notification_cursor = 0
-    chat_user_profile_url = None
+    chat_user_profile_url = url_for("chat_user_state", user_id="__user_id__")
 
     if discord_user:
         with STATE_LOCK:
             notification_cursor = get_latest_notification_id()
-        chat_user_profile_url = url_for("chat_user_state", user_id="__user_id__")
 
     return {
         "asset_url": build_static_asset_url,
         "chat_current_user_id": discord_user["id"] if discord_user else None,
         "chat_send_url": url_for("chat_messages") if discord_user else None,
         "chat_state_url": url_for("chat_state") if discord_user else None,
+        "chat_mention_query_url": url_for("chat_mention_suggestions") if discord_user else None,
         "chat_user_profile_url": chat_user_profile_url,
         "current_balance_cents": g.current_balance_cents,
         "current_balance_display": format_money(g.current_balance_cents) if g.current_balance_cents is not None else None,
@@ -1899,16 +2600,35 @@ def chat_state():
     return jsonify(payload)
 
 
+@app.route("/chat/mentions")
+@login_required
+def chat_mention_suggestions():
+    query = request.args.get("q", "")
+
+    with STATE_LOCK:
+        suggestions = build_chat_mention_suggestions(query, get_current_user_id())
+
+    return jsonify({
+        "suggestions": suggestions,
+    })
+
+
 @app.route("/chat/messages", methods=["POST"])
 @login_required
 def chat_messages():
     payload = request.get_json(silent=True) or {}
     raw_body = payload.get("body", "") if isinstance(payload, dict) else ""
+    session_share = payload.get("session_share") if isinstance(payload, dict) else None
     current_user = make_user_snapshot(get_current_user())
 
     try:
         with STATE_LOCK:
-            message = add_chat_message(current_user, raw_body)
+            message = add_chat_message(
+                current_user,
+                raw_body,
+                shared_game=session_share.get("game") if isinstance(session_share, dict) else None,
+                shared_session_id=session_share.get("session_id") if isinstance(session_share, dict) else None,
+            )
             response_payload = {
                 "latest_message_id": get_latest_chat_message_id(),
                 "message": serialize_chat_message(message, current_user["id"]),
@@ -1921,7 +2641,6 @@ def chat_messages():
 
 
 @app.route("/chat/users/<user_id>")
-@login_required
 def chat_user_state(user_id):
     with STATE_LOCK:
         payload = build_chat_user_profile_payload(user_id, get_current_user_id())
@@ -2126,31 +2845,22 @@ def create_coinflip_session():
             return redirect(url_for("coinflip_game"))
 
         set_user_balance(current_user_id, current_balance - bet_cents)
-
-        session_id = build_coinflip_session_id()
-        COINFLIP_SESSIONS[session_id] = {
-            "bet_cents": bet_cents,
-            "countdown_started_at": None,
-            "created_at": time.time(),
-            "creator": current_user,
-            "creator_choice": choice,
-            "id": session_id,
-            "opponent": None,
-            "opponent_choice": other_coin_side(choice),
-            "resolved_at": None,
-            "result_side": None,
-            "winner_id": None,
-            "winner_name": None,
-        }
+        coinflip_session = create_coinflip_session_record(current_user, choice, bet_cents)
+        session_id = coinflip_session["id"]
+        COINFLIP_SESSIONS[session_id] = coinflip_session
         add_app_notification(
             action=build_session_notification_action(
                 "coinflip",
                 session_id,
-                f"{current_user['display_name']} picked {choice}. You will join for {format_money(bet_cents)}.",
+                build_coinflip_session_join_copy(current_user["display_name"], choice, bet_cents),
             ),
             actor_user=current_user,
             event_type="coinflip_session_created",
-            message=f"{current_user['display_name']} opened a {choice} coinflip for {format_money(bet_cents)}.",
+            message=build_coinflip_session_notification_message(
+                current_user["display_name"],
+                choice,
+                bet_cents,
+            ),
             title="New coinflip session",
         )
 
@@ -2179,25 +2889,14 @@ def join_coinflip_session(session_id):
 
     with STATE_LOCK:
         coinflip_session_data = get_coinflip_session_or_404(session_id)
-        sync_coinflip_session_state(coinflip_session_data)
-
-        if coinflip_session_data["result_side"] or coinflip_session_data["opponent"]:
-            flash("This session is no longer available.", "error")
-            return redirect(url_for("coinflip_game"))
-
         if coinflip_session_data["creator"]["id"] == current_user_id:
             return redirect(url_for("coinflip_session", session_id=session_id))
 
-        current_balance = get_user_balance(current_user_id)
-        bet_cents = coinflip_session_data["bet_cents"]
-
-        if bet_cents > current_balance:
-            flash("You do not have enough balance to join that session.", "error")
+        try:
+            join_coinflip_session_record(coinflip_session_data, current_user)
+        except ValueError as exc:
+            flash(str(exc), "error")
             return redirect(url_for("coinflip_game"))
-
-        set_user_balance(current_user_id, current_balance - bet_cents)
-        coinflip_session_data["opponent"] = current_user
-        coinflip_session_data["countdown_started_at"] = time.time()
 
     return redirect(url_for("coinflip_session", session_id=session_id))
 
@@ -2233,6 +2932,92 @@ def coinflip_session_state(session_id):
         session_state = build_coinflip_session_state(coinflip_session_data, get_current_user_id())
 
     return jsonify(session_state)
+
+
+@app.route("/games/coinflip/sessions/<session_id>/redo", methods=["POST"])
+@login_required
+def redo_coinflip_session(session_id):
+    current_user = make_user_snapshot(get_current_user())
+    current_user_id = current_user["id"]
+
+    with STATE_LOCK:
+        coinflip_session_data = get_coinflip_session_or_404(session_id)
+        sync_coinflip_session_state(coinflip_session_data)
+
+        if not coinflip_session_data["winner_id"]:
+            flash("That match is not finished yet.", "error")
+            return redirect(url_for("coinflip_session", session_id=session_id))
+
+        current_user_choice = get_coinflip_choice_for_user(coinflip_session_data, current_user_id)
+        opponent_user = get_coinflip_rematch_opponent(coinflip_session_data, current_user_id)
+
+        if current_user_choice not in {"Heads", "Tails"} or not opponent_user:
+            flash("Only players from that match can create a redo.", "error")
+            return redirect(url_for("coinflip_session", session_id=session_id))
+
+        bet_cents = coinflip_session_data["bet_cents"]
+        existing_redo_session = get_active_coinflip_redo_session(coinflip_session_data)
+
+        if existing_redo_session:
+            if current_user_id == existing_redo_session["creator"]["id"]:
+                return redirect(url_for("coinflip_session", session_id=existing_redo_session["id"]))
+
+            existing_opponent = existing_redo_session.get("opponent")
+
+            if existing_opponent and existing_opponent["id"] == current_user_id:
+                return redirect(url_for("coinflip_session", session_id=existing_redo_session["id"]))
+
+            try:
+                joined_existing_session = join_coinflip_session_record(existing_redo_session, current_user)
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("coinflip_session", session_id=session_id))
+
+            if joined_existing_session:
+                return redirect(url_for("coinflip_session", session_id=existing_redo_session["id"]))
+
+        current_balance = get_user_balance(current_user_id)
+
+        if bet_cents > current_balance:
+            flash("You do not have enough balance for that rematch.", "error")
+            return redirect(url_for("coinflip_session", session_id=session_id))
+
+        set_user_balance(current_user_id, current_balance - bet_cents)
+
+        if opponent_user["id"] == BOT_PROFILE["id"]:
+            next_session = create_coinflip_session_record(
+                current_user,
+                current_user_choice,
+                bet_cents,
+                opponent=BOT_PROFILE.copy(),
+                countdown_started_at=time.time(),
+            )
+        else:
+            next_session = create_coinflip_session_record(current_user, current_user_choice, bet_cents)
+
+        next_session["rematch_source_session_id"] = coinflip_session_data["id"]
+        coinflip_session_data["redo_session_id"] = next_session["id"]
+        COINFLIP_SESSIONS[next_session["id"]] = next_session
+
+        if opponent_user["id"] != BOT_PROFILE["id"]:
+            add_app_notification(
+                action=build_session_notification_action(
+                    "coinflip",
+                    next_session["id"],
+                    build_coinflip_session_join_copy(
+                        current_user["display_name"],
+                        current_user_choice,
+                        bet_cents,
+                    ),
+                ),
+                actor_user=current_user,
+                event_type="coinflip_session_redo",
+                message=f"{current_user['display_name']} wants a coinflip rematch for {format_money(bet_cents)}.",
+                recipient_user_id=opponent_user["id"],
+                title="Coinflip rematch ready",
+            )
+
+    return redirect(url_for("coinflip_session", session_id=next_session["id"]))
 
 
 @app.route("/games/dice")
@@ -2313,28 +3098,16 @@ def create_dice_session():
             return redirect(url_for("dice_game"))
 
         set_user_balance(current_user_id, current_balance - bet_cents)
-
-        session_id = build_dice_session_id()
-        DICE_SESSIONS[session_id] = {
-            "bet_cents": bet_cents,
-            "countdown_started_at": None,
-            "created_at": time.time(),
-            "creator": current_user,
-            "creator_score": 0,
-            "creator_side": side if mode == "classic" else None,
-            "double_roll": double_roll,
-            "id": session_id,
-            "mode": mode,
-            "opponent": None,
-            "opponent_score": 0,
-            "opponent_side": other_dice_side(side) if mode == "classic" else None,
-            "rounds": [],
-            "resolved_at": None,
-            "result_face": None,
-            "target_wins": target_wins,
-            "winner_id": None,
-            "winner_name": None,
-        }
+        dice_session = create_dice_session_record(
+            current_user,
+            bet_cents,
+            mode,
+            side=side,
+            target_wins=target_wins,
+            double_roll=double_roll,
+        )
+        session_id = dice_session["id"]
+        DICE_SESSIONS[session_id] = dice_session
         add_app_notification(
             action=build_session_notification_action(
                 "dice",
@@ -2386,25 +3159,14 @@ def join_dice_session(session_id):
 
     with STATE_LOCK:
         dice_session_data = get_dice_session_or_404(session_id)
-        sync_dice_session_state(dice_session_data)
-
-        if dice_session_is_resolved(dice_session_data) or dice_session_data["opponent"]:
-            flash("This session is no longer available.", "error")
-            return redirect(url_for("dice_game"))
-
         if dice_session_data["creator"]["id"] == current_user_id:
             return redirect(url_for("dice_session", session_id=session_id))
 
-        current_balance = get_user_balance(current_user_id)
-        bet_cents = dice_session_data["bet_cents"]
-
-        if bet_cents > current_balance:
-            flash("You do not have enough balance to join that session.", "error")
+        try:
+            join_dice_session_record(dice_session_data, current_user)
+        except ValueError as exc:
+            flash(str(exc), "error")
             return redirect(url_for("dice_game"))
-
-        set_user_balance(current_user_id, current_balance - bet_cents)
-        dice_session_data["opponent"] = current_user
-        dice_session_data["countdown_started_at"] = time.time()
 
     return redirect(url_for("dice_session", session_id=session_id))
 
@@ -2440,6 +3202,111 @@ def dice_session_state(session_id):
         session_state = build_dice_session_state(dice_session_data, get_current_user_id())
 
     return jsonify(session_state)
+
+
+@app.route("/games/dice/sessions/<session_id>/redo", methods=["POST"])
+@login_required
+def redo_dice_session(session_id):
+    current_user = make_user_snapshot(get_current_user())
+    current_user_id = current_user["id"]
+
+    with STATE_LOCK:
+        dice_session_data = get_dice_session_or_404(session_id)
+        sync_dice_session_state(dice_session_data)
+
+        if not dice_session_data["winner_id"]:
+            flash("That match is not finished yet.", "error")
+            return redirect(url_for("dice_session", session_id=session_id))
+
+        opponent_user = get_dice_rematch_opponent(dice_session_data, current_user_id)
+
+        if not opponent_user:
+            flash("Only players from that match can create a redo.", "error")
+            return redirect(url_for("dice_session", session_id=session_id))
+
+        mode = get_dice_session_mode(dice_session_data)
+        side = get_dice_side_for_user(dice_session_data, current_user_id)
+        target_wins = get_dice_target_wins(dice_session_data) if mode == "first_to" else None
+        double_roll = is_double_dice_session(dice_session_data) if mode == "first_to" else False
+        bet_cents = dice_session_data["bet_cents"]
+        existing_redo_session = get_active_dice_redo_session(dice_session_data)
+
+        if existing_redo_session:
+            if current_user_id == existing_redo_session["creator"]["id"]:
+                return redirect(url_for("dice_session", session_id=existing_redo_session["id"]))
+
+            existing_opponent = existing_redo_session.get("opponent")
+
+            if existing_opponent and existing_opponent["id"] == current_user_id:
+                return redirect(url_for("dice_session", session_id=existing_redo_session["id"]))
+
+            try:
+                joined_existing_session = join_dice_session_record(existing_redo_session, current_user)
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("dice_session", session_id=session_id))
+
+            if joined_existing_session:
+                return redirect(url_for("dice_session", session_id=existing_redo_session["id"]))
+
+        current_balance = get_user_balance(current_user_id)
+
+        if bet_cents > current_balance:
+            flash("You do not have enough balance for that rematch.", "error")
+            return redirect(url_for("dice_session", session_id=session_id))
+
+        set_user_balance(current_user_id, current_balance - bet_cents)
+
+        if opponent_user["id"] == BOT_PROFILE["id"]:
+            next_session = create_dice_session_record(
+                current_user,
+                bet_cents,
+                mode,
+                side=side,
+                target_wins=target_wins,
+                double_roll=double_roll,
+                opponent=BOT_PROFILE.copy(),
+                countdown_started_at=time.time(),
+            )
+        else:
+            next_session = create_dice_session_record(
+                current_user,
+                bet_cents,
+                mode,
+                side=side,
+                target_wins=target_wins,
+                double_roll=double_roll,
+            )
+
+        next_session["rematch_source_session_id"] = dice_session_data["id"]
+        dice_session_data["redo_session_id"] = next_session["id"]
+        DICE_SESSIONS[next_session["id"]] = next_session
+
+        if opponent_user["id"] != BOT_PROFILE["id"]:
+            add_app_notification(
+                action=build_session_notification_action(
+                    "dice",
+                    next_session["id"],
+                    build_dice_session_join_copy(
+                        current_user["display_name"],
+                        mode,
+                        side,
+                        bet_cents,
+                        target_wins,
+                        double_roll,
+                    ),
+                ),
+                actor_user=current_user,
+                event_type="dice_session_redo",
+                message=(
+                    f"{current_user['display_name']} wants a {get_dice_mode_label(next_session)} dice rematch "
+                    f"for {format_money(bet_cents)}."
+                ),
+                recipient_user_id=opponent_user["id"],
+                title="Dice rematch ready",
+            )
+
+    return redirect(url_for("dice_session", session_id=next_session["id"]))
 
 
 @app.route("/auth/discord/login")
