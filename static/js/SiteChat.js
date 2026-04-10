@@ -85,8 +85,15 @@
         return Math.min(Math.max(Value, Min), Max);
     };
 
-    const SetChatOpen = (ShouldOpen) =>
+    const IsMobileViewport = () =>
     {
+        return window.matchMedia("(max-width: 640px)").matches;
+    };
+
+    const SetChatOpen = (ShouldOpen, Options = {}) =>
+    {
+        const FocusComposer = Options.FocusComposer ?? true;
+
         ChatShell.dataset.chatOpen = ShouldOpen ? "true" : "false";
 
         if (ChatPanel)
@@ -109,7 +116,11 @@
         requestAnimationFrame(() =>
         {
             ScrollToBottom();
-            ChatInput?.focus();
+
+            if (FocusComposer)
+            {
+                ChatInput?.focus();
+            }
         });
     };
 
@@ -1027,6 +1038,7 @@
     });
 
     UpdateComposerState();
+    SetChatOpen(!IsMobileViewport(), { FocusComposer: false });
     RelativeTimeInterval = window.setInterval(UpdateRelativeTimes, 15000);
     StartPresenceHeartbeat();
     SchedulePoll(120);
