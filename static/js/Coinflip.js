@@ -177,6 +177,24 @@ const SpringSettle = (Amplitude, Progress) =>
     return Amplitude * Math.pow(1 - Progress, 2.6) * Math.cos(Progress * Math.PI * 2.7);
 };
 
+const ResultGlowColors = {
+    loss: {
+        light: 0xff4f5f,
+        primary: 0xff4257,
+        secondary: 0xff9aa3,
+    },
+    neutral: {
+        light: 0xffffff,
+        primary: 0xffffff,
+        secondary: 0xd4d4d8,
+    },
+    win: {
+        light: 0x79ff57,
+        primary: 0x7cff5a,
+        secondary: 0xbaff91,
+    },
+};
+
 const NormalizeAngleNear = (Angle, Reference) =>
 {
     const FullTurn = Math.PI * 2;
@@ -337,6 +355,15 @@ const MountCoinViewer = (Container) =>
     let CurrentSide = "Heads";
     let IdleFloatStartedAt = performance.now();
 
+    const SetResultState = (StateName) =>
+    {
+        const Palette = ResultGlowColors[StateName] || ResultGlowColors.neutral;
+
+        GlowMaterial.color.setHex(Palette.primary);
+        GlowSecondaryMaterial.color.setHex(Palette.secondary);
+        WinLight.color.setHex(Palette.light);
+    };
+
     const SetResultText = (Value) =>
     {
         if (!ResultLabel)
@@ -440,6 +467,7 @@ const MountCoinViewer = (Container) =>
     Container.addEventListener("coinflip:set-side", HandleExternalSetSide);
     Container.CoinflipController = {
         play: StartFlip,
+        setResultState: SetResultState,
         setSide: SetCoinSide,
     };
 

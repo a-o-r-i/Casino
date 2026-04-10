@@ -74,6 +74,27 @@
     {
       backdrop-filter: blur(18px);
       background: rgba(255, 255, 255, 0.03);
+      overflow: hidden;
+    }
+
+    .dice-status-card [data-session-status]
+    {
+      backface-visibility: hidden;
+      will-change: transform, opacity, filter;
+    }
+
+    [data-first-to-score-wrap],
+    [data-double-roll-result-wrap]
+    {
+      overflow: hidden;
+    }
+
+    [data-creator-score],
+    [data-opponent-score],
+    [data-double-roll-result]
+    {
+      backface-visibility: hidden;
+      will-change: transform, opacity, filter;
     }
 
     .dice-canvas
@@ -190,9 +211,7 @@
 
         <div class="mt-8 text-center {% if not session_state.is_first_to %}hidden{% endif %}" data-first-to-score-wrap>
           <p class="text-[2.75rem] font-semibold tracking-[-0.06em] text-white" data-creator-score>{{ session_state.creator_score }}</p>
-          <p class="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-white/38" data-creator-score-label>Round wins</p>
           <div class="mt-4 {% if not session_state.is_double_roll %}hidden{% endif %}" data-double-roll-result-wrap="creator">
-            <p class="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-white/34">Current Roll</p>
             <p class="mt-2 text-sm font-medium text-white/62" data-double-roll-result="creator">Awaiting roll</p>
           </div>
         </div>
@@ -236,39 +255,7 @@
         </section>
 
         <div class="dice-status-card mt-6 rounded-2xl border border-white/8 px-5 py-5 text-center">
-          <p class="text-[0.7rem] font-medium uppercase tracking-[0.2em] text-white/35" data-session-phase>
-            {% if session_state.status == 'resolved' %}Complete{% elif session_state.status == 'countdown' %}Countdown{% else %}Open{% endif %}
-          </p>
-          <p class="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white" data-session-status>{{ session_state.status_text }}</p>
-          <p class="mt-2 text-sm leading-7 text-white/48" data-session-detail>
-            {% if session_state.status == 'resolved' %}
-              {% if session_state.is_first_to %}
-                Final score {{ session_state.creator_score }}-{{ session_state.opponent_score }}.
-              {% else %}
-                Final face {{ session_state.result_face }} decided the winner.
-              {% endif %}
-            {% elif session_state.status == 'countdown' %}
-              {% if session_state.is_first_to %}
-                {% if session_state.is_double_roll %}
-                  Creator rolls two dice first each round. Higher total takes the point.
-                {% else %}
-                  Creator rolls first every round. Higher face takes the round.
-                {% endif %}
-              {% else %}
-                The die will roll once the countdown finishes.
-              {% endif %}
-            {% else %}
-              {% if session_state.is_first_to %}
-                {% if session_state.is_double_roll %}
-                  Waiting for an opponent before the two-dice first-to match begins.
-                {% else %}
-                  Waiting for an opponent. Creator starts the match once someone joins.
-                {% endif %}
-              {% else %}
-                Waiting for an opponent before the die roll begins.
-              {% endif %}
-            {% endif %}
-          </p>
+          <p class="text-2xl font-semibold tracking-[-0.04em] text-white" data-session-status>{{ session_state.status_text }}</p>
         </div>
       </section>
 
@@ -320,9 +307,7 @@
 
         <div class="mt-8 text-center {% if not session_state.is_first_to %}hidden{% endif %}" data-first-to-score-wrap>
           <p class="text-[2.75rem] font-semibold tracking-[-0.06em] text-white" data-opponent-score>{{ session_state.opponent_score }}</p>
-          <p class="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-white/38" data-opponent-score-label>Round wins</p>
           <div class="mt-4 {% if not session_state.is_double_roll %}hidden{% endif %}" data-double-roll-result-wrap="opponent">
-            <p class="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-white/34">Current Roll</p>
             <p class="mt-2 text-sm font-medium text-white/62" data-double-roll-result="opponent">Awaiting roll</p>
           </div>
         </div>

@@ -30,21 +30,135 @@ const GetCoinViewerController = (Main) =>
     return GetCoinViewerContainer(Main)?.CoinflipController || null;
 };
 
+const TextTransition = {
+    enterMs: 220,
+    exitMs: 110,
+    offsetPx: 12,
+};
+
+const TransitionTextNode = (Node, NextValue) =>
+{
+    if (!Node || typeof NextValue !== "string")
+    {
+        return Promise.resolve();
+    }
+
+    const NextText = NextValue.trim();
+
+    if (Node.textContent.trim() === NextText)
+    {
+        return Promise.resolve();
+    }
+
+    if (typeof Node.animate !== "function")
+    {
+        Node.textContent = NextText;
+        return Promise.resolve();
+    }
+
+    Node._textTransitionToken = `${Date.now()}-${Math.random()}`;
+    const TransitionToken = Node._textTransitionToken;
+    Node._textAnimation?.cancel?.();
+
+    const ExitAnimation = Node.animate(
+        [
+            {
+                opacity: 1,
+                filter: "blur(0px)",
+                transform: "translateY(0px)",
+            },
+            {
+                opacity: 0,
+                filter: "blur(4px)",
+                transform: `translateY(-${TextTransition.offsetPx}px)`,
+            },
+        ],
+        {
+            duration: TextTransition.exitMs,
+            easing: "cubic-bezier(0.4, 0, 1, 1)",
+            fill: "both",
+        },
+    );
+    Node._textAnimation = ExitAnimation;
+
+    return ExitAnimation.finished
+        .catch(() =>
+        {
+            return null;
+        })
+        .then(() =>
+        {
+            if (Node._textTransitionToken !== TransitionToken)
+            {
+                return null;
+            }
+
+            Node.textContent = NextText;
+
+            const EnterAnimation = Node.animate(
+                [
+                    {
+                        opacity: 0,
+                        filter: "blur(4px)",
+                        transform: `translateY(${TextTransition.offsetPx}px)`,
+                    },
+                    {
+                        opacity: 1,
+                        filter: "blur(0px)",
+                        transform: "translateY(0px)",
+                    },
+                ],
+                {
+                    duration: TextTransition.enterMs,
+                    easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+                    fill: "both",
+                },
+            );
+            Node._textAnimation = EnterAnimation;
+
+            return EnterAnimation.finished.catch(() =>
+            {
+                return null;
+            });
+        })
+        .finally(() =>
+        {
+            if (Node._textTransitionToken === TransitionToken)
+            {
+                delete Node._textTransitionToken;
+                Node._textAnimation = null;
+            }
+        });
+};
+
+const SetChoiceVisuals = (Main, State) =>
+{
+    const CreatorChoice = Main.querySelector("[data-creator-choice]");
+    const OpponentChoice = Main.querySelector("[data-opponent-choice]");
+
+    if (CreatorChoice)
+    {
+        TransitionTextNode(CreatorChoice, String(State.creator_choice ?? ""));
+    }
+
+    if (OpponentChoice)
+    {
+        TransitionTextNode(OpponentChoice, String(State.opponent_choice ?? ""));
+    }
+};
+
 const SetOpponentVisuals = (Main, State) =>
 {
     const OpponentName = Main.querySelector("[data-opponent-name]");
     const OpponentSubtitle = Main.querySelector("[data-opponent-subtitle]");
-    const OpponentChoice = Main.querySelector("[data-opponent-choice]");
     const OpponentAvatar = Main.querySelector("[data-opponent-avatar]");
     const OpponentFallback = Main.querySelector("[data-opponent-fallback]");
     const CallBotWrap = Main.querySelector("[data-call-bot-wrap]");
 
-    if (!OpponentName || !OpponentSubtitle || !OpponentChoice || !OpponentAvatar || !OpponentFallback || !CallBotWrap)
+    if (!OpponentName || !OpponentSubtitle || !OpponentAvatar || !OpponentFallback || !CallBotWrap)
     {
         return;
     }
-
-    OpponentChoice.textContent = State.opponent_choice;
 
     if (State.opponent)
     {
@@ -94,6 +208,125 @@ const SetBalance = (State) =>
     }
 
     BalanceValue.textContent = State.current_balance_display;
+};
+
+const HoldGlobalBalanceDisplay = (Context) =>
+{
+    if (Context.isHoldingBalanceDisplay)
+    {
+        return;
+    }
+
+    window.GamblingApp?.holdGlobalBalanceDisplay?.();
+    Context.isHoldingBalanceDisplay = true;
+};
+
+const ReleaseGlobalBalanceDisplay = (Context) =>
+{
+    if (!Context.isHoldingBalanceDisplay)
+    {
+        return;
+    }
+
+    window.GamblingApp?.releaseGlobalBalanceDisplay?.();
+    Context.isHoldingBalanceDisplay = false;
+};
+
+const SetSessionStatus = (Main, NextValue) =>
+{
+    const SessionStatus = Main.querySelector("[data-session-status]");
+
+    if (!SessionStatus || typeof NextValue !== "string")
+    {
+        return Promise.resolve();
+    }
+
+    const NextText = NextValue.trim();
+
+    if (SessionStatus.textContent.trim() === NextText)
+    {
+        return Promise.resolve();
+    }
+
+    if (typeof SessionStatus.animate !== "function")
+    {
+        SessionStatus.textContent = NextText;
+        return Promise.resolve();
+    }
+
+    SessionStatus._statusTransitionToken = `${Date.now()}-${Math.random()}`;
+    const TransitionToken = SessionStatus._statusTransitionToken;
+    SessionStatus._statusAnimation?.cancel?.();
+
+    const ExitAnimation = SessionStatus.animate(
+        [
+            {
+                opacity: 1,
+                filter: "blur(0px)",
+                transform: "translateY(0px)",
+            },
+            {
+                opacity: 0,
+                filter: "blur(4px)",
+                transform: `translateY(-${TextTransition.offsetPx}px)`,
+            },
+        ],
+        {
+            duration: TextTransition.exitMs,
+            easing: "cubic-bezier(0.4, 0, 1, 1)",
+            fill: "both",
+        },
+    );
+    SessionStatus._statusAnimation = ExitAnimation;
+
+    return ExitAnimation.finished
+        .catch(() =>
+        {
+            return null;
+        })
+        .then(() =>
+        {
+            if (SessionStatus._statusTransitionToken !== TransitionToken)
+            {
+                return null;
+            }
+
+            SessionStatus.textContent = NextText;
+
+            const EnterAnimation = SessionStatus.animate(
+                [
+                    {
+                        opacity: 0,
+                        filter: "blur(4px)",
+                        transform: `translateY(${TextTransition.offsetPx}px)`,
+                    },
+                    {
+                        opacity: 1,
+                        filter: "blur(0px)",
+                        transform: "translateY(0px)",
+                    },
+                ],
+                {
+                    duration: TextTransition.enterMs,
+                    easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+                    fill: "both",
+                },
+            );
+            SessionStatus._statusAnimation = EnterAnimation;
+
+            return EnterAnimation.finished.catch(() =>
+            {
+                return null;
+            });
+        })
+        .finally(() =>
+        {
+            if (SessionStatus._statusTransitionToken === TransitionToken)
+            {
+                delete SessionStatus._statusTransitionToken;
+                SessionStatus._statusAnimation = null;
+            }
+        });
 };
 
 const RevealSessionReturnLink = (Main, Animate = true) =>
@@ -191,27 +424,28 @@ const HideSessionReturnLink = async (ReturnLink) =>
 
 const ApplyResolvedState = (Main, State) =>
 {
-    const SessionStatus = Main.querySelector("[data-session-status]");
+    SetSessionStatus(Main, State.status_text);
+    RevealSessionReturnLink(Main);
+};
 
-    if (!SessionStatus)
+const GetResultStateName = (State) =>
+{
+    if (State.did_win === true)
     {
-        return;
+        return "win";
     }
 
-    SessionStatus.textContent = State.status_text;
-    RevealSessionReturnLink(Main);
+    if (State.did_win === false)
+    {
+        return "loss";
+    }
+
+    return "neutral";
 };
 
 const RenderUnresolvedState = (Main, State) =>
 {
-    const SessionStatus = Main.querySelector("[data-session-status]");
-
-    if (!SessionStatus)
-    {
-        return;
-    }
-
-    SessionStatus.textContent = State.status_text;
+    SetSessionStatus(Main, State.status_text);
 };
 
 const PollSessionState = async (StateUrl, OnState) =>
@@ -261,9 +495,20 @@ const InitializeCoinflipSessionPage = ({ main }) =>
     let PendingRevealState = null;
     let HasShownResult = InitialState.status === "resolved";
     let IsDisposed = false;
+    let IsHoldingBalanceDisplay = false;
     let PollTimeout = 0;
     let ReadyInterval = 0;
     const ReturnLink = main.querySelector("[data-session-return-link]");
+    const BalanceContext = {
+        get isHoldingBalanceDisplay()
+        {
+            return IsHoldingBalanceDisplay;
+        },
+        set isHoldingBalanceDisplay(Value)
+        {
+            IsHoldingBalanceDisplay = Value;
+        },
+    };
 
     const HandleReturnLinkClick = async (EventValue) =>
     {
@@ -288,6 +533,7 @@ const InitializeCoinflipSessionPage = ({ main }) =>
             return;
         }
 
+        SetChoiceVisuals(main, LastState);
         SetOpponentVisuals(main, LastState);
 
         const CoinViewerController = GetCoinViewerController(main);
@@ -299,27 +545,32 @@ const InitializeCoinflipSessionPage = ({ main }) =>
 
         if (LastState.status === "resolved" && LastState.result_side)
         {
+            CoinViewerController.setResultState?.(GetResultStateName(LastState));
+
             if (PendingRevealState)
             {
-                main.querySelector("[data-session-status]").textContent = "Flipping...";
+                SetSessionStatus(main, "Flipping...");
                 return;
             }
 
             if (!HasShownResult)
             {
+                HoldGlobalBalanceDisplay(BalanceContext);
                 PendingRevealState = LastState;
                 HasShownResult = true;
-                main.querySelector("[data-session-status]").textContent = "Flipping...";
+                SetSessionStatus(main, "Flipping...");
                 CoinViewerController.play(LastState.result_side);
                 return;
             }
 
             CoinViewerController.setSide(LastState.result_side);
+            ReleaseGlobalBalanceDisplay(BalanceContext);
             SetBalance(LastState);
             ApplyResolvedState(main, LastState);
             return;
         }
 
+        CoinViewerController.setResultState?.("neutral");
         CoinViewerController.setSide("Heads");
         SetBalance(LastState);
         RenderUnresolvedState(main, LastState);
@@ -337,6 +588,7 @@ const InitializeCoinflipSessionPage = ({ main }) =>
             return;
         }
 
+        ReleaseGlobalBalanceDisplay(BalanceContext);
         SetBalance(PendingRevealState);
         ApplyResolvedState(main, PendingRevealState);
         PendingRevealState = null;
@@ -421,6 +673,8 @@ const InitializeCoinflipSessionPage = ({ main }) =>
         {
             window.clearTimeout(PollTimeout);
         }
+
+        ReleaseGlobalBalanceDisplay(BalanceContext);
     };
 };
 

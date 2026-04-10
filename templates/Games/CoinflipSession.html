@@ -4,6 +4,33 @@
 {% block page_key %}coinflip-session{% endblock %}
 
 {% block content %}
+  <style>
+    .coinflip-status-card
+    {
+      backdrop-filter: blur(18px);
+      background: rgba(255, 255, 255, 0.03);
+      overflow: hidden;
+    }
+
+    [data-choice-wrap]
+    {
+      overflow: hidden;
+    }
+
+    [data-session-status-wrap]
+    {
+      overflow: hidden;
+    }
+
+    [data-creator-choice],
+    [data-opponent-choice],
+    [data-session-status]
+    {
+      backface-visibility: hidden;
+      will-change: transform, opacity, filter;
+    }
+  </style>
+
   <section class="mx-auto w-full max-w-[1240px] px-4 py-8 md:px-6">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -24,7 +51,9 @@
     >
       <aside class="rounded-3xl border border-white/8 bg-black/35 p-4 sm:p-6" data-route-card>
         <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Creator</p>
-        <p class="mt-3 text-lg font-semibold text-white sm:mt-4 sm:text-xl" data-creator-choice>{{ session_state.creator_choice }}</p>
+        <div data-choice-wrap>
+          <p class="mt-3 text-lg font-semibold text-white sm:mt-4 sm:text-xl" data-creator-choice>{{ session_state.creator_choice }}</p>
+        </div>
 
         <div class="mt-8 flex flex-col items-center text-center">
           {% if session_state.creator.avatar_url %}
@@ -60,16 +89,21 @@
           ></div>
         </div>
 
-        <div class="mt-6 space-y-2 sm:mt-8">
+        <div
+          class="coinflip-status-card mt-6 rounded-2xl border border-white/8 px-5 py-5 text-center sm:mt-8"
+          data-session-status-wrap
+        >
           <p class="text-xl font-semibold text-white sm:text-2xl" data-session-status>{{ session_state.status_text }}</p>
         </div>
       </section>
 
       <aside class="rounded-3xl border border-white/8 bg-black/35 p-4 sm:p-6" data-route-card>
         <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Opponent</p>
-        <p class="mt-3 text-lg font-semibold text-white sm:mt-4 sm:text-xl" data-opponent-choice>
-          {% if session_state.opponent %}{{ session_state.opponent_choice }}{% else %}{{ session_state.opponent_choice }}{% endif %}
-        </p>
+        <div data-choice-wrap>
+          <p class="mt-3 text-lg font-semibold text-white sm:mt-4 sm:text-xl" data-opponent-choice>
+            {% if session_state.opponent %}{{ session_state.opponent_choice }}{% else %}{{ session_state.opponent_choice }}{% endif %}
+          </p>
+        </div>
 
         <div class="mt-8 flex flex-col items-center text-center">
           <img

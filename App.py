@@ -18,6 +18,7 @@ from flask import (
     abort,
     flash,
     g,
+    has_request_context,
     jsonify,
     redirect,
     render_template,
@@ -45,7 +46,7 @@ DISCORD_HTTP_HEADERS = {
     ),
 }
 
-STARTING_BALANCE_CENTS = 10000
+STARTING_BALANCE_CENTS = 50000
 COINFLIP_COUNTDOWN_SECONDS = 5
 DICE_COUNTDOWN_SECONDS = 5
 DICE_FIRST_TO_TARGETS = {1, 3, 5}
@@ -67,6 +68,48 @@ STATE_LOCK = Lock()
 STATE_LOCK = RLock()
 USER_STATS = {}
 USER_BET_HISTORY = {}
+APP_NOTIFICATIONS = []
+MAX_APP_NOTIFICATIONS = 250
+NOTIFICATION_POLL_INTERVAL_MS = 2600
+NEXT_NOTIFICATION_ID = 1
+CHAT_MESSAGES = []
+MAX_CHAT_MESSAGES = 180
+CHAT_INITIAL_MESSAGE_LIMIT = 60
+CHAT_MAX_MESSAGE_LENGTH = 280
+CHAT_POLL_INTERVAL_MS = 2200
+NEXT_CHAT_MESSAGE_ID = 1
+USER_PRESENCE = {}
+PRESENCE_ONLINE_WINDOW_SECONDS = 12
+USER_REWARDS = {}
+RAKEBACK_RATE_BPS = 300
+RAKEBACK_CLAIM_COOLDOWN_SECONDS = 5 * 60
+SITE_VISIT_REWARD_CENTS = 200
+SITE_VISIT_REWARD_INTERVAL_SECONDS = 30 * 60
+LEVEL_BONUS_CENTS = {
+    1: 500,
+    2: 1_000,
+    3: 2_000,
+    4: 3_500,
+    5: 5_000,
+    6: 7_500,
+    7: 10_000,
+    8: 15_000,
+    9: 25_000,
+    10: 50_000,
+}
+REWARD_TIERS = [
+    {"badge": "Unranked", "level": 0, "threshold_cents": 0},
+    {"badge": "Newbie", "level": 1, "threshold_cents": 5_000},
+    {"badge": "Beginner", "level": 2, "threshold_cents": 15_000},
+    {"badge": "Gambler", "level": 3, "threshold_cents": 35_000},
+    {"badge": "Regular", "level": 4, "threshold_cents": 75_000},
+    {"badge": "Grinder", "level": 5, "threshold_cents": 150_000},
+    {"badge": "Sharp", "level": 6, "threshold_cents": 300_000},
+    {"badge": "High Roller", "level": 7, "threshold_cents": 600_000},
+    {"badge": "Elite", "level": 8, "threshold_cents": 1_200_000},
+    {"badge": "Legend", "level": 9, "threshold_cents": 2_500_000},
+    {"badge": "Whale", "level": 10, "threshold_cents": 5_000_000},
+]
 
 
 app = Flask(__name__)
@@ -80,6 +123,20 @@ def format_money(amount_cents):
         return f"${int(dollars):,}"
 
     return f"${dollars:,.2f}"
+
+
+def format_duration(seconds):
+    seconds = max(int(math.ceil(seconds)), 0)
+
+    if seconds < 60:
+        return f"{seconds}s"
+
+    minutes, remaining_seconds = divmod(seconds, 60)
+
+    if remaining_seconds == 0:
+        return f"{minutes}m"
+
+    return f"{minutes}m {remaining_seconds}s"
 
 
 @app.template_filter("money")
@@ -196,7 +253,13 @@ def remember_user_profile(user_profile):
     if not user_profile:
         return None
 
+    existing_profile = USER_PROFILES.get(user_profile["id"], {})
     user_snapshot = make_user_snapshot(user_profile)
+    user_snapshot["registered_at"] = (
+        existing_profile.get("registered_at")
+        or user_profile.get("registered_at")
+        or time.time()
+    )
     USER_PROFILES[user_snapshot["id"]] = user_snapshot
     return user_snapshot
 
@@ -243,6 +306,7 @@ def ensure_user_stats(user_profile):
 
 def increment_stats(user_id, bet_cents, won):
     with STATE_LOCK:
+        previous_level = get_user_reward_level(user_id)
         stats = USER_STATS.setdefault(user_id, {
             "total_deposited_cents": 0,
             "total_wagered_cents": 0,
@@ -256,6 +320,8 @@ def increment_stats(user_id, bet_cents, won):
             stats["bets_won"] += 1
         else:
             stats["bets_lost"] += 1
+        current_level = get_user_reward_level(user_id)
+        apply_reward_level_up_rewards(user_id, previous_level, current_level)
 
 
 def add_bet_record(user_id, game, bet_cents, choice, result_side, pot_cents, did_win, session_id):
@@ -289,9 +355,620 @@ def get_user_bet_history(user_id):
     return list(USER_BET_HISTORY.get(user_id, []))
 
 
+def get_user_reward_record(user_id):
+    reward_record = USER_REWARDS.setdefault(user_id, {
+        "bonus_awarded_levels": [],
+        "bonus_unlocked_levels": [],
+        "last_visit_at": 0,
+        "last_rakeback_claimed_at": 0,
+        "rakeback_claimed_cents": 0,
+        "site_visits": 0,
+    })
+    reward_record.setdefault("bonus_awarded_levels", [])
+    reward_record.setdefault("bonus_unlocked_levels", [])
+    reward_record.setdefault("last_visit_at", 0)
+    reward_record.setdefault("last_rakeback_claimed_at", 0)
+    reward_record.setdefault("rakeback_claimed_cents", 0)
+    reward_record.setdefault("site_visits", 0)
+    return reward_record
+
+
+def record_user_site_visit(user_id, now=None):
+    if not user_id or user_id == BOT_PROFILE["id"]:
+        return None
+
+    reward_record = get_user_reward_record(user_id)
+    current_time = now or time.time()
+    last_visit_at = reward_record.get("last_visit_at") or 0
+
+    if current_time - last_visit_at >= SITE_VISIT_REWARD_INTERVAL_SECONDS:
+        previous_level = get_user_reward_level(user_id)
+        reward_record["site_visits"] = reward_record.get("site_visits", 0) + 1
+        reward_record["last_visit_at"] = current_time
+        current_level = get_user_reward_level(user_id)
+        apply_reward_level_up_rewards(user_id, previous_level, current_level)
+
+    return reward_record
+
+
+def get_reward_tier(reward_points_cents):
+    current_tier = REWARD_TIERS[0]
+    next_tier = None
+
+    for index, tier in enumerate(REWARD_TIERS):
+        if reward_points_cents >= tier["threshold_cents"]:
+            current_tier = tier
+            next_tier = REWARD_TIERS[index + 1] if index + 1 < len(REWARD_TIERS) else None
+            continue
+
+        next_tier = tier
+        break
+
+    return current_tier, next_tier
+
+
+def calculate_reward_points_cents(user_id, stats=None, reward_record=None):
+    stats = stats or get_user_stats(user_id)
+    reward_record = reward_record or get_user_reward_record(user_id)
+    return stats["total_wagered_cents"] + reward_record.get("site_visits", 0) * SITE_VISIT_REWARD_CENTS
+
+
+def get_user_reward_level(user_id):
+    reward_points_cents = calculate_reward_points_cents(user_id)
+    current_tier, _ = get_reward_tier(reward_points_cents)
+    return current_tier["level"]
+
+
+def get_rakeback_cooldown_remaining(reward_record, now=None):
+    current_time = now or time.time()
+    last_claimed_at = reward_record.get("last_rakeback_claimed_at") or 0
+    return max((last_claimed_at + RAKEBACK_CLAIM_COOLDOWN_SECONDS) - current_time, 0)
+
+
+def apply_reward_level_up_rewards(user_id, previous_level, current_level):
+    if not user_id or user_id == BOT_PROFILE["id"] or current_level <= previous_level:
+        return []
+
+    reward_record = get_user_reward_record(user_id)
+    claimed_levels = set(reward_record.get("bonus_awarded_levels") or [])
+    unlocked_levels = set(reward_record.get("bonus_unlocked_levels") or [])
+    unlocked_notifications = []
+
+    for tier in REWARD_TIERS:
+        level = tier["level"]
+
+        if (
+            level <= 0
+            or level <= previous_level
+            or level > current_level
+            or level in claimed_levels
+            or level in unlocked_levels
+        ):
+            continue
+
+        bonus_cents = LEVEL_BONUS_CENTS.get(level, 0)
+        unlocked_levels.add(level)
+        notification = add_app_notification(
+            actor_user=USER_PROFILES.get(user_id),
+            event_type="reward_level_up",
+            message=(
+                f"You leveled up to Level {level} - {tier['badge']}. "
+                f"Claim {format_money(bonus_cents)} from Rewards."
+            ),
+            recipient_user_id=user_id,
+            title="Level reward unlocked",
+            tone="success",
+        )
+        unlocked_notifications.append(notification)
+
+    reward_record["bonus_awarded_levels"] = sorted(claimed_levels)
+    reward_record["bonus_unlocked_levels"] = sorted(unlocked_levels)
+    return unlocked_notifications
+
+
+def build_reward_state(user_id, now=None):
+    stats = get_user_stats(user_id)
+    reward_record = get_user_reward_record(user_id)
+    current_time = now or time.time()
+    total_wagered_cents = stats["total_wagered_cents"]
+    activity_bonus_cents = reward_record.get("site_visits", 0) * SITE_VISIT_REWARD_CENTS
+    reward_points_cents = calculate_reward_points_cents(user_id, stats, reward_record)
+    current_tier, next_tier = get_reward_tier(reward_points_cents)
+    current_threshold_cents = current_tier["threshold_cents"]
+    next_threshold_cents = next_tier["threshold_cents"] if next_tier else current_threshold_cents
+    level_span_cents = max(next_threshold_cents - current_threshold_cents, 1)
+    progress_cents = min(max(reward_points_cents - current_threshold_cents, 0), level_span_cents)
+    tier_progress_percent = 100 if not next_tier else round(progress_cents / level_span_cents * 100, 1)
+    progress_percent = 100 if not next_tier else round(
+        (current_tier["level"] + (tier_progress_percent / 100)) / REWARD_TIERS[-1]["level"] * 100,
+        1,
+    )
+    earned_rakeback_cents = total_wagered_cents * RAKEBACK_RATE_BPS // 10_000
+    claimed_rakeback_cents = min(reward_record.get("rakeback_claimed_cents", 0), earned_rakeback_cents)
+    claimable_rakeback_cents = max(earned_rakeback_cents - claimed_rakeback_cents, 0)
+    rakeback_cooldown_remaining_seconds = math.ceil(get_rakeback_cooldown_remaining(reward_record, current_time))
+    rakeback_claim_available_at = (
+        (reward_record.get("last_rakeback_claimed_at") or 0) + RAKEBACK_CLAIM_COOLDOWN_SECONDS
+        if reward_record.get("last_rakeback_claimed_at")
+        else None
+    )
+    can_claim_rakeback = claimable_rakeback_cents > 0 and rakeback_cooldown_remaining_seconds <= 0
+    claimed_level_rewards = set(reward_record.get("bonus_awarded_levels") or [])
+    unlocked_level_rewards = sorted(set(reward_record.get("bonus_unlocked_levels") or []) - claimed_level_rewards)
+    pending_level_rewards = []
+
+    for tier in REWARD_TIERS:
+        level = tier["level"]
+
+        if level <= 0 or level not in unlocked_level_rewards:
+            continue
+
+        pending_level_rewards.append({
+            "badge": tier["badge"],
+            "bonus_cents": LEVEL_BONUS_CENTS.get(level, 0),
+            "bonus_display": format_money(LEVEL_BONUS_CENTS.get(level, 0)),
+            "level": level,
+        })
+
+    pending_level_reward = pending_level_rewards[0] if pending_level_rewards else None
+
+    return {
+        "activity_bonus_cents": activity_bonus_cents,
+        "activity_bonus_display": format_money(activity_bonus_cents),
+        "badge": current_tier["badge"],
+        "can_claim_level_reward": pending_level_reward is not None,
+        "can_claim_rakeback": can_claim_rakeback,
+        "claimable_rakeback_cents": claimable_rakeback_cents,
+        "claimable_rakeback_display": format_money(claimable_rakeback_cents),
+        "claimed_rakeback_cents": claimed_rakeback_cents,
+        "claimed_rakeback_display": format_money(claimed_rakeback_cents),
+        "earned_rakeback_cents": earned_rakeback_cents,
+        "earned_rakeback_display": format_money(earned_rakeback_cents),
+        "level": current_tier["level"],
+        "max_level": REWARD_TIERS[-1]["level"],
+        "next_badge": next_tier["badge"] if next_tier else None,
+        "next_level": next_tier["level"] if next_tier else None,
+        "next_threshold_cents": next_threshold_cents if next_tier else None,
+        "next_threshold_display": format_money(next_threshold_cents) if next_tier else None,
+        "pending_level_reward": pending_level_reward,
+        "pending_level_reward_count": len(pending_level_rewards),
+        "pending_level_rewards": pending_level_rewards,
+        "progress_percent": progress_percent,
+        "rakeback_claim_available_at": rakeback_claim_available_at,
+        "rakeback_cooldown_copy": (
+            f"Claim again in {format_duration(rakeback_cooldown_remaining_seconds)}."
+            if rakeback_cooldown_remaining_seconds > 0
+            else "Claim every 5 minutes."
+        ),
+        "rakeback_cooldown_remaining_display": format_duration(rakeback_cooldown_remaining_seconds),
+        "rakeback_cooldown_remaining_seconds": rakeback_cooldown_remaining_seconds,
+        "rakeback_rate_percent": RAKEBACK_RATE_BPS / 100,
+        "reward_points_cents": reward_points_cents,
+        "reward_points_display": format_money(reward_points_cents),
+        "site_visits": reward_record.get("site_visits", 0),
+        "tier_progress_percent": tier_progress_percent,
+        "to_next_cents": max(next_threshold_cents - reward_points_cents, 0) if next_tier else 0,
+        "to_next_display": format_money(max(next_threshold_cents - reward_points_cents, 0)) if next_tier else "$0",
+        "total_wagered_cents": total_wagered_cents,
+        "total_wagered_display": format_money(total_wagered_cents),
+    }
+
+
+def claim_user_rakeback(user_id, now=None):
+    current_time = now or time.time()
+    reward_state = build_reward_state(user_id, current_time)
+    claimable_cents = reward_state["claimable_rakeback_cents"]
+
+    if claimable_cents <= 0:
+        return None, "No rakeback available to claim.", 400
+
+    if reward_state["rakeback_cooldown_remaining_seconds"] > 0:
+        return (
+            None,
+            f"Rakeback can be claimed again in {reward_state['rakeback_cooldown_remaining_display']}.",
+            429,
+        )
+
+    reward_record = get_user_reward_record(user_id)
+    reward_record["rakeback_claimed_cents"] = reward_record.get("rakeback_claimed_cents", 0) + claimable_cents
+    reward_record["last_rakeback_claimed_at"] = current_time
+    set_user_balance(user_id, get_user_balance(user_id) + claimable_cents)
+    next_reward_state = build_reward_state(user_id, current_time)
+    next_reward_state["claimed_now_cents"] = claimable_cents
+    next_reward_state["claimed_now_display"] = format_money(claimable_cents)
+    return next_reward_state, None, 200
+
+
+def claim_user_level_reward(user_id, now=None):
+    current_time = now or time.time()
+    reward_state = build_reward_state(user_id, current_time)
+    pending_level_reward = reward_state.get("pending_level_reward")
+
+    if not pending_level_reward:
+        return None, "No level reward available to claim.", 400
+
+    reward_record = get_user_reward_record(user_id)
+    claimed_levels = set(reward_record.get("bonus_awarded_levels") or [])
+    unlocked_levels = set(reward_record.get("bonus_unlocked_levels") or [])
+    level = pending_level_reward["level"]
+    bonus_cents = pending_level_reward["bonus_cents"]
+
+    if level not in unlocked_levels or level in claimed_levels:
+        return None, "That reward is no longer available to claim.", 409
+
+    claimed_levels.add(level)
+    unlocked_levels.discard(level)
+    reward_record["bonus_awarded_levels"] = sorted(claimed_levels)
+    reward_record["bonus_unlocked_levels"] = sorted(unlocked_levels)
+
+    if bonus_cents > 0:
+        set_user_balance(user_id, get_user_balance(user_id) + bonus_cents)
+
+    add_app_notification(
+        actor_user=USER_PROFILES.get(user_id),
+        event_type="reward_level_claimed",
+        message=(
+            f"You claimed {format_money(bonus_cents)} from Level {level} - "
+            f"{pending_level_reward['badge']}."
+        ),
+        recipient_user_id=user_id,
+        title="Level reward claimed",
+        tone="success",
+    )
+
+    next_reward_state = build_reward_state(user_id, current_time)
+    next_reward_state["claimed_level_reward"] = pending_level_reward
+    next_reward_state["claimed_now_cents"] = bonus_cents
+    next_reward_state["claimed_now_display"] = format_money(bonus_cents)
+    return next_reward_state, None, 200
+
+
 def build_state_version(payload):
     payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(payload_json.encode("utf-8")).hexdigest()[:16]
+
+
+def get_latest_notification_id():
+    if not APP_NOTIFICATIONS:
+        return 0
+
+    return APP_NOTIFICATIONS[-1]["id"]
+
+
+def add_app_notification(*, actor_user, event_type, title, message, tone="info", action=None, recipient_user_id=None):
+    global NEXT_NOTIFICATION_ID
+
+    actor_snapshot = make_user_snapshot(actor_user) if actor_user else None
+    notification = {
+        "action": dict(action) if action else None,
+        "actor_id": actor_snapshot["id"] if actor_snapshot else None,
+        "created_at": time.time(),
+        "event_type": event_type,
+        "id": NEXT_NOTIFICATION_ID,
+        "message": message,
+        "recipient_id": recipient_user_id,
+        "title": title,
+        "tone": tone,
+    }
+    APP_NOTIFICATIONS.append(notification)
+    NEXT_NOTIFICATION_ID += 1
+
+    if len(APP_NOTIFICATIONS) > MAX_APP_NOTIFICATIONS:
+        del APP_NOTIFICATIONS[:-MAX_APP_NOTIFICATIONS]
+
+    return notification
+
+
+def build_notification_payload(current_user_id, since_id):
+    latest_id = get_latest_notification_id()
+    notifications = []
+    current_balance_cents = get_user_balance(current_user_id) if current_user_id else None
+
+    for notification in APP_NOTIFICATIONS:
+        if notification["id"] <= since_id:
+            continue
+
+        recipient_id = notification.get("recipient_id")
+
+        if recipient_id:
+            if recipient_id != current_user_id:
+                continue
+        elif notification.get("actor_id") == current_user_id:
+            continue
+
+        notifications.append({
+            "action": dict(notification["action"]) if notification.get("action") else None,
+            "id": notification["id"],
+            "message": notification["message"],
+            "title": notification["title"],
+            "tone": notification["tone"],
+        })
+
+    return {
+        "current_balance_cents": current_balance_cents,
+        "current_balance_display": (
+            format_money(current_balance_cents)
+            if current_balance_cents is not None
+            else None
+        ),
+        "latest_id": latest_id,
+        "notifications": notifications,
+        "poll_interval_ms": NOTIFICATION_POLL_INTERVAL_MS,
+    }
+
+
+def build_dice_session_notification_message(creator_name, mode, side, bet_cents, target_wins, double_roll):
+    wager_label = format_money(bet_cents)
+
+    if mode == "first_to":
+        format_label = f"FT{target_wins} Double" if double_roll else f"FT{target_wins}"
+        return f"{creator_name} opened a {format_label} dice session for {wager_label}."
+
+    return f"{creator_name} opened a {side} dice session for {wager_label}."
+
+
+def build_dice_session_join_copy(creator_name, mode, side, bet_cents, target_wins, double_roll):
+    wager_label = format_money(bet_cents)
+
+    if mode == "first_to":
+        format_label = f"FT{target_wins} Double" if double_roll else f"FT{target_wins}"
+        double_roll_copy = "Two dice per player roll each round. " if double_roll else ""
+        return (
+            f"{creator_name} created a {format_label} match. "
+            f"{double_roll_copy}"
+            f"First to {target_wins} round wins for {wager_label}."
+        )
+
+    return f"{creator_name} picked {side}. You will join for {wager_label}."
+
+
+def build_session_notification_action(game, session_id, join_copy):
+    if game == "coinflip":
+        view_url = url_for("coinflip_session", session_id=session_id)
+        join_url = url_for("join_coinflip_session", session_id=session_id)
+    else:
+        view_url = url_for("dice_session", session_id=session_id)
+        join_url = url_for("join_dice_session", session_id=session_id)
+
+    return {
+        "join_copy": join_copy,
+        "join_url": join_url,
+        "type": "join_session_prompt",
+        "view_url": view_url,
+    }
+
+
+def user_presence_is_online(presence):
+    return bool(
+        presence
+        and presence.get("is_online", True)
+        and time.time() - presence.get("last_seen", 0) <= PRESENCE_ONLINE_WINDOW_SECONDS
+    )
+
+
+def touch_user_presence(user_profile, current_path=None):
+    if not user_profile:
+        return None
+
+    user_snapshot = remember_user_profile(user_profile)
+    user_id = user_snapshot["id"]
+    previous_presence = USER_PRESENCE.get(user_id)
+    now = time.time()
+
+    if previous_presence and user_presence_is_online(previous_presence):
+        connected_at = previous_presence.get("connected_at", now)
+    else:
+        connected_at = now
+
+    presence = {
+        "connected_at": connected_at,
+        "current_path": current_path,
+        "is_online": True,
+        "last_seen": now,
+    }
+    USER_PRESENCE[user_id] = presence
+    record_user_site_visit(user_id, now)
+    return presence
+
+
+def mark_user_presence_offline(user_id):
+    if not user_id:
+        return None
+
+    now = time.time()
+    presence = USER_PRESENCE.get(user_id, {})
+    presence.update({
+        "disconnected_at": now,
+        "is_online": False,
+        "last_seen": now,
+    })
+    USER_PRESENCE[user_id] = presence
+    return presence
+
+
+def request_should_touch_presence():
+    if request.endpoint in {"presence_heartbeat", "presence_offline"}:
+        return False
+
+    if request.method != "GET":
+        return False
+
+    accepted_content = request.headers.get("Accept", "")
+    return "text/html" in accepted_content or "application/xhtml+xml" in accepted_content
+
+
+def get_online_player_count():
+    return sum(
+        1
+        for user_id, presence in USER_PRESENCE.items()
+        if user_id != BOT_PROFILE["id"] and user_presence_is_online(presence)
+    )
+
+
+def serialize_chat_message(chat_message, current_user_id):
+    author_profile = USER_PROFILES.get(chat_message["author_id"])
+
+    if not author_profile:
+        return None
+
+    return {
+        "author": make_user_snapshot(author_profile),
+        "body": chat_message["body"],
+        "id": chat_message["id"],
+        "is_self": chat_message["author_id"] == current_user_id,
+        "timestamp": chat_message["timestamp"],
+    }
+
+
+def add_chat_message(author_user, body):
+    global NEXT_CHAT_MESSAGE_ID
+
+    author_snapshot = remember_user_profile(author_user)
+    normalized_body = str(body or "").strip()
+
+    if not normalized_body:
+        raise ValueError("Write a message before sending it.")
+
+    if len(normalized_body) > CHAT_MAX_MESSAGE_LENGTH:
+        raise ValueError(f"Messages can be up to {CHAT_MAX_MESSAGE_LENGTH} characters.")
+
+    message = {
+        "author_id": author_snapshot["id"],
+        "body": normalized_body,
+        "id": NEXT_CHAT_MESSAGE_ID,
+        "timestamp": time.time(),
+    }
+    CHAT_MESSAGES.append(message)
+    NEXT_CHAT_MESSAGE_ID += 1
+
+    if len(CHAT_MESSAGES) > MAX_CHAT_MESSAGES:
+        del CHAT_MESSAGES[:-MAX_CHAT_MESSAGES]
+
+    return message
+
+
+def get_latest_chat_message_id():
+    if not CHAT_MESSAGES:
+        return 0
+
+    return CHAT_MESSAGES[-1]["id"]
+
+
+def build_chat_state_payload(current_user_id, since_id):
+    latest_message_id = get_latest_chat_message_id()
+    oldest_message_id = CHAT_MESSAGES[0]["id"] if CHAT_MESSAGES else 0
+    should_reset = bool(since_id and oldest_message_id and since_id < oldest_message_id - 1)
+
+    if since_id <= 0 or should_reset:
+        candidate_messages = CHAT_MESSAGES[-CHAT_INITIAL_MESSAGE_LIMIT:]
+    else:
+        candidate_messages = [message for message in CHAT_MESSAGES if message["id"] > since_id]
+
+    messages = []
+
+    for message in candidate_messages:
+        serialized_message = serialize_chat_message(message, current_user_id)
+
+        if serialized_message:
+            messages.append(serialized_message)
+
+    return {
+        "latest_message_id": latest_message_id,
+        "messages": messages,
+        "online_count": get_online_player_count(),
+        "poll_interval_ms": CHAT_POLL_INTERVAL_MS,
+        "reset": should_reset or since_id <= 0,
+    }
+
+
+def build_chat_user_profile_payload(user_id, current_user_id=None):
+    user_profile = USER_PROFILES.get(user_id)
+
+    if not user_profile:
+        return None
+
+    stats = get_user_stats(user_id)
+    presence = USER_PRESENCE.get(user_id)
+    is_online = user_presence_is_online(presence)
+    reward_state = build_reward_state(user_id)
+    can_tip = bool(current_user_id and current_user_id != user_id and user_id != BOT_PROFILE["id"])
+
+    return {
+        "can_tip": can_tip,
+        "connected_since": presence.get("connected_at") if presence else None,
+        "display_name": user_profile["display_name"],
+        "id": user_profile["id"],
+        "is_online": is_online,
+        "last_seen": presence.get("last_seen") if presence else None,
+        "registered_at": user_profile.get("registered_at"),
+        "reward_badge": reward_state["badge"],
+        "reward_level": reward_state["level"],
+        "total_deposited_cents": stats["total_deposited_cents"],
+        "total_deposited_display": format_money(stats["total_deposited_cents"]),
+        "total_wagered_cents": stats["total_wagered_cents"],
+        "total_wagered_display": format_money(stats["total_wagered_cents"]),
+        "tip_url": url_for("tip_chat_user", user_id=user_id) if can_tip and has_request_context() else None,
+        "username": user_profile["username"],
+        "avatar_static_url": user_profile.get("avatar_static_url"),
+        "avatar_url": user_profile.get("avatar_url"),
+    }
+
+
+def parse_tip_amount_to_cents(raw_value):
+    try:
+        parsed_value = Decimal(str(raw_value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Enter a valid tip amount.")
+
+    if parsed_value < Decimal("0.01"):
+        raise ValueError("The minimum tip is $0.01.")
+
+    return int(parsed_value * 100)
+
+
+def send_user_tip(sender_user, recipient_user_id, raw_amount):
+    sender_snapshot = remember_user_profile(sender_user)
+    sender_id = sender_snapshot["id"]
+    recipient_profile = USER_PROFILES.get(recipient_user_id)
+
+    if not recipient_profile:
+        raise ValueError("That player could not be found.")
+
+    if recipient_user_id == sender_id:
+        raise ValueError("You cannot tip yourself.")
+
+    if recipient_user_id == BOT_PROFILE["id"]:
+        raise ValueError("You cannot tip the bot.")
+
+    tip_cents = parse_tip_amount_to_cents(raw_amount)
+    sender_balance = get_user_balance(sender_id)
+
+    if tip_cents > sender_balance:
+        raise ValueError("You do not have enough balance for that tip.")
+
+    set_user_balance(sender_id, sender_balance - tip_cents)
+    set_user_balance(recipient_user_id, get_user_balance(recipient_user_id) + tip_cents)
+
+    amount_display = format_money(tip_cents)
+    recipient_name = recipient_profile.get("display_name") or recipient_profile.get("username") or "that player"
+
+    add_app_notification(
+        actor_user=sender_snapshot,
+        event_type="tip_received",
+        message=f"{sender_snapshot['display_name']} tipped you {amount_display}.",
+        recipient_user_id=recipient_user_id,
+        title="Tip received",
+        tone="success",
+    )
+
+    return {
+        "amount_cents": tip_cents,
+        "amount_display": amount_display,
+        "current_balance_cents": get_user_balance(sender_id),
+        "current_balance_display": format_money(get_user_balance(sender_id)),
+        "recipient_id": recipient_user_id,
+        "recipient_name": recipient_name,
+    }
 
 
 def parse_bet_amount_to_cents(raw_value):
@@ -751,7 +1428,13 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
     did_win = None
 
     if coinflip_session["winner_id"]:
-        did_win = coinflip_session["winner_id"] == current_user_id
+        participant_ids = {
+            creator["id"],
+            opponent["id"] if opponent else None,
+        }
+
+        if current_user_id in participant_ids:
+            did_win = coinflip_session["winner_id"] == current_user_id
 
     return {
         "bet_cents": coinflip_session["bet_cents"],
@@ -1113,19 +1796,36 @@ def load_current_user():
     if g.discord_user:
         ensure_user_balance(g.discord_user)
         g.current_balance_cents = get_user_balance(g.discord_user["id"])
+        if request_should_touch_presence():
+            with STATE_LOCK:
+                touch_user_presence(g.discord_user, request.path)
 
 
 @app.context_processor
 def inject_auth_state():
     discord_user = g.get("discord_user") or get_current_user()
+    notification_cursor = 0
+    chat_user_profile_url = None
+
+    if discord_user:
+        with STATE_LOCK:
+            notification_cursor = get_latest_notification_id()
+        chat_user_profile_url = url_for("chat_user_state", user_id="__user_id__")
 
     return {
         "asset_url": build_static_asset_url,
+        "chat_current_user_id": discord_user["id"] if discord_user else None,
+        "chat_send_url": url_for("chat_messages") if discord_user else None,
+        "chat_state_url": url_for("chat_state") if discord_user else None,
+        "chat_user_profile_url": chat_user_profile_url,
         "current_balance_cents": g.current_balance_cents,
         "current_balance_display": format_money(g.current_balance_cents) if g.current_balance_cents is not None else None,
         "discord_oauth_ready": is_discord_oauth_ready(),
         "discord_user": discord_user,
         "is_authenticated": discord_user is not None,
+        "notification_cursor": notification_cursor,
+        "presence_heartbeat_url": url_for("presence_heartbeat") if discord_user else None,
+        "presence_offline_url": url_for("presence_offline") if discord_user else None,
     }
 
 
@@ -1167,12 +1867,126 @@ def leaderboard_state():
     return jsonify(payload)
 
 
+@app.route("/notifications/state")
+@login_required
+def notification_state():
+    since_raw = request.args.get("since")
+
+    try:
+        since_id = max(int(since_raw or 0), 0)
+    except (TypeError, ValueError):
+        since_id = 0
+
+    with STATE_LOCK:
+        payload = build_notification_payload(get_current_user_id(), since_id)
+
+    return jsonify(payload)
+
+
+@app.route("/chat/state")
+@login_required
+def chat_state():
+    since_raw = request.args.get("since")
+
+    try:
+        since_id = max(int(since_raw or 0), 0)
+    except (TypeError, ValueError):
+        since_id = 0
+
+    with STATE_LOCK:
+        payload = build_chat_state_payload(get_current_user_id(), since_id)
+
+    return jsonify(payload)
+
+
+@app.route("/chat/messages", methods=["POST"])
+@login_required
+def chat_messages():
+    payload = request.get_json(silent=True) or {}
+    raw_body = payload.get("body", "") if isinstance(payload, dict) else ""
+    current_user = make_user_snapshot(get_current_user())
+
+    try:
+        with STATE_LOCK:
+            message = add_chat_message(current_user, raw_body)
+            response_payload = {
+                "latest_message_id": get_latest_chat_message_id(),
+                "message": serialize_chat_message(message, current_user["id"]),
+                "online_count": get_online_player_count(),
+            }
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify(response_payload), 201
+
+
+@app.route("/chat/users/<user_id>")
+@login_required
+def chat_user_state(user_id):
+    with STATE_LOCK:
+        payload = build_chat_user_profile_payload(user_id, get_current_user_id())
+
+    if not payload:
+        abort(404)
+
+    return jsonify(payload)
+
+
+@app.route("/chat/users/<user_id>/tip", methods=["POST"])
+@login_required
+def tip_chat_user(user_id):
+    payload = request.get_json(silent=True) or {}
+    raw_amount = payload.get("amount") if isinstance(payload, dict) else None
+    current_user = make_user_snapshot(get_current_user())
+
+    try:
+        with STATE_LOCK:
+            tip_payload = send_user_tip(current_user, user_id, raw_amount)
+    except ValueError as exc:
+        with STATE_LOCK:
+            current_balance_cents = get_user_balance(current_user["id"])
+        return jsonify({
+            "current_balance_cents": current_balance_cents,
+            "current_balance_display": format_money(current_balance_cents),
+            "error": str(exc),
+        }), 400
+
+    return jsonify(tip_payload)
+
+
+@app.route("/presence/heartbeat", methods=["POST"])
+@login_required
+def presence_heartbeat():
+    payload = request.get_json(silent=True) or {}
+    current_path = payload.get("path") if isinstance(payload, dict) else None
+
+    if not isinstance(current_path, str) or not current_path.startswith("/"):
+        current_path = request.path
+
+    with STATE_LOCK:
+        touch_user_presence(get_current_user(), current_path)
+        online_count = get_online_player_count()
+
+    return jsonify({"online_count": online_count})
+
+
+@app.route("/presence/offline", methods=["POST"])
+@login_required
+def presence_offline():
+    with STATE_LOCK:
+        mark_user_presence_offline(get_current_user_id())
+        online_count = get_online_player_count()
+
+    return jsonify({"online_count": online_count})
+
+
 @app.route("/profile")
 @login_required
 def profile():
     current_user_id = get_current_user_id()
     stats = get_user_stats(current_user_id)
     bets = get_user_bet_history(current_user_id)
+    reward_state = build_reward_state(current_user_id)
 
     stats_formatted = {
         "total_wagered": format_money(stats["total_wagered_cents"]),
@@ -1185,10 +1999,15 @@ def profile():
     return render_template(
         "Profile.html",
         active_page="profile",
+        reward_state=reward_state,
         user_stats=stats,
         user_stats_formatted=stats_formatted,
         profile_state={
             "bet_history": bets,
+            "claim_level_reward_url": url_for("claim_level_reward"),
+            "claim_rakeback_url": url_for("claim_rakeback"),
+            "current_balance_display": format_money(get_user_balance(current_user_id)),
+            "rewards": reward_state,
             "stats": stats_formatted,
         },
     )
@@ -1201,6 +2020,52 @@ def profile_bets():
     bets = get_user_bet_history(current_user_id)
     bets.sort(key=lambda b: b["timestamp"], reverse=True)
     return jsonify({"bets": bets})
+
+
+@app.route("/profile/rakeback/claim", methods=["POST"])
+@login_required
+def claim_rakeback():
+    current_user_id = get_current_user_id()
+
+    with STATE_LOCK:
+        reward_state, error_message, status_code = claim_user_rakeback(current_user_id)
+
+        if not reward_state:
+            return jsonify({
+                "error": error_message or "No rakeback available to claim.",
+                "rewards": build_reward_state(current_user_id),
+            }), status_code
+
+        current_balance_cents = get_user_balance(current_user_id)
+
+    return jsonify({
+        "current_balance_cents": current_balance_cents,
+        "current_balance_display": format_money(current_balance_cents),
+        "rewards": reward_state,
+    })
+
+
+@app.route("/profile/rewards/claim", methods=["POST"])
+@login_required
+def claim_level_reward():
+    current_user_id = get_current_user_id()
+
+    with STATE_LOCK:
+        reward_state, error_message, status_code = claim_user_level_reward(current_user_id)
+
+        if not reward_state:
+            return jsonify({
+                "error": error_message or "No level reward available to claim.",
+                "rewards": build_reward_state(current_user_id),
+            }), status_code
+
+        current_balance_cents = get_user_balance(current_user_id)
+
+    return jsonify({
+        "current_balance_cents": current_balance_cents,
+        "current_balance_display": format_money(current_balance_cents),
+        "rewards": reward_state,
+    })
 
 
 @app.route("/games/coinflip")
@@ -1277,6 +2142,17 @@ def create_coinflip_session():
             "winner_id": None,
             "winner_name": None,
         }
+        add_app_notification(
+            action=build_session_notification_action(
+                "coinflip",
+                session_id,
+                f"{current_user['display_name']} picked {choice}. You will join for {format_money(bet_cents)}.",
+            ),
+            actor_user=current_user,
+            event_type="coinflip_session_created",
+            message=f"{current_user['display_name']} opened a {choice} coinflip for {format_money(bet_cents)}.",
+            title="New coinflip session",
+        )
 
     return redirect(url_for("coinflip_session", session_id=session_id))
 
@@ -1459,6 +2335,31 @@ def create_dice_session():
             "winner_id": None,
             "winner_name": None,
         }
+        add_app_notification(
+            action=build_session_notification_action(
+                "dice",
+                session_id,
+                build_dice_session_join_copy(
+                    current_user["display_name"],
+                    mode,
+                    side,
+                    bet_cents,
+                    target_wins,
+                    double_roll,
+                ),
+            ),
+            actor_user=current_user,
+            event_type="dice_session_created",
+            message=build_dice_session_notification_message(
+                current_user["display_name"],
+                mode,
+                side,
+                bet_cents,
+                target_wins,
+                double_roll,
+            ),
+            title="New dice session",
+        )
 
     return redirect(url_for("dice_session", session_id=session_id))
 

@@ -81,42 +81,6 @@ const SetOpponentVisuals = (Main, State) =>
     CallBotWrap.hidden = !State.can_call_bot;
 };
 
-const SetScoreVisuals = (Main, State) =>
-{
-    const ScoreWraps = Main.querySelectorAll("[data-first-to-score-wrap]");
-    const CreatorScore = Main.querySelector("[data-creator-score]");
-    const CreatorScoreLabel = Main.querySelector("[data-creator-score-label]");
-    const OpponentScore = Main.querySelector("[data-opponent-score]");
-    const OpponentScoreLabel = Main.querySelector("[data-opponent-score-label]");
-    const ShowScores = State.is_first_to;
-    const ScoreLabel = "Round wins";
-
-    ScoreWraps.forEach((Wrap) =>
-    {
-        Wrap.hidden = !ShowScores;
-    });
-
-    if (CreatorScore)
-    {
-        CreatorScore.textContent = String(State.creator_score ?? 0);
-    }
-
-    if (CreatorScoreLabel)
-    {
-        CreatorScoreLabel.textContent = ScoreLabel;
-    }
-
-    if (OpponentScore)
-    {
-        OpponentScore.textContent = String(State.opponent_score ?? 0);
-    }
-
-    if (OpponentScoreLabel)
-    {
-        OpponentScoreLabel.textContent = ScoreLabel;
-    }
-};
-
 const FormatDoubleRollResult = (FacesValue, TotalValue) =>
 {
     const Faces = Array.isArray(FacesValue) ? FacesValue : [];
@@ -131,51 +95,6 @@ const FormatDoubleRollResult = (FacesValue, TotalValue) =>
     const TotalNumber = Number.parseInt(TotalValue, 10);
     const DisplayTotal = Number.isFinite(TotalNumber) ? TotalNumber : (FirstFace + SecondFace);
     return String(DisplayTotal);
-};
-
-const SetDoubleRollResultVisuals = (Main, State, ResultsValue = {}) =>
-{
-    const CreatorWrap = Main.querySelector('[data-double-roll-result-wrap="creator"]');
-    const CreatorResult = Main.querySelector('[data-double-roll-result="creator"]');
-    const OpponentWrap = Main.querySelector('[data-double-roll-result-wrap="opponent"]');
-    const OpponentResult = Main.querySelector('[data-double-roll-result="opponent"]');
-    const ShowResults = State.is_first_to && State.is_double_roll;
-    const FinalRound = ShowResults ? GetFinalFirstToRound(State) : null;
-    const CreatorText = ResultsValue.creatorText ?? (
-        FinalRound
-            ? FormatDoubleRollResult(FinalRound.creator_faces, FinalRound.creator_total)
-            : "Awaiting roll"
-    );
-    const OpponentText = ResultsValue.opponentText ?? (
-        FinalRound
-            ? FormatDoubleRollResult(FinalRound.opponent_faces, FinalRound.opponent_total)
-            : "Awaiting roll"
-    );
-
-    if (CreatorWrap)
-    {
-        CreatorWrap.hidden = !ShowResults;
-    }
-
-    if (OpponentWrap)
-    {
-        OpponentWrap.hidden = !ShowResults;
-    }
-
-    if (!ShowResults)
-    {
-        return;
-    }
-
-    if (CreatorResult)
-    {
-        CreatorResult.textContent = CreatorText;
-    }
-
-    if (OpponentResult)
-    {
-        OpponentResult.textContent = OpponentText;
-    }
 };
 
 const SetPanelResultVisuals = (Main, State, OptionsValue = {}) =>
@@ -247,26 +166,199 @@ const SetSceneIndicatorVisibility = (Main, VisibleValue) =>
     Indicators.hidden = !VisibleValue;
 };
 
+const TextTransition = {
+    enterMs: 220,
+    exitMs: 110,
+    offsetPx: 12,
+};
+
+const TransitionTextNode = (Node, NextValue) =>
+{
+    if (!Node || typeof NextValue !== "string")
+    {
+        return Promise.resolve();
+    }
+
+    const NextText = NextValue.trim();
+
+    if (Node.textContent.trim() === NextText)
+    {
+        return Promise.resolve();
+    }
+
+    if (typeof Node.animate !== "function")
+    {
+        Node.textContent = NextText;
+        return Promise.resolve();
+    }
+
+    Node._narrativeTransitionToken = `${Date.now()}-${Math.random()}`;
+    const TransitionToken = Node._narrativeTransitionToken;
+    Node._narrativeAnimation?.cancel?.();
+
+    const ExitAnimation = Node.animate(
+        [
+            {
+                opacity: 1,
+                filter: "blur(0px)",
+                transform: "translateY(0px)",
+            },
+            {
+                opacity: 0,
+                filter: "blur(4px)",
+                transform: `translateY(-${TextTransition.offsetPx}px)`,
+            },
+        ],
+        {
+            duration: TextTransition.exitMs,
+            easing: "cubic-bezier(0.4, 0, 1, 1)",
+            fill: "both",
+        },
+    );
+    Node._narrativeAnimation = ExitAnimation;
+
+    return ExitAnimation.finished
+        .catch(() =>
+        {
+            return null;
+        })
+        .then(() =>
+        {
+            if (Node._narrativeTransitionToken !== TransitionToken)
+            {
+                return null;
+            }
+
+            Node.textContent = NextText;
+
+            const EnterAnimation = Node.animate(
+                [
+                    {
+                        opacity: 0,
+                        filter: "blur(4px)",
+                        transform: `translateY(${TextTransition.offsetPx}px)`,
+                    },
+                    {
+                        opacity: 1,
+                        filter: "blur(0px)",
+                        transform: "translateY(0px)",
+                    },
+                ],
+                {
+                    duration: TextTransition.enterMs,
+                    easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+                    fill: "both",
+                },
+            );
+            Node._narrativeAnimation = EnterAnimation;
+
+            return EnterAnimation.finished.catch(() =>
+            {
+                return null;
+            });
+        })
+        .finally(() =>
+        {
+            if (Node._narrativeTransitionToken === TransitionToken)
+            {
+                delete Node._narrativeTransitionToken;
+                Node._narrativeAnimation = null;
+            }
+        });
+};
+
+const SetScoreVisuals = (Main, State) =>
+{
+    const ScoreWraps = Main.querySelectorAll("[data-first-to-score-wrap]");
+    const CreatorScore = Main.querySelector("[data-creator-score]");
+    const CreatorScoreLabel = Main.querySelector("[data-creator-score-label]");
+    const OpponentScore = Main.querySelector("[data-opponent-score]");
+    const OpponentScoreLabel = Main.querySelector("[data-opponent-score-label]");
+    const ShowScores = State.is_first_to;
+    const ScoreLabel = "Round wins";
+
+    ScoreWraps.forEach((Wrap) =>
+    {
+        Wrap.hidden = !ShowScores;
+    });
+
+    if (CreatorScore)
+    {
+        TransitionTextNode(CreatorScore, String(State.creator_score ?? 0));
+    }
+
+    if (CreatorScoreLabel)
+    {
+        CreatorScoreLabel.textContent = ScoreLabel;
+    }
+
+    if (OpponentScore)
+    {
+        TransitionTextNode(OpponentScore, String(State.opponent_score ?? 0));
+    }
+
+    if (OpponentScoreLabel)
+    {
+        OpponentScoreLabel.textContent = ScoreLabel;
+    }
+};
+
+const SetDoubleRollResultVisuals = (Main, State, ResultsValue = {}) =>
+{
+    const CreatorWrap = Main.querySelector('[data-double-roll-result-wrap="creator"]');
+    const CreatorResult = Main.querySelector('[data-double-roll-result="creator"]');
+    const OpponentWrap = Main.querySelector('[data-double-roll-result-wrap="opponent"]');
+    const OpponentResult = Main.querySelector('[data-double-roll-result="opponent"]');
+    const ShowResults = State.is_first_to && State.is_double_roll;
+    const FinalRound = ShowResults ? GetFinalFirstToRound(State) : null;
+    const CreatorText = ResultsValue.creatorText ?? (
+        FinalRound
+            ? FormatDoubleRollResult(FinalRound.creator_faces, FinalRound.creator_total)
+            : "Awaiting roll"
+    );
+    const OpponentText = ResultsValue.opponentText ?? (
+        FinalRound
+            ? FormatDoubleRollResult(FinalRound.opponent_faces, FinalRound.opponent_total)
+            : "Awaiting roll"
+    );
+
+    if (CreatorWrap)
+    {
+        CreatorWrap.hidden = !ShowResults;
+    }
+
+    if (OpponentWrap)
+    {
+        OpponentWrap.hidden = !ShowResults;
+    }
+
+    if (!ShowResults)
+    {
+        return;
+    }
+
+    if (CreatorResult)
+    {
+        TransitionTextNode(CreatorResult, CreatorText);
+    }
+
+    if (OpponentResult)
+    {
+        TransitionTextNode(OpponentResult, OpponentText);
+    }
+};
+
 const SetSessionNarrative = (Main, Narrative) =>
 {
-    const PhaseNode = Main.querySelector("[data-session-phase]");
     const TitleNode = Main.querySelector("[data-session-status]");
-    const DetailNode = Main.querySelector("[data-session-detail]");
-
-    if (PhaseNode && typeof Narrative.phase === "string")
-    {
-        PhaseNode.textContent = Narrative.phase;
-    }
+    const Updates = [];
 
     if (TitleNode && typeof Narrative.title === "string")
     {
-        TitleNode.textContent = Narrative.title;
+        Updates.push(TransitionTextNode(TitleNode, Narrative.title));
     }
 
-    if (DetailNode && typeof Narrative.detail === "string")
-    {
-        DetailNode.textContent = Narrative.detail;
-    }
+    return Promise.all(Updates);
 };
 
 const BuildSessionNarrative = (State) =>
@@ -274,10 +366,6 @@ const BuildSessionNarrative = (State) =>
     if (State.status === "resolved")
     {
         return {
-            detail: State.is_first_to
-                ? `Final score ${State.creator_score}-${State.opponent_score}.`
-                : `Final face ${State.result_face} decided the winner.`,
-            phase: "Complete",
             title: State.status_text,
         };
     }
@@ -285,27 +373,11 @@ const BuildSessionNarrative = (State) =>
     if (State.status === "countdown")
     {
         return {
-            detail: State.is_first_to
-                ? (
-                    State.is_double_roll
-                        ? `${State.creator.display_name} rolls two dice first each round. Higher total takes the point.`
-                        : `${State.creator.display_name} rolls first every round. Higher face takes the point.`
-                )
-                : "The die will roll as soon as the countdown ends.",
-            phase: "Countdown",
             title: State.status_text,
         };
     }
 
     return {
-        detail: State.is_first_to
-            ? (
-                State.is_double_roll
-                    ? `Waiting for an opponent. FT${State.target_wins} starts with two dice per player.`
-                    : `Waiting for an opponent. FT${State.target_wins} starts with the creator roll.`
-            )
-            : "Waiting for an opponent before the die roll begins.",
-        phase: "Open Session",
         title: State.status_text,
     };
 };
@@ -321,18 +393,18 @@ const WaitFor = (DelayMs) =>
 const FirstToPlaybackDelays = {
     betweenPlayersMs: 520,
     betweenRoundsMs: 760,
-    finalRoundMs: 520,
+    finalRoundMs: 1380,
     introMs: 220,
     scoreRevealMs: 260,
-    tieRoundMs: 360,
+    tieRoundMs: 1220,
 };
 const DoublePlaybackDelays = {
     betweenPlayersMs: 560,
     betweenRoundsMs: 760,
     introMs: 220,
-    resultHoldMs: 560,
+    resultHoldMs: 1380,
     scoreRevealMs: 280,
-    tieRoundMs: 460,
+    tieRoundMs: 1220,
 };
 
 const GetFinalFirstToRound = (State) =>
@@ -351,6 +423,28 @@ const SetBalance = (State) =>
     }
 
     BalanceValue.textContent = State.current_balance_display;
+};
+
+const HoldGlobalBalanceDisplay = (Context) =>
+{
+    if (Context.isHoldingBalanceDisplay)
+    {
+        return;
+    }
+
+    window.GamblingApp?.holdGlobalBalanceDisplay?.();
+    Context.isHoldingBalanceDisplay = true;
+};
+
+const ReleaseGlobalBalanceDisplay = (Context) =>
+{
+    if (!Context.isHoldingBalanceDisplay)
+    {
+        return;
+    }
+
+    window.GamblingApp?.releaseGlobalBalanceDisplay?.();
+    Context.isHoldingBalanceDisplay = false;
 };
 
 const RevealSessionReturnLink = (Main, Animate = true) =>
@@ -511,10 +605,21 @@ const InitializeDiceSessionPage = ({ main }) =>
     let HasShownResult = false;
     let HasAppliedResolvedFace = false;
     let IsDisposed = false;
+    let IsHoldingBalanceDisplay = false;
     let IdleViewerSignature = "";
     let PollTimeout = 0;
     let ReadyInterval = 0;
     const ReturnLink = main.querySelector("[data-session-return-link]");
+    const BalanceContext = {
+        get isHoldingBalanceDisplay()
+        {
+            return IsHoldingBalanceDisplay;
+        },
+        set isHoldingBalanceDisplay(Value)
+        {
+            IsHoldingBalanceDisplay = Value;
+        },
+    };
 
     const ResetIdleViewerSignature = () =>
     {
@@ -549,6 +654,7 @@ const InitializeDiceSessionPage = ({ main }) =>
         if (!DiceViewerController || !FinalRound)
         {
             PendingRevealState = null;
+            ReleaseGlobalBalanceDisplay(BalanceContext);
             SetBalance(State);
             ApplyResolvedState(main, State);
             return;
@@ -583,7 +689,6 @@ const InitializeDiceSessionPage = ({ main }) =>
             detail: State.is_double_roll
                 ? `FT${State.target_wins}. ${State.creator.display_name} and ${State.opponent.display_name} roll two dice each round.`
                 : `FT${State.target_wins}. ${State.creator.display_name} opens the match and ${State.opponent.display_name} answers second.`,
-            phase: "Match Start",
             title: `${State.creator.display_name} rolls first.`,
         });
 
@@ -611,7 +716,6 @@ const InitializeDiceSessionPage = ({ main }) =>
             {
                 SetSessionNarrative(main, {
                     detail: `Score ${PreviousScore.creator_score}-${PreviousScore.opponent_score}. ${State.creator.display_name} throws both dice.`,
-                    phase: `Round ${Round.round_number}`,
                     title: `${State.creator.display_name} is rolling.`,
                 });
 
@@ -633,7 +737,6 @@ const InitializeDiceSessionPage = ({ main }) =>
                 });
                 SetSessionNarrative(main, {
                     detail: `${State.creator.display_name} posts ${Round.creator_total}.`,
-                    phase: `Round ${Round.round_number} Creator Total`,
                     title: `${Round.creator_total} total`,
                 });
 
@@ -646,7 +749,6 @@ const InitializeDiceSessionPage = ({ main }) =>
 
                 SetSessionNarrative(main, {
                     detail: `${State.opponent.display_name} needs more than ${Round.creator_total}.`,
-                    phase: `Round ${Round.round_number}`,
                     title: `${State.opponent.display_name} is rolling.`,
                 });
 
@@ -677,7 +779,6 @@ const InitializeDiceSessionPage = ({ main }) =>
                         Round.winner === "tie"
                             ? `Both players landed ${Round.creator_total}. Score stays ${Round.creator_score}-${Round.opponent_score}.`
                             : `Totals ${Round.creator_total}-${Round.opponent_total}. Score ${Round.creator_score}-${Round.opponent_score}.`,
-                    phase: Round.winner === "tie" ? `Round ${Round.round_number} Tied` : `Round ${Round.round_number} Result`,
                     title:
                         Round.winner === "tie"
                             ? "Tie round. Both players reroll."
@@ -688,7 +789,6 @@ const InitializeDiceSessionPage = ({ main }) =>
             {
                 SetSessionNarrative(main, {
                     detail: `Score ${PreviousScore.creator_score}-${PreviousScore.opponent_score}. Creator throw is live.`,
-                    phase: `Round ${Round.round_number}`,
                     title: `${State.creator.display_name} is rolling.`,
                 });
 
@@ -705,7 +805,6 @@ const InitializeDiceSessionPage = ({ main }) =>
 
                 SetSessionNarrative(main, {
                     detail: `${State.opponent.display_name} needs to beat ${Round.creator_face}.`,
-                    phase: `Round ${Round.round_number}`,
                     title: `${State.opponent.display_name} is rolling.`,
                 });
 
@@ -728,7 +827,6 @@ const InitializeDiceSessionPage = ({ main }) =>
 
                 SetSessionNarrative(main, {
                     detail: `Score ${Round.creator_score}-${Round.opponent_score}.`,
-                    phase: Round.winner === "tie" ? `Round ${Round.round_number} Tied` : `Round ${Round.round_number} Result`,
                     title:
                         Round.winner === "tie"
                             ? "Tie round. Both players reroll."
@@ -753,7 +851,6 @@ const InitializeDiceSessionPage = ({ main }) =>
 
                 SetSessionNarrative(main, {
                     detail: `Next up: round ${Round.round_number + 1}.`,
-                    phase: "Score Update",
                     title: `${Round.creator_score}-${Round.opponent_score}`,
                 });
 
@@ -802,6 +899,7 @@ const InitializeDiceSessionPage = ({ main }) =>
 
         SetScoreVisuals(main, State);
         SetDoubleRollResultVisuals(main, State);
+        ReleaseGlobalBalanceDisplay(BalanceContext);
         SetBalance(State);
         ApplyResolvedState(main, State);
         PendingRevealState = null;
@@ -904,6 +1002,7 @@ const InitializeDiceSessionPage = ({ main }) =>
 
                 if (!HasShownResult)
                 {
+                    HoldGlobalBalanceDisplay(BalanceContext);
                     PendingRevealState = LastState;
                     HasShownResult = true;
 
@@ -916,6 +1015,7 @@ const InitializeDiceSessionPage = ({ main }) =>
                             PendingRevealState = null;
                             SetScoreVisuals(main, LastState);
                             SetDoubleRollResultVisuals(main, LastState);
+                            ReleaseGlobalBalanceDisplay(BalanceContext);
                             SetBalance(LastState);
                             ApplyResolvedState(main, LastState);
                         }
@@ -944,6 +1044,7 @@ const InitializeDiceSessionPage = ({ main }) =>
                 }
                 SetScoreVisuals(main, LastState);
                 SetDoubleRollResultVisuals(main, LastState);
+                ReleaseGlobalBalanceDisplay(BalanceContext);
                 SetBalance(LastState);
                 ApplyResolvedState(main, LastState);
                 return;
@@ -982,11 +1083,11 @@ const InitializeDiceSessionPage = ({ main }) =>
 
             if (!HasShownResult)
             {
+                HoldGlobalBalanceDisplay(BalanceContext);
                 PendingRevealState = LastState;
                 HasShownResult = true;
                 SetSessionNarrative(main, {
                     detail: "The final die is rolling now.",
-                    phase: "Result",
                     title: "Rolling...",
                 });
                 DiceViewerController.play(LastState.result_face, {
@@ -1003,6 +1104,7 @@ const InitializeDiceSessionPage = ({ main }) =>
                 DiceViewerController.setFace(LastState.result_face);
                 HasAppliedResolvedFace = true;
             }
+            ReleaseGlobalBalanceDisplay(BalanceContext);
             SetBalance(LastState);
             ApplyResolvedState(main, LastState);
             return;
@@ -1029,6 +1131,7 @@ const InitializeDiceSessionPage = ({ main }) =>
             return;
         }
 
+        ReleaseGlobalBalanceDisplay(BalanceContext);
         SetBalance(PendingRevealState);
         ApplyResolvedState(main, PendingRevealState);
         HasAppliedResolvedFace = true;
@@ -1114,6 +1217,8 @@ const InitializeDiceSessionPage = ({ main }) =>
         {
             window.clearTimeout(PollTimeout);
         }
+
+        ReleaseGlobalBalanceDisplay(BalanceContext);
     };
 };
 
