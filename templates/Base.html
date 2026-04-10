@@ -92,7 +92,7 @@
             class="hidden shrink-0 text-lg font-semibold tracking-[-0.04em] text-white md:block md:text-xl"
             href="{{ url_for('play') }}"
           >
-            Gambling
+            Shuffling
           </a>
           <a
             class="shrink-0 whitespace-nowrap text-sm font-medium transition {% if active_page == 'play' %}text-white{% else %}text-white/45 hover:text-white/80{% endif %}"
@@ -128,6 +128,8 @@
                 <img
                   alt="{{ discord_user.display_name }}"
                   class="h-9 w-9 rounded-full object-cover"
+                  data-fallback-src="{{ discord_user.avatar_static_url or discord_user.avatar_url }}"
+                  onerror="if (this.dataset.fallbackSrc && this.currentSrc !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
                   src="{{ discord_user.avatar_url }}"
                 >
               {% else %}

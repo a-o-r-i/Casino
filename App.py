@@ -51,6 +51,7 @@ DICE_COUNTDOWN_SECONDS = 5
 DICE_FIRST_TO_TARGETS = {1, 3, 5}
 BOT_PROFILE = {
     "avatar_url": None,
+    "avatar_static_url": None,
     "display_name": "House Bot",
     "id": "bot-house",
     "username": "house-bot",
@@ -113,7 +114,12 @@ def relative_time_filter(timestamp):
 
 
 def get_current_user():
-    return session.get("discord_user")
+    current_user = normalize_user_profile(session.get("discord_user"))
+
+    if current_user != session.get("discord_user"):
+        session["discord_user"] = current_user
+
+    return current_user
 
 
 def get_current_user_id():
@@ -141,12 +147,48 @@ def build_static_asset_url(filename):
     )
 
 
+def build_discord_avatar_url(user_id, avatar_hash, extension, size=128):
+    return f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.{extension}?size={size}"
+
+
+def build_avatar_static_url(avatar_url):
+    if not avatar_url:
+        return None
+
+    if ".gif?" in avatar_url:
+        return avatar_url.replace(".gif?", ".png?", 1)
+
+    return avatar_url
+
+
+def normalize_user_profile(user_profile):
+    if not user_profile:
+        return None
+
+    normalized_profile = dict(user_profile)
+    avatar_url = normalized_profile.get("avatar_url")
+    avatar_static_url = normalized_profile.get("avatar_static_url") or build_avatar_static_url(avatar_url)
+
+    if avatar_static_url:
+        normalized_profile["avatar_static_url"] = avatar_static_url
+    else:
+        normalized_profile.setdefault("avatar_static_url", None)
+
+    if not normalized_profile.get("avatar_url") and avatar_static_url:
+        normalized_profile["avatar_url"] = avatar_static_url
+
+    return normalized_profile
+
+
 def make_user_snapshot(user_profile):
+    normalized_user = normalize_user_profile(user_profile)
+
     return {
-        "avatar_url": user_profile.get("avatar_url"),
-        "display_name": user_profile.get("display_name") or user_profile.get("username"),
-        "id": user_profile["id"],
-        "username": user_profile["username"],
+        "avatar_static_url": normalized_user.get("avatar_static_url"),
+        "avatar_url": normalized_user.get("avatar_url"),
+        "display_name": normalized_user.get("display_name") or normalized_user.get("username"),
+        "id": normalized_user["id"],
+        "username": normalized_user["username"],
     }
 
 
@@ -542,15 +584,15 @@ def format_discord_api_error(prefix, error_body, exc):
 def build_discord_user_profile(discord_user):
     avatar_hash = discord_user.get("avatar")
     avatar_url = None
+    avatar_static_url = None
 
     if avatar_hash:
         avatar_extension = "gif" if avatar_hash.startswith("a_") else "png"
-        avatar_url = (
-            f"https://cdn.discordapp.com/avatars/{discord_user['id']}/{avatar_hash}."
-            f"{avatar_extension}?size=128"
-        )
+        avatar_url = build_discord_avatar_url(discord_user["id"], avatar_hash, avatar_extension)
+        avatar_static_url = build_discord_avatar_url(discord_user["id"], avatar_hash, "png")
 
     return {
+        "avatar_static_url": avatar_static_url,
         "avatar_url": avatar_url,
         "display_name": discord_user.get("global_name") or discord_user.get("username"),
         "id": discord_user["id"],
@@ -681,12 +723,13 @@ def sync_all_game_sessions():
 def build_coinflip_session_state(coinflip_session, current_user_id):
     sync_coinflip_session_state(coinflip_session)
 
-    opponent = coinflip_session["opponent"]
-    is_creator = current_user_id == coinflip_session["creator"]["id"]
+    creator = make_user_snapshot(coinflip_session["creator"])
+    opponent = make_user_snapshot(coinflip_session["opponent"]) if coinflip_session["opponent"] else None
+    is_creator = current_user_id == creator["id"]
     countdown_ends_at = None
     current_user_choice = None
 
-    if current_user_id == coinflip_session["creator"]["id"]:
+    if current_user_id == creator["id"]:
         current_user_choice = coinflip_session["creator_choice"]
     elif opponent and current_user_id == opponent["id"]:
         current_user_choice = coinflip_session["opponent_choice"]
@@ -716,7 +759,7 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         "can_call_bot": is_creator and not opponent and not coinflip_session["result_side"],
         "countdown_ends_at": countdown_ends_at,
         "countdown_remaining": countdown_remaining,
-        "creator": coinflip_session["creator"],
+        "creator": creator,
         "creator_choice": coinflip_session["creator_choice"],
         "current_balance_display": format_money(get_user_balance(current_user_id)) if current_user_id else None,
         "current_user_choice": current_user_choice,
@@ -819,8 +862,9 @@ def build_coinflip_lobby_payload(current_user_id):
 def build_dice_session_state(dice_session, current_user_id):
     sync_dice_session_state(dice_session)
 
-    opponent = dice_session["opponent"]
-    is_creator = current_user_id == dice_session["creator"]["id"]
+    creator = make_user_snapshot(dice_session["creator"])
+    opponent = make_user_snapshot(dice_session["opponent"]) if dice_session["opponent"] else None
+    is_creator = current_user_id == creator["id"]
     countdown_ends_at = None
     mode = get_dice_session_mode(dice_session)
     is_first_to = is_first_to_dice_session(dice_session)
@@ -872,7 +916,7 @@ def build_dice_session_state(dice_session, current_user_id):
         "can_call_bot": is_creator and not opponent and not dice_session_is_resolved(dice_session),
         "countdown_ends_at": countdown_ends_at,
         "countdown_remaining": countdown_remaining,
-        "creator": dice_session["creator"],
+        "creator": creator,
         "creator_hint": creator_hint,
         "creator_label": creator_label,
         "creator_score": dice_session.get("creator_score", 0),
@@ -1063,7 +1107,7 @@ def get_dice_session_or_404(session_id):
 
 @app.before_request
 def load_current_user():
-    g.discord_user = session.get("discord_user")
+    g.discord_user = get_current_user()
     g.current_balance_cents = None
 
     if g.discord_user:
@@ -1073,13 +1117,15 @@ def load_current_user():
 
 @app.context_processor
 def inject_auth_state():
+    discord_user = g.get("discord_user") or get_current_user()
+
     return {
         "asset_url": build_static_asset_url,
         "current_balance_cents": g.current_balance_cents,
         "current_balance_display": format_money(g.current_balance_cents) if g.current_balance_cents is not None else None,
         "discord_oauth_ready": is_discord_oauth_ready(),
-        "discord_user": session.get("discord_user"),
-        "is_authenticated": "discord_user" in session,
+        "discord_user": discord_user,
+        "is_authenticated": discord_user is not None,
     }
 
 

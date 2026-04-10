@@ -54,6 +54,8 @@ const SetOpponentVisuals = (Main, State) =>
 
         if (State.opponent.avatar_url)
         {
+            OpponentAvatar.dataset.fallbackSrc =
+                State.opponent.avatar_static_url || State.opponent.avatar_url;
             OpponentAvatar.src = State.opponent.avatar_url;
             OpponentAvatar.classList.remove("hidden");
             OpponentFallback.classList.remove("flex");
@@ -61,6 +63,7 @@ const SetOpponentVisuals = (Main, State) =>
         }
         else
         {
+            delete OpponentAvatar.dataset.fallbackSrc;
             OpponentFallback.textContent = State.opponent.display_name.charAt(0).toUpperCase();
             OpponentFallback.classList.add("flex");
             OpponentFallback.classList.remove("hidden");
@@ -69,6 +72,7 @@ const SetOpponentVisuals = (Main, State) =>
     }
     else
     {
+        delete OpponentAvatar.dataset.fallbackSrc;
         OpponentName.textContent = "Waiting for player...";
         OpponentSubtitle.textContent = "Open slot";
         OpponentFallback.textContent = "?";

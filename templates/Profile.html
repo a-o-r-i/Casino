@@ -11,6 +11,8 @@
           <img
             alt="{{ discord_user.display_name }}"
             class="h-16 w-16 rounded-2xl border border-white/10 object-cover"
+            data-fallback-src="{{ discord_user.avatar_static_url or discord_user.avatar_url }}"
+            onerror="if (this.dataset.fallbackSrc && this.currentSrc !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
             src="{{ discord_user.avatar_url }}"
           >
         {% else %}

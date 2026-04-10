@@ -31,6 +31,8 @@
             <img
               alt="{{ session_state.creator.display_name }}"
               class="h-28 w-28 rounded-full border border-white/10 object-cover"
+              data-fallback-src="{{ session_state.creator.avatar_static_url or session_state.creator.avatar_url }}"
+              onerror="if (this.dataset.fallbackSrc && this.currentSrc !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
               src="{{ session_state.creator.avatar_url }}"
             >
           {% else %}
@@ -74,6 +76,8 @@
             alt=""
             class="{% if session_state.opponent and session_state.opponent.avatar_url %}flex{% else %}hidden{% endif %} h-28 w-28 rounded-full border border-white/10 object-cover"
             data-opponent-avatar
+            data-fallback-src="{% if session_state.opponent and session_state.opponent.avatar_url %}{{ session_state.opponent.avatar_static_url or session_state.opponent.avatar_url }}{% endif %}"
+            onerror="if (this.dataset.fallbackSrc && this.currentSrc !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
             src="{% if session_state.opponent and session_state.opponent.avatar_url %}{{ session_state.opponent.avatar_url }}{% endif %}"
           >
           <div
