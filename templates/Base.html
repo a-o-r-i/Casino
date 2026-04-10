@@ -556,6 +556,12 @@
       {
         position: relative;
         max-width: min(260px, 100%);
+        transition: transform 220ms ease;
+      }
+
+      [data-chat-message][data-focused="true"]
+      {
+        transform: translateY(-1px);
       }
 
       [data-chat-reply-trigger]
@@ -685,12 +691,33 @@
 
       [data-chat-reply-context]
       {
+        display: block;
         margin-bottom: 0.55rem;
         padding: 0.48rem 0.58rem;
         border: 1px solid rgba(255, 255, 255, 0.07);
         border-left: 2px solid rgba(96, 165, 250, 0.44);
         border-radius: 7px;
         background: rgba(255, 255, 255, 0.03);
+        white-space: normal;
+        transition: border-color 180ms ease, background-color 180ms ease, box-shadow 220ms ease;
+      }
+
+      [data-chat-message][data-replying-to-current-user="true"] [data-chat-reply-context]
+      {
+        border-left-color: rgba(52, 211, 153, 0.72);
+        background: rgba(52, 211, 153, 0.08);
+      }
+
+      [data-chat-message][data-focused="true"] [data-chat-bubble]
+      {
+        border-color: rgba(96, 165, 250, 0.36);
+        box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.14), 0 18px 28px rgba(8, 12, 22, 0.18);
+      }
+
+      [data-chat-message][data-focused="true"] [data-chat-reply-context]
+      {
+        border-left-color: rgba(96, 165, 250, 0.82);
+        background: rgba(96, 165, 250, 0.1);
       }
 
       [data-chat-reply-context-author]
@@ -706,6 +733,7 @@
         color: rgba(255, 255, 255, 0.5);
         font-size: 0.74rem;
         line-height: 1.45;
+        word-break: break-word;
       }
 
       [data-chat-mention]

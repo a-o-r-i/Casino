@@ -585,7 +585,11 @@
 
         if (Action.type === "open_chat")
         {
-            window.dispatchEvent(new CustomEvent("site-chat:open"));
+            window.dispatchEvent(new CustomEvent("site-chat:open", {
+                detail: {
+                    targetMessageId: Number.parseInt(Action.target_message_id, 10) || 0,
+                },
+            }));
 
             if (ToastElement)
             {

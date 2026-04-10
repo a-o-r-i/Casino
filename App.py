@@ -1035,6 +1035,15 @@ def build_chat_mention_notification_message(author_name, message_body):
     return f"{author_name} mentioned you: {message_preview}"
 
 
+def build_chat_reply_notification_message(author_name, chat_message):
+    message_preview = str(chat_message.get("body") or "").strip()
+
+    if len(message_preview) > 110:
+        message_preview = f"{message_preview[:107].rstrip()}..."
+
+    return f"{author_name} replied to your message: {message_preview}"
+
+
 def add_chat_mention_notifications(author_user, chat_message):
     mentions = chat_message.get("mentions") or []
 
@@ -1051,13 +1060,40 @@ def add_chat_mention_notifications(author_user, chat_message):
             continue
 
         add_app_notification(
-            action={"type": "open_chat"},
+            action={
+                "target_message_id": chat_message["id"],
+                "type": "open_chat",
+            },
             actor_user=author_user,
             event_type="chat_mention",
             message=build_chat_mention_notification_message(author_name, chat_message.get("body")),
             recipient_user_id=recipient_id,
             title="You were mentioned",
         )
+
+
+def add_chat_reply_notifications(author_user, chat_message):
+    reply_target = chat_message.get("reply_to") or {}
+    reply_author = reply_target.get("author") or {}
+    recipient_id = reply_author.get("id")
+    author_user_id = author_user.get("id")
+
+    if not recipient_id or recipient_id in {BOT_PROFILE["id"], author_user_id}:
+        return
+
+    author_name = author_user.get("display_name") or author_user.get("username") or "Someone"
+
+    add_app_notification(
+        action={
+            "target_message_id": chat_message["id"],
+            "type": "open_chat",
+        },
+        actor_user=author_user,
+        event_type="chat_reply",
+        message=build_chat_reply_notification_message(author_name, chat_message),
+        recipient_user_id=recipient_id,
+        title="New reply",
+    )
 
 
 def user_presence_is_online(presence):
@@ -1234,7 +1270,7 @@ def serialize_chat_message(chat_message, current_user_id):
         "is_current_user_mentioned": any(
             mention.get("id") == current_user_id
             for mention in mention_records
-        ),
+        ) or (chat_message.get("reply_to") or {}).get("author", {}).get("id") == current_user_id,
         "is_self": chat_message["author_id"] == current_user_id,
         "mention_tokens": mention_tokens,
         "reply_to": chat_message.get("reply_to"),
@@ -1321,6 +1357,7 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
         del CHAT_MESSAGES[:-MAX_CHAT_MESSAGES]
 
     add_chat_mention_notifications(author_snapshot, message)
+    add_chat_reply_notifications(author_snapshot, message)
 
     return message
 

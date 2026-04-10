@@ -10,6 +10,7 @@
     const HiddenPollMultiplier = 2.4;
     const ChatDragStorageKey = "gambling.chat.drag-position";
     const ChatDragViewportMargin = 16;
+    const FocusedMessageHighlightMs = 2600;
     const LocalTypingWindowMs = 3200;
     const PresenceHeartbeatIntervalMs = 4000;
     const ProfileCacheTtlMs = 1500;
@@ -83,11 +84,13 @@
     let LastStatePayload = null;
     let LastTypingInputAt = 0;
     let LatestMessageId = 0;
+    let PendingFocusMessageId = 0;
     let PresenceHeartbeatInterval = 0;
     let PollTimeout = 0;
     let RelativeTimeInterval = 0;
     let RenderedProfileUserId = "";
     let SentOfflinePresence = false;
+    let FocusedMessageElement = null;
     let TypingResetTimeout = 0;
     let IsSendingTip = false;
     let ChatDragPosition = {
@@ -487,6 +490,53 @@
         return CurrentMessages.find((Message) => Message.id === MessageId) || null;
     };
 
+    const FindMessageElementById = (MessageId) =>
+    {
+        return ChatMessages?.querySelector(`[data-chat-message][data-message-id="${CSS.escape(String(MessageId))}"]`) || null;
+    };
+
+    const ClearFocusedMessageHighlight = () =>
+    {
+        if (!FocusedMessageElement)
+        {
+            return;
+        }
+
+        window.clearTimeout(FocusedMessageElement.__chatFocusTimeout || 0);
+        FocusedMessageElement.dataset.focused = "false";
+        FocusedMessageElement = null;
+    };
+
+    const FocusChatMessage = (MessageId) =>
+    {
+        const MessageElement = FindMessageElementById(MessageId);
+
+        if (!MessageElement)
+        {
+            return false;
+        }
+
+        ClearFocusedMessageHighlight();
+        MessageElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+        });
+        MessageElement.dataset.focused = "true";
+        FocusedMessageElement = MessageElement;
+        MessageElement.__chatFocusTimeout = window.setTimeout(() =>
+        {
+            if (FocusedMessageElement !== MessageElement)
+            {
+                return;
+            }
+
+            MessageElement.dataset.focused = "false";
+            FocusedMessageElement = null;
+        }, FocusedMessageHighlightMs);
+        PendingFocusMessageId = 0;
+        return true;
+    };
+
     const StartChatDrag = (EventValue) =>
     {
         if (
@@ -631,12 +681,7 @@
             return "";
         }
 
-        return `
-            <div data-chat-reply-context>
-              <div data-chat-reply-context-author>${EscapeHtml(Reply.author.display_name || "Unknown")}</div>
-              <div data-chat-reply-context-preview>${EscapeHtml(BuildReplyPreviewText(Reply))}</div>
-            </div>
-        `;
+        return `<div data-chat-reply-context><div data-chat-reply-context-author>${EscapeHtml(Reply.author.display_name || "Unknown")}</div><div data-chat-reply-context-preview>${EscapeHtml(BuildReplyPreviewText(Reply))}</div></div>`;
     };
 
     const BuildSessionShareMarkup = (Share) =>
@@ -720,6 +765,8 @@
             PreviousMessage.author?.id &&
             PreviousMessage.author.id === Message.author?.id,
         );
+        const IsReplyToCurrentUser = Message.reply_to?.author?.id === CurrentUserId;
+        const BubbleContentMarkup = `${BuildReplyContextMarkup(Message.reply_to)}${BuildHighlightedBodyMarkup(Message)}`;
         const AuthorMarkup = IsGrouped
             ? ""
             : `
@@ -738,8 +785,10 @@
             <div data-chat-row data-grouped="${IsGrouped ? "true" : "false"}" data-self="${Message.is_self ? "true" : "false"}">
               <article
                 data-chat-message
+                data-focused="false"
                 data-message-id="${EscapeHtml(Message.id)}"
                 data-mentioned="${Message.is_current_user_mentioned ? "true" : "false"}"
+                data-replying-to-current-user="${IsReplyToCurrentUser ? "true" : "false"}"
                 data-user-id="${EscapeHtml(Message.author.id)}"
               >
                 <button
@@ -755,10 +804,7 @@
                   </svg>
                 </button>
                 ${AuthorMarkup}
-                <div data-chat-bubble>
-                  ${BuildReplyContextMarkup(Message.reply_to)}
-                  ${BuildHighlightedBodyMarkup(Message)}
-                </div>
+                <div data-chat-bubble>${BubbleContentMarkup}</div>
                 ${RenderSessionShareMarkup(Message.session_share)}
               </article>
             </div>
@@ -797,7 +843,15 @@
             HideProfileCard();
         }
 
-        if (ShouldStickToBottom)
+        if (PendingFocusMessageId)
+        {
+            window.requestAnimationFrame(() =>
+            {
+                FocusChatMessage(PendingFocusMessageId);
+            });
+        }
+
+        if (ShouldStickToBottom && !PendingFocusMessageId)
         {
             requestAnimationFrame(ScrollToBottom);
         }
@@ -2083,6 +2137,12 @@
 
         const UserId = Trigger.dataset.userId || "";
 
+        if (UserId === CurrentUserId)
+        {
+            HideProfileCard();
+            return;
+        }
+
         if (!UserId || (HoveredUserId === UserId && HoverAnchor === Trigger))
         {
             return;
@@ -2187,11 +2247,35 @@
         StartPresenceHeartbeat();
         SchedulePoll(120);
     });
-    window.addEventListener("site-chat:open", () =>
+    window.addEventListener("site-chat:open", (EventValue) =>
     {
+        const TargetMessageId = Number.parseInt(EventValue?.detail?.targetMessageId || "0", 10);
+
+        if (TargetMessageId > 0)
+        {
+            PendingFocusMessageId = TargetMessageId;
+        }
+
         SetChatOpen(true, {
             FocusComposer: false,
         });
+
+        if (PendingFocusMessageId && !FocusChatMessage(PendingFocusMessageId))
+        {
+            FetchChatState().then((Payload) =>
+            {
+                if (!Payload)
+                {
+                    return;
+                }
+
+                ApplyChatState(Payload);
+            }).catch((ErrorValue) =>
+            {
+                console.error(ErrorValue);
+            });
+        }
+
         SchedulePoll(120);
     });
 

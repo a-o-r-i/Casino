@@ -225,6 +225,7 @@ const FetchLeaderboardState = async (StateUrl, Version) =>
 const InitializeLeaderboardPage = ({ main }) =>
 {
     const App = window.GamblingApp || {};
+    const CurrentUserId = document.body.dataset.chatCurrentUserId || "";
     const ExistingRuntime = App[LeaderboardRuntimeKey];
 
     if (ExistingRuntime?.dispose)
@@ -490,6 +491,12 @@ const InitializeLeaderboardPage = ({ main }) =>
         }
 
         const UserId = Trigger.dataset.leaderboardUserId || "";
+
+        if (UserId === CurrentUserId)
+        {
+            HideProfileCard();
+            return;
+        }
 
         if (!UserId || (HoveredUserId === UserId && HoverAnchor === Trigger))
         {
