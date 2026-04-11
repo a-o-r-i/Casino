@@ -52,6 +52,17 @@ STARTING_BALANCE_CENTS = 50000
 COINFLIP_COUNTDOWN_SECONDS = 5
 DICE_COUNTDOWN_SECONDS = 5
 DICE_FIRST_TO_TARGETS = {1, 3, 5}
+COINFLIP_CHAT_REVEAL_SECONDS = 3.35
+DICE_CHAT_BETWEEN_ROUNDS_SECONDS = 0.76
+DICE_CHAT_DOUBLE_BETWEEN_PLAYERS_SECONDS = 0.56
+DICE_CHAT_DOUBLE_SCORE_REVEAL_SECONDS = 0.28
+DICE_CHAT_INTRO_SECONDS = 0.22
+DICE_CHAT_MAX_ROLL_SECONDS = 4.88
+DICE_CHAT_RESULT_HOLD_SECONDS = 1.38
+DICE_CHAT_SINGLE_BETWEEN_PLAYERS_SECONDS = 0.52
+DICE_CHAT_SINGLE_SCORE_REVEAL_SECONDS = 0.26
+DICE_CHAT_TIE_HOLD_SECONDS = 1.22
+DICE_CHAT_TOP_RESET_SECONDS = 0.28
 BOT_PROFILE = {
     "avatar_url": None,
     "avatar_static_url": None,
@@ -1163,6 +1174,62 @@ def mark_user_presence_offline(user_id):
     return presence
 
 
+def normalize_presence_path(path_value):
+    if not isinstance(path_value, str) or not path_value.startswith("/"):
+        return ""
+
+    return urlparse(path_value).path or path_value
+
+
+def build_session_viewers(session_path, current_user_id=None, creator_user_id=None, opponent_user_id=None):
+    normalized_session_path = normalize_presence_path(session_path)
+
+    if not normalized_session_path:
+        return []
+
+    role_priority = {
+        "creator": 0,
+        "opponent": 1,
+        "viewer": 2,
+    }
+    viewers = []
+
+    for user_id, presence in USER_PRESENCE.items():
+        if user_id in {BOT_PROFILE["id"], current_user_id} or not user_presence_is_online(presence):
+            continue
+
+        if normalize_presence_path(presence.get("current_path")) != normalized_session_path:
+            continue
+
+        user_profile = USER_PROFILES.get(user_id)
+
+        if not user_profile:
+            continue
+
+        role = "viewer"
+
+        if user_id == creator_user_id:
+            role = "creator"
+        elif user_id == opponent_user_id:
+            role = "opponent"
+
+        viewer_snapshot = make_user_snapshot(user_profile)
+        viewer_snapshot["role"] = role
+        viewer_snapshot["role_label"] = {
+            "creator": "Creator",
+            "opponent": "Opponent",
+            "viewer": "Viewer",
+        }[role]
+        viewers.append(viewer_snapshot)
+
+    viewers.sort(key=lambda viewer: (
+        role_priority.get(viewer["role"], 9),
+        str(viewer.get("display_name") or "").lower(),
+        str(viewer.get("username") or "").lower(),
+    ))
+    return viewers
+
+
 def request_should_touch_presence():
     if request.endpoint in {"presence_heartbeat", "presence_offline"}:
         return False
@@ -2195,10 +2262,19 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         if current_user_id in participant_ids:
             did_win = coinflip_session["winner_id"] == current_user_id
 
+    session_path = f"/games/coinflip/sessions/{coinflip_session['id']}"
+    viewers = build_session_viewers(
+        session_path,
+        current_user_id=current_user_id,
+        creator_user_id=creator["id"],
+        opponent_user_id=opponent["id"] if opponent else None,
+    )
+
     return {
         "bet_cents": coinflip_session["bet_cents"],
         "bet_display": format_money(coinflip_session["bet_cents"]),
         "can_call_bot": is_creator and not opponent and not coinflip_session["result_side"],
+        "can_join": status == "open" and not is_participant,
         "countdown_ends_at": countdown_ends_at,
         "countdown_remaining": countdown_remaining,
         "creator": creator,
@@ -2209,6 +2285,11 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         "id": coinflip_session["id"],
         "is_creator": is_creator,
         "is_participant": is_participant,
+        "join_url": (
+            url_for("join_coinflip_session", session_id=coinflip_session["id"])
+            if status == "open" and not is_participant and has_request_context()
+            else None
+        ),
         "opponent": opponent,
         "opponent_choice": coinflip_session["opponent_choice"],
         "pot_cents": coinflip_session["bet_cents"] * 2,
@@ -2222,6 +2303,8 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         "result_side": coinflip_session["result_side"],
         "status": status,
         "status_text": status_text,
+        "viewer_count": len(viewers),
+        "viewers": viewers,
         "winner_id": coinflip_session["winner_id"],
         "winner_name": coinflip_session["winner_name"],
     }
@@ -2363,10 +2446,19 @@ def build_dice_session_state(dice_session, current_user_id):
     if dice_session["winner_id"]:
         did_win = dice_session["winner_id"] == current_user_id
 
+    session_path = f"/games/dice/sessions/{dice_session['id']}"
+    viewers = build_session_viewers(
+        session_path,
+        current_user_id=current_user_id,
+        creator_user_id=creator["id"],
+        opponent_user_id=opponent["id"] if opponent else None,
+    )
+
     return {
         "bet_cents": dice_session["bet_cents"],
         "bet_display": format_money(dice_session["bet_cents"]),
         "can_call_bot": is_creator and not opponent and not dice_session_is_resolved(dice_session),
+        "can_join": status == "open" and not is_participant,
         "countdown_ends_at": countdown_ends_at,
         "countdown_remaining": countdown_remaining,
         "creator": creator,
@@ -2380,6 +2472,11 @@ def build_dice_session_state(dice_session, current_user_id):
         "is_double_roll": is_double_roll,
         "is_first_to": is_first_to,
         "is_participant": is_participant,
+        "join_url": (
+            url_for("join_dice_session", session_id=dice_session["id"])
+            if status == "open" and not is_participant and has_request_context()
+            else None
+        ),
         "mode": mode,
         "mode_label": get_dice_mode_label(dice_session),
         "opponent": opponent,
@@ -2399,6 +2496,8 @@ def build_dice_session_state(dice_session, current_user_id):
         "status": status,
         "status_text": status_text,
         "target_wins": target_wins,
+        "viewer_count": len(viewers),
+        "viewers": viewers,
         "winner_id": dice_session["winner_id"],
         "winner_name": dice_session["winner_name"],
     }
@@ -2505,6 +2604,79 @@ def build_dice_lobby_payload(current_user_id):
     }
 
 
+def build_coinflip_chat_share_status(session_state, coinflip_session):
+    status = session_state["status"]
+    status_text = session_state["status_text"]
+    resolved_at = coinflip_session.get("resolved_at")
+
+    if (
+        status == "resolved"
+        and coinflip_session.get("opponent")
+        and resolved_at
+        and time.time() < resolved_at + COINFLIP_CHAT_REVEAL_SECONDS
+    ):
+        return "countdown", "Flipping..."
+
+    return status, status_text
+
+
+def get_dice_chat_reveal_seconds(session_state):
+    if not session_state.get("is_first_to"):
+        return DICE_CHAT_MAX_ROLL_SECONDS
+
+    rounds = session_state.get("rounds") or []
+
+    if not rounds:
+        return DICE_CHAT_MAX_ROLL_SECONDS
+
+    total_seconds = DICE_CHAT_INTRO_SECONDS
+    is_double_roll = bool(session_state.get("is_double_roll"))
+
+    for round_index, round_data in enumerate(rounds):
+        is_last_round = round_index >= len(rounds) - 1
+        round_hold_seconds = (
+            DICE_CHAT_TIE_HOLD_SECONDS
+            if round_data.get("winner") == "tie"
+            else DICE_CHAT_RESULT_HOLD_SECONDS
+        )
+
+        if is_double_roll:
+            total_seconds += DICE_CHAT_MAX_ROLL_SECONDS
+            total_seconds += DICE_CHAT_DOUBLE_SCORE_REVEAL_SECONDS
+            total_seconds += DICE_CHAT_DOUBLE_BETWEEN_PLAYERS_SECONDS
+            total_seconds += DICE_CHAT_MAX_ROLL_SECONDS
+            total_seconds += DICE_CHAT_DOUBLE_SCORE_REVEAL_SECONDS
+        else:
+            total_seconds += DICE_CHAT_MAX_ROLL_SECONDS
+            total_seconds += DICE_CHAT_SINGLE_BETWEEN_PLAYERS_SECONDS
+            total_seconds += DICE_CHAT_MAX_ROLL_SECONDS
+            total_seconds += DICE_CHAT_SINGLE_SCORE_REVEAL_SECONDS
+
+        total_seconds += round_hold_seconds
+
+        if not is_last_round:
+            total_seconds += DICE_CHAT_TOP_RESET_SECONDS
+            total_seconds += DICE_CHAT_BETWEEN_ROUNDS_SECONDS
+
+    return total_seconds
+
+
+def build_dice_chat_share_status(session_state, dice_session):
+    status = session_state["status"]
+    status_text = session_state["status_text"]
+    resolved_at = dice_session.get("resolved_at")
+
+    if (
+        status == "resolved"
+        and dice_session.get("opponent")
+        and resolved_at
+        and time.time() < resolved_at + get_dice_chat_reveal_seconds(session_state)
+    ):
+        return "countdown", "Rolling..."
+
+    return status, status_text
+
+
 def build_chat_session_share_payload(game, session_id, current_user_id):
     if game == "coinflip":
         coinflip_session = COINFLIP_SESSIONS.get(session_id)
@@ -2514,6 +2686,7 @@ def build_chat_session_share_payload(game, session_id, current_user_id):
 
         session_state = build_coinflip_session_state(coinflip_session, current_user_id)
         creator = session_state["creator"]
+        status, status_text = build_coinflip_chat_share_status(session_state, coinflip_session)
 
         return {
             "bet_display": session_state["bet_display"],
@@ -2527,8 +2700,8 @@ def build_chat_session_share_payload(game, session_id, current_user_id):
             "label": session_state["creator_choice"],
             "pot_display": session_state["pot_display"],
             "session_id": session_state["id"],
-            "status": session_state["status"],
-            "status_text": session_state["status_text"],
+            "status": status,
+            "status_text": status_text,
             "title": f"{creator['display_name']}'s coinflip",
             "view_url": url_for("coinflip_session", session_id=session_state["id"]) if has_request_context() else None,
         }
@@ -2541,6 +2714,7 @@ def build_chat_session_share_payload(game, session_id, current_user_id):
 
         session_state = build_dice_session_state(dice_session, current_user_id)
         creator = session_state["creator"]
+        status, status_text = build_dice_chat_share_status(session_state, dice_session)
 
         return {
             "bet_display": session_state["bet_display"],
@@ -2558,8 +2732,8 @@ def build_chat_session_share_payload(game, session_id, current_user_id):
             ),
             "pot_display": session_state["pot_display"],
             "session_id": session_state["id"],
-            "status": session_state["status"],
-            "status_text": session_state["status_text"],
+            "status": status,
+            "status_text": status_text,
             "title": f"{creator['display_name']}'s dice session",
             "view_url": url_for("dice_session", session_id=session_state["id"]) if has_request_context() else None,
         }

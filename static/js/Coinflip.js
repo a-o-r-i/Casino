@@ -177,6 +177,8 @@ const SpringSettle = (Amplitude, Progress) =>
     return Amplitude * Math.pow(1 - Progress, 2.6) * Math.cos(Progress * Math.PI * 2.7);
 };
 
+const CoinRevealLeadMs = 1000;
+
 const ResultGlowColors = {
     loss: {
         light: 0xff4f5f,
@@ -390,6 +392,32 @@ const MountCoinViewer = (Container) =>
         IdleFloatStartedAt = performance.now();
     };
 
+    const StopFlipAudio = () =>
+    {
+        window.GamblingApp?.stopSound?.("coinflip-spin");
+        window.GamblingApp?.stopSound?.("coinflip-full");
+    };
+
+    const StartFlipAudio = (TargetDurationMs) =>
+    {
+        StopFlipAudio();
+
+        if (!window.GamblingApp?.playSound)
+        {
+            return;
+        }
+
+        const SoundKey = window.GamblingApp?.hasSound?.("coinflip-spin")
+            ? "coinflip-spin"
+            : "coinflip-full";
+
+        window.GamblingApp.playSound(SoundKey, {
+            restart: false,
+            targetDurationMs: TargetDurationMs,
+            volume: 0.7,
+        });
+    };
+
     const StartFlip = (ForcedSide) =>
     {
         if (ActiveFlip)
@@ -426,6 +454,7 @@ const MountCoinViewer = (Container) =>
             TargetZ,
             OvershootX,
             LandedSide,
+            RevealSoundPlayed: false,
         };
 
         ActiveGlow = null;
@@ -437,6 +466,10 @@ const MountCoinViewer = (Container) =>
             FlipButton.disabled = true;
         }
         SetResultText("Flipping...");
+        StartFlipAudio(
+            ActiveFlip.Duration + Math.max(ActiveFlip.SettleDuration - CoinRevealLeadMs, 0),
+        );
+
         Container.dispatchEvent(
             new CustomEvent("coinflip:started", {
                 detail: {
@@ -524,6 +557,18 @@ const MountCoinViewer = (Container) =>
                 CoinGroup.rotation.z = ActiveFlip.TargetZ;
                 CoinGroup.position.y = SettleLift;
 
+                if (
+                    !ActiveFlip.RevealSoundPlayed &&
+                    SettleElapsed >= Math.max(ActiveFlip.SettleDuration - CoinRevealLeadMs, 0)
+                )
+                {
+                    ActiveFlip.RevealSoundPlayed = true;
+                    StopFlipAudio();
+                    window.GamblingApp?.playSound?.("coinflip-reveal", {
+                        restart: true,
+                    });
+                }
+
                 if (SettleProgress >= 1)
                 {
                     const FinishedSide = ActiveFlip.LandedSide;
@@ -543,6 +588,13 @@ const MountCoinViewer = (Container) =>
                         FlipButton.disabled = false;
                     }
                     SetResultText(FinishedSide);
+                    if (!ActiveFlip.RevealSoundPlayed)
+                    {
+                        StopFlipAudio();
+                        window.GamblingApp?.playSound?.("coinflip-reveal", {
+                            restart: true,
+                        });
+                    }
                     IdleFloatStartedAt = performance.now();
                     ActiveFlip = null;
                     ResolveFinished?.(FinishedSide);
@@ -616,6 +668,8 @@ const MountCoinViewer = (Container) =>
         Container.removeEventListener("coinflip:play", HandleExternalFlip);
         Container.removeEventListener("coinflip:set-side", HandleExternalSetSide);
         delete Container.CoinflipController;
+        StopFlipAudio();
+        window.GamblingApp?.stopSound?.("coinflip-reveal");
         Renderer.dispose();
         CoinEdgeGeometry.dispose();
         EdgeMaterial.dispose();

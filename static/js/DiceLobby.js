@@ -217,6 +217,42 @@ const UpdateLobbyCountdowns = (Main, State) =>
     });
 };
 
+const GetCountdownSoundSignature = (DiceSession) =>
+{
+    if (
+        !DiceSession ||
+        DiceSession.status !== "countdown" ||
+        !Number.isFinite(Number(DiceSession.countdown_ends_at))
+    )
+    {
+        return "";
+    }
+
+    return `${DiceSession.id || ""}:${Number(DiceSession.countdown_ends_at)}`;
+};
+
+const CollectCountdownSoundSignatures = (State) =>
+{
+    const Signatures = new Set();
+
+    if (!State?.sessions?.length)
+    {
+        return Signatures;
+    }
+
+    State.sessions.forEach((DiceSession) =>
+    {
+        const Signature = GetCountdownSoundSignature(DiceSession);
+
+        if (Signature)
+        {
+            Signatures.add(Signature);
+        }
+    });
+
+    return Signatures;
+};
+
 const UpdateCreateBalanceLabel = (BalanceDisplay) =>
 {
     if (typeof BalanceDisplay !== "string")
@@ -331,6 +367,7 @@ const InitializeDiceLobbyPage = ({ main }) =>
     let PollTimeout = 0;
     let CountdownInterval = 0;
     let LastState = InitialState;
+    let PlayedCountdownSoundSignatures = CollectCountdownSoundSignatures(InitialState);
     let MaxAmount = Math.max(Number.parseInt(CreateForm?.dataset.balanceCents || "0", 10) / 100, 0);
 
     const HandleSubmitNavigation = async (Form, Controller) =>
@@ -368,6 +405,26 @@ const InitializeDiceLobbyPage = ({ main }) =>
         RenderLobbyState(main, LastState);
         ApplyBalanceState(LastState);
     }
+
+    const MaybePlayCountdownSound = (State) =>
+    {
+        const NextSignatures = CollectCountdownSoundSignatures(State);
+        const ShouldPlay = Array.from(NextSignatures).some((Signature) =>
+        {
+            return !PlayedCountdownSoundSignatures.has(Signature);
+        });
+
+        PlayedCountdownSoundSignatures = NextSignatures;
+
+        if (!ShouldPlay)
+        {
+            return;
+        }
+
+        window.GamblingApp?.playSound?.("countdown", {
+            restart: true,
+        });
+    };
 
     const SyncModeSections = () =>
     {
@@ -596,6 +653,7 @@ const InitializeDiceLobbyPage = ({ main }) =>
 
         if (Result.changed && Result.payload)
         {
+            MaybePlayCountdownSound(Result.payload);
             LastState = Result.payload;
             RenderLobbyState(main, LastState, true);
             ApplyBalanceState(LastState);

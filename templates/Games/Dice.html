@@ -5,7 +5,18 @@
 
 {% block content %}
   <section class="mx-auto w-full max-w-[900px] px-4 py-8 md:px-6">
-    <h1 class="mb-8 text-4xl font-semibold tracking-[-0.05em] text-white">Sessions</h1>
+    <div class="mb-8 flex items-center gap-4">
+      <a
+        class="inline-flex items-center gap-1.5 text-sm font-medium text-white/38 transition hover:text-white"
+        href="{{ url_for('play') }}"
+      >
+        <svg viewBox="0 0 20 20" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+          <path d="m11.5 5.5-4.5 4.5 4.5 4.5"></path>
+        </svg>
+        <span>Home</span>
+      </a>
+      <h1 class="text-4xl font-semibold tracking-[-0.05em] text-white">Sessions</h1>
+    </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}

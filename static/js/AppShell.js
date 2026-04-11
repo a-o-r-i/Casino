@@ -4,15 +4,26 @@
     const PageInitializers = ExistingApp.PageInitializers instanceof Map ? ExistingApp.PageInitializers : new Map();
     const ScriptPromises = ExistingApp.ScriptPromises instanceof Map ? ExistingApp.ScriptPromises : new Map();
     const ModalControllers = ExistingApp.ModalControllers instanceof WeakMap ? ExistingApp.ModalControllers : new WeakMap();
+    const SoundCatalog = ExistingApp.SoundCatalog instanceof Map ? ExistingApp.SoundCatalog : new Map();
+    const SoundLastStartedAt = ExistingApp.SoundLastStartedAt instanceof Map ? ExistingApp.SoundLastStartedAt : new Map();
+    const SoundPlayers = ExistingApp.SoundPlayers instanceof Map ? ExistingApp.SoundPlayers : new Map();
+    const ActiveSoundClones = ExistingApp.ActiveSoundClones instanceof Map ? ExistingApp.ActiveSoundClones : new Map();
+    const MasterSoundVolumeStorageKey = "gambling.soundVolume";
+    const CountdownAutoplayStorageKey = "gambling.countdownAutoplayOnLoad";
     const PendingToastStorageKey = "gambling.pendingToast";
     const NotificationHiddenPollMultiplier = 2.4;
     let ActivePageCleanup = null;
     let DeferredBalanceDisplay = "";
     let GlobalBalanceHoldCount = 0;
     let IsNavigating = false;
+    let MasterSoundVolume = Number.isFinite(Number(ExistingApp.MasterSoundVolume))
+        ? Math.min(Math.max(Number(ExistingApp.MasterSoundVolume), 0), 1)
+        : 0;
+    let IsSoundUnlocked = ExistingApp.IsSoundUnlocked === true;
     let LastNotificationPayload = null;
     let NotificationCursor = null;
     let NotificationPollTimeout = 0;
+    let SoundUnlockListenersAttached = false;
 
     const GetAppHeader = () =>
     {
@@ -305,6 +316,547 @@
         const NextValue = DeferredBalanceDisplay;
         DeferredBalanceDisplay = "";
         ApplyGlobalBalanceDisplay(NextValue);
+    };
+
+    const HandleSoundUnlock = () =>
+    {
+        IsSoundUnlocked = true;
+        if (window.GamblingApp)
+        {
+            window.GamblingApp.IsSoundUnlocked = true;
+        }
+
+        if (!SoundUnlockListenersAttached)
+        {
+            return;
+        }
+
+        window.removeEventListener("pointerdown", HandleSoundUnlock);
+        window.removeEventListener("keydown", HandleSoundUnlock);
+        window.removeEventListener("touchstart", HandleSoundUnlock);
+        SoundUnlockListenersAttached = false;
+    };
+
+    const EnsureSoundUnlockListeners = () =>
+    {
+        if (IsSoundUnlocked || SoundUnlockListenersAttached)
+        {
+            return;
+        }
+
+        window.addEventListener("pointerdown", HandleSoundUnlock, {
+            passive: true,
+        });
+        window.addEventListener("keydown", HandleSoundUnlock);
+        window.addEventListener("touchstart", HandleSoundUnlock, {
+            passive: true,
+        });
+        SoundUnlockListenersAttached = true;
+    };
+
+    const NormalizeSoundVolume = (Value) =>
+    {
+        const VolumeValue = Number(Value);
+
+        if (!Number.isFinite(VolumeValue))
+        {
+            return 1;
+        }
+
+        return Math.min(Math.max(VolumeValue, 0), 1);
+    };
+
+    const NormalizePlaybackRate = (Value) =>
+    {
+        const PlaybackRateValue = Number(Value);
+
+        if (!Number.isFinite(PlaybackRateValue) || PlaybackRateValue <= 0)
+        {
+            return 1;
+        }
+
+        return Math.min(Math.max(PlaybackRateValue, 0.1), 4);
+    };
+
+    const ReadStoredMasterSoundVolume = () =>
+    {
+        try
+        {
+            const RawValue = window.localStorage.getItem(MasterSoundVolumeStorageKey);
+            const ParsedValue = Number(RawValue);
+            return Number.isFinite(ParsedValue) ? Math.min(Math.max(ParsedValue, 0), 1) : 0;
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+            return 0;
+        }
+    };
+
+    const PersistMasterSoundVolume = () =>
+    {
+        try
+        {
+            window.localStorage.setItem(MasterSoundVolumeStorageKey, String(MasterSoundVolume));
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+        }
+    };
+
+    const GetMasterSoundVolume = () =>
+    {
+        return MasterSoundVolume;
+    };
+
+    const ApplyEffectiveSoundVolume = (Player, BaseVolume) =>
+    {
+        if (!Player)
+        {
+            return;
+        }
+
+        const VolumeValue = NormalizeSoundVolume(BaseVolume);
+        Player.__soundBaseVolume = VolumeValue;
+        Player.volume = NormalizeSoundVolume(VolumeValue * MasterSoundVolume);
+    };
+
+    const HasSound = (Key) =>
+    {
+        return SoundCatalog.has(String(Key ?? ""));
+    };
+
+    const GetSoundEntry = (Key) =>
+    {
+        return SoundCatalog.get(String(Key ?? "")) || null;
+    };
+
+    const GetSoundDuration = (Key) =>
+    {
+        const DurationMs = Number(GetSoundEntry(Key)?.options?.durationMs);
+        return Number.isFinite(DurationMs) && DurationMs > 0 ? DurationMs : null;
+    };
+
+    const CreateSoundPlayer = (Entry) =>
+    {
+        if (!Entry || typeof window.Audio !== "function")
+        {
+            return null;
+        }
+
+        const Player = new window.Audio(Entry.url);
+        Player.preload = Entry.options?.preload || "auto";
+        ApplyEffectiveSoundVolume(Player, Entry.options?.volume);
+        return Player;
+    };
+
+    const EnsureSoundPlayer = (Key) =>
+    {
+        const SoundKey = String(Key ?? "");
+
+        if (!SoundKey)
+        {
+            return null;
+        }
+
+        const ExistingPlayer = SoundPlayers.get(SoundKey);
+
+        if (ExistingPlayer)
+        {
+            return ExistingPlayer;
+        }
+
+        const Entry = GetSoundEntry(SoundKey);
+
+        if (!Entry)
+        {
+            return null;
+        }
+
+        const Player = CreateSoundPlayer(Entry);
+
+        if (!Player)
+        {
+            return null;
+        }
+
+        SoundPlayers.set(SoundKey, Player);
+        return Player;
+    };
+
+    const ResetSoundPlayer = (Player) =>
+    {
+        if (!Player)
+        {
+            return;
+        }
+
+        try
+        {
+            Player.pause();
+            Player.currentTime = 0;
+            Player.loop = false;
+            Player.playbackRate = 1;
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+        }
+    };
+
+    const RemoveSoundClone = (Key, Player) =>
+    {
+        const CloneSet = ActiveSoundClones.get(Key);
+
+        if (!CloneSet)
+        {
+            return;
+        }
+
+        CloneSet.delete(Player);
+
+        if (!CloneSet.size)
+        {
+            ActiveSoundClones.delete(Key);
+        }
+    };
+
+    const StopSound = (Key) =>
+    {
+        const SoundKey = String(Key ?? "");
+
+        if (!SoundKey)
+        {
+            return;
+        }
+
+        ResetSoundPlayer(SoundPlayers.get(SoundKey));
+
+        const CloneSet = ActiveSoundClones.get(SoundKey);
+
+        if (!CloneSet)
+        {
+            return;
+        }
+
+        CloneSet.forEach((Player) =>
+        {
+            ResetSoundPlayer(Player);
+        });
+        ActiveSoundClones.delete(SoundKey);
+    };
+
+    const RegisterSound = (Key, Url, Options = {}) =>
+    {
+        const SoundKey = String(Key ?? "");
+
+        if (!SoundKey || !Url)
+        {
+            return false;
+        }
+
+        const ExistingEntry = GetSoundEntry(SoundKey);
+        const Entry = {
+            options: {
+                allowOverlap: false,
+                preload: "auto",
+                restart: true,
+                ...ExistingEntry?.options,
+                ...Options,
+            },
+            url: String(Url),
+        };
+
+        SoundCatalog.set(SoundKey, Entry);
+
+        const ExistingPlayer = SoundPlayers.get(SoundKey);
+
+        if (ExistingPlayer)
+        {
+            if (ExistingEntry?.url !== Entry.url)
+            {
+                StopSound(SoundKey);
+                SoundPlayers.delete(SoundKey);
+            }
+            else
+            {
+                ExistingPlayer.preload = Entry.options.preload || "auto";
+                ApplyEffectiveSoundVolume(ExistingPlayer, Entry.options.volume);
+            }
+        }
+
+        EnsureSoundUnlockListeners();
+        EnsureSoundPlayer(SoundKey);
+        return true;
+    };
+
+    const ResolveSoundOptions = (Key, Options = {}) =>
+    {
+        return {
+            allowOverlap: false,
+            durationMs: GetSoundDuration(Key),
+            loop: false,
+            minReplayGapMs: 0,
+            playbackRate: 1,
+            preload: "auto",
+            preservePitch: true,
+            restart: true,
+            startTime: 0,
+            targetDurationMs: null,
+            volume: 1,
+            ...GetSoundEntry(Key)?.options,
+            ...Options,
+        };
+    };
+
+    const ResolveSoundPlaybackRate = (SoundOptions) =>
+    {
+        const TargetDurationMs = Number(SoundOptions.targetDurationMs);
+        const SoundDurationMs = Number(SoundOptions.durationMs);
+
+        if (
+            Number.isFinite(TargetDurationMs) &&
+            TargetDurationMs > 0 &&
+            Number.isFinite(SoundDurationMs) &&
+            SoundDurationMs > 0
+        )
+        {
+            return NormalizePlaybackRate(SoundDurationMs / TargetDurationMs);
+        }
+
+        return NormalizePlaybackRate(SoundOptions.playbackRate);
+    };
+
+    const SyncSoundControls = () =>
+    {
+        const Controls = Array.from(document.querySelectorAll("[data-sound-control]"));
+        const VolumePercent = Math.round(MasterSoundVolume * 100);
+
+        Controls.forEach((Control) =>
+        {
+            const InputNode = Control.querySelector("[data-sound-volume-input]");
+            const LabelNode = Control.querySelector("[data-sound-volume-value]");
+
+            if (InputNode)
+            {
+                InputNode.value = String(VolumePercent);
+            }
+
+            if (LabelNode)
+            {
+                LabelNode.textContent = `${VolumePercent}%`;
+            }
+        });
+    };
+
+    const RefreshAllSoundVolumes = () =>
+    {
+        SoundPlayers.forEach((Player, Key) =>
+        {
+            ApplyEffectiveSoundVolume(Player, GetSoundEntry(Key)?.options?.volume ?? Player.__soundBaseVolume ?? 1);
+        });
+
+        ActiveSoundClones.forEach((CloneSet) =>
+        {
+            CloneSet.forEach((Player) =>
+            {
+                ApplyEffectiveSoundVolume(Player, Player.__soundBaseVolume ?? 1);
+            });
+        });
+    };
+
+    const SetMasterSoundVolume = (Value, Options = {}) =>
+    {
+        const {
+            persist = true,
+        } = Options;
+
+        MasterSoundVolume = Math.min(Math.max(Number(Value) || 0, 0), 1);
+        RefreshAllSoundVolumes();
+        SyncSoundControls();
+
+        if (window.GamblingApp)
+        {
+            window.GamblingApp.MasterSoundVolume = MasterSoundVolume;
+        }
+
+        if (persist)
+        {
+            PersistMasterSoundVolume();
+        }
+    };
+
+    const TrackSoundClone = (Key, Player) =>
+    {
+        const CloneSet = ActiveSoundClones.get(Key) || new Set();
+        CloneSet.add(Player);
+        ActiveSoundClones.set(Key, CloneSet);
+
+        const Cleanup = () =>
+        {
+            RemoveSoundClone(Key, Player);
+        };
+
+        Player.addEventListener("ended", Cleanup, {
+            once: true,
+        });
+        Player.addEventListener("error", Cleanup, {
+            once: true,
+        });
+    };
+
+    const PlaySound = (Key, Options = {}) =>
+    {
+        const SoundKey = String(Key ?? "");
+
+        if (!SoundKey)
+        {
+            return Promise.resolve(false);
+        }
+
+        const BasePlayer = EnsureSoundPlayer(SoundKey);
+
+        if (!BasePlayer)
+        {
+            return Promise.resolve(false);
+        }
+
+        EnsureSoundUnlockListeners();
+
+        const SoundOptions = ResolveSoundOptions(SoundKey, Options);
+        const StartTime = Math.max(Number(SoundOptions.startTime) || 0, 0);
+        const PlaybackRate = ResolveSoundPlaybackRate(SoundOptions);
+        const MinReplayGapMs = Math.max(Number(SoundOptions.minReplayGapMs) || 0, 0);
+        const LastStartedAt = SoundLastStartedAt.get(SoundKey) || 0;
+        const Now = performance.now();
+
+        if (MinReplayGapMs > 0 && (Now - LastStartedAt) < MinReplayGapMs)
+        {
+            return Promise.resolve(false);
+        }
+
+        let PlaybackPlayer = BasePlayer;
+
+        if (
+            SoundOptions.allowOverlap === true &&
+            !BasePlayer.paused &&
+            !BasePlayer.ended &&
+            BasePlayer.currentTime > 0
+        )
+        {
+            PlaybackPlayer = BasePlayer.cloneNode(true);
+            TrackSoundClone(SoundKey, PlaybackPlayer);
+        }
+        else if (SoundOptions.restart !== false || BasePlayer.paused || BasePlayer.ended)
+        {
+            try
+            {
+                BasePlayer.pause();
+                BasePlayer.currentTime = StartTime;
+            }
+            catch (ErrorValue)
+            {
+                console.error(ErrorValue);
+            }
+        }
+        else
+        {
+            return Promise.resolve(false);
+        }
+
+        PlaybackPlayer.loop = Boolean(SoundOptions.loop);
+        PlaybackPlayer.preload = SoundOptions.preload || "auto";
+        ApplyEffectiveSoundVolume(PlaybackPlayer, SoundOptions.volume);
+        PlaybackPlayer.playbackRate = PlaybackRate;
+        PlaybackPlayer.defaultPlaybackRate = PlaybackRate;
+
+        if ("preservesPitch" in PlaybackPlayer)
+        {
+            PlaybackPlayer.preservesPitch = SoundOptions.preservePitch !== false;
+        }
+
+        if ("mozPreservesPitch" in PlaybackPlayer)
+        {
+            PlaybackPlayer.mozPreservesPitch = SoundOptions.preservePitch !== false;
+        }
+
+        if ("webkitPreservesPitch" in PlaybackPlayer)
+        {
+            PlaybackPlayer.webkitPreservesPitch = SoundOptions.preservePitch !== false;
+        }
+
+        if (PlaybackPlayer !== BasePlayer)
+        {
+            try
+            {
+                PlaybackPlayer.currentTime = StartTime;
+            }
+            catch (ErrorValue)
+            {
+                console.error(ErrorValue);
+            }
+        }
+
+        const PlayPromise = PlaybackPlayer.play();
+
+        if (!PlayPromise || typeof PlayPromise.then !== "function")
+        {
+            SoundLastStartedAt.set(SoundKey, Now);
+            return Promise.resolve(true);
+        }
+
+        return PlayPromise
+            .then(() =>
+            {
+                SoundLastStartedAt.set(SoundKey, Now);
+                return true;
+            })
+            .catch(() =>
+            {
+                if (PlaybackPlayer !== BasePlayer)
+                {
+                    RemoveSoundClone(SoundKey, PlaybackPlayer);
+                }
+
+                return false;
+            });
+    };
+
+    const RegisterBuiltInSounds = () =>
+    {
+        const BodyDataset = document.body?.dataset;
+
+        if (!BodyDataset)
+        {
+            return;
+        }
+
+        RegisterSound("win", BodyDataset.sfxWinUrl, {
+            durationMs: 3527,
+            volume: 0.76,
+        });
+        RegisterSound("dice-roll", BodyDataset.sfxDiceRollUrl, {
+            durationMs: 1567,
+            minReplayGapMs: 180,
+            volume: 0.82,
+        });
+        RegisterSound("countdown", BodyDataset.sfxCountdownUrl, {
+            durationMs: 5000,
+            volume: 0.82,
+        });
+        RegisterSound("coinflip-full", BodyDataset.sfxCoinflipFullUrl, {
+            durationMs: 1464,
+            volume: 0.78,
+        });
+        RegisterSound("coinflip-spin", BodyDataset.sfxCoinflipSpinUrl, {
+            durationMs: 1080,
+            volume: 0.76,
+        });
+        RegisterSound("coinflip-reveal", BodyDataset.sfxCoinflipRevealUrl, {
+            durationMs: 504,
+            volume: 0.82,
+        });
     };
 
     const GetToastTone = (ToneValue) =>
@@ -1936,6 +2488,7 @@
                 });
             }
 
+            SyncSoundControls();
             InitializeCurrentPage();
             window.requestAnimationFrame(() =>
             {
@@ -2091,6 +2644,34 @@
         });
     };
 
+    const HandleSoundControlInput = (EventValue) =>
+    {
+        const InputNode = EventValue.target instanceof HTMLInputElement && EventValue.target.matches("[data-sound-volume-input]")
+            ? EventValue.target
+            : null;
+
+        if (!InputNode)
+        {
+            return;
+        }
+
+        SetMasterSoundVolume((Number(InputNode.value) || 0) / 100, {
+            persist: EventValue.type !== "input",
+        });
+    };
+
+    const MarkCountdownAutoplayOnNextLoad = () =>
+    {
+        try
+        {
+            window.sessionStorage.setItem(CountdownAutoplayStorageKey, String(Date.now()));
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+        }
+    };
+
     const HandleDocumentSubmit = (EventValue) =>
     {
         if (EventValue.defaultPrevented)
@@ -2149,6 +2730,11 @@
             return;
         }
 
+        if (Form.matches("[data-session-redo-form]"))
+        {
+            MarkCountdownAutoplayOnNextLoad();
+        }
+
         NavigateTo(UrlValue.href, {
             historyMode: "push",
             requestInit: {
@@ -2204,25 +2790,43 @@
         StartNotificationPolling();
     };
 
+    MasterSoundVolume = ReadStoredMasterSoundVolume();
+    RegisterBuiltInSounds();
+
     window.GamblingApp = {
         ...ExistingApp,
+        ActiveSoundClones,
+        MasterSoundVolume,
         ModalControllers,
+        SoundCatalog,
+        SoundLastStartedAt,
+        SoundPlayers,
         buildUserProfileCardMarkup: BuildUserProfileCardMarkup,
         formatRelativeTime: FormatRelativeTime,
+        getSoundDuration: GetSoundDuration,
+        getMasterSoundVolume: GetMasterSoundVolume,
+        hasSound: HasSound,
         holdGlobalBalanceDisplay: HoldGlobalBalanceDisplay,
         getModalController: GetModalController,
+        IsSoundUnlocked,
         PageInitializers,
+        playSound: PlaySound,
+        registerSound: RegisterSound,
         releaseGlobalBalanceDisplay: ReleaseGlobalBalanceDisplay,
         ScriptPromises,
         initializeCurrentPage: InitializeCurrentPage,
         navigateTo: NavigateTo,
         registerPageInitializer: RegisterPageInitializer,
+        setMasterSoundVolume: SetMasterSoundVolume,
         setGlobalBalanceDisplay: SetGlobalBalanceDisplay,
         showToast: ShowToast,
+        stopSound: StopSound,
     };
 
     document.addEventListener("click", HandleModalTriggerClick);
     document.addEventListener("click", HandleDocumentClick);
+    document.addEventListener("input", HandleSoundControlInput);
+    document.addEventListener("change", HandleSoundControlInput);
     document.addEventListener("keydown", HandleDocumentKeyDown);
     document.addEventListener("submit", HandleDocumentSubmit);
     document.addEventListener("visibilitychange", HandleVisibilityChange);
@@ -2236,6 +2840,7 @@
         PrepareScopeModals(GetAppMain());
         PrepareScopeModals(GetAppOverlayShell());
         InitializeAuthShell();
+        SyncSoundControls();
         InitializeCurrentPage();
         AnimateCardsIn(GetAppMain());
         StartNotificationPolling();

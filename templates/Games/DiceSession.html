@@ -83,6 +83,133 @@
       will-change: transform, opacity, filter;
     }
 
+    [data-session-viewers-shell]
+    {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      z-index: 20;
+    }
+
+    [data-session-viewers-button]
+    {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      border: 0;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.42);
+      cursor: default;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0;
+      transition: color 160ms ease;
+    }
+
+    [data-session-viewers-shell]:is(:hover, :focus-within) [data-session-viewers-button]
+    {
+      color: rgba(255, 255, 255, 0.82);
+    }
+
+    [data-session-viewers-popover]
+    {
+      position: absolute;
+      top: calc(100% + 0.55rem);
+      right: 0;
+      width: min(190px, calc(100vw - 2rem));
+      padding: 0;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-6px) scale(0.98);
+      transform-origin: top right;
+      transition:
+        opacity 160ms ease,
+        transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    [data-session-viewers-shell]:is(:hover, :focus-within) [data-session-viewers-popover]
+    {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+
+    [data-session-viewers-list]
+    {
+      display: grid;
+      gap: 0.45rem;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    [data-session-viewer-row]
+    {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
+      min-height: 2.6rem;
+      padding: 0.5rem 0.7rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 0.95rem;
+      background: rgba(7, 9, 14, 0.98);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(14px);
+    }
+
+    [data-session-viewer-avatar]
+    {
+      flex: 0 0 auto;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.82);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.78rem;
+      font-weight: 700;
+      overflow: hidden;
+      text-transform: uppercase;
+    }
+
+    [data-session-viewer-avatar] img
+    {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    [data-session-viewer-name]
+    {
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 600;
+      line-height: 1.2;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    [data-session-viewers-empty]
+    {
+      min-height: 2.2rem;
+      padding: 0.5rem 0.8rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 0.95rem;
+      background: rgba(7, 9, 14, 0.98);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(14px);
+      color: rgba(255, 255, 255, 0.62);
+      font-size: 0.76rem;
+      font-weight: 500;
+      line-height: 1.2;
+      text-align: center;
+    }
+
     [data-first-to-score-wrap],
     [data-double-roll-result-wrap]
     {
@@ -133,7 +260,7 @@
     .dice-main-panel
     {
       min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
 
     @media (max-width: 767px)
@@ -254,8 +381,48 @@
           <canvas class="dice-canvas" data-dice-canvas></canvas>
         </section>
 
-        <div class="dice-status-card mt-6 rounded-2xl border border-white/8 px-5 py-5 text-center">
+        <div class="relative mt-6 overflow-visible">
+          <div data-session-viewers-shell>
+            <button
+              aria-label="{{ session_state.viewer_count }} viewers watching"
+              data-session-viewers-button
+              type="button"
+            >
+              <svg viewBox="0 0 20 20" class="h-4 w-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" aria-hidden="true">
+                <path d="M1.25 10s3.18-5 8.75-5 8.75 5 8.75 5-3.18 5-8.75 5-8.75-5-8.75-5Z"></path>
+                <circle cx="10" cy="10" r="2.4"></circle>
+              </svg>
+              <span data-session-viewer-count>{{ session_state.viewer_count }}</span>
+            </button>
+
+            <div data-session-viewers-popover>
+              <div data-session-viewers-list>
+                {% if session_state.viewers %}
+                  {% for viewer in session_state.viewers %}
+                    <div data-session-viewer-row>
+                      <span data-session-viewer-avatar>
+                        {% if viewer.avatar_url %}
+                          <img
+                            alt="{{ viewer.display_name or viewer.username }}"
+                            src="{{ viewer.avatar_static_url or viewer.avatar_url }}"
+                          >
+                        {% else %}
+                          {{ (viewer.display_name or viewer.username)[0] }}
+                        {% endif %}
+                      </span>
+                      <div data-session-viewer-name">{{ viewer.display_name or viewer.username }}</div>
+                    </div>
+                  {% endfor %}
+                {% else %}
+                  <div data-session-viewers-empty>No viewers</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <div class="dice-status-card rounded-2xl border border-white/8 px-5 py-5 text-center">
           <p class="text-2xl font-semibold tracking-[-0.04em] text-white" data-session-status>{{ session_state.status_text }}</p>
+          </div>
         </div>
       </section>
 
@@ -292,6 +459,17 @@
               Open slot
             {% endif %}
           </p>
+        </div>
+
+        <div class="mt-8" data-join-wrap {% if not session_state.can_join %}hidden{% endif %}>
+          <form action="{{ session_state.join_url or '#' }}" data-session-join-form method="post">
+            <button
+              class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+              type="submit"
+            >
+              Join session
+            </button>
+          </form>
         </div>
 
         <div class="mt-8" data-call-bot-wrap {% if not session_state.can_call_bot %}hidden{% endif %}>

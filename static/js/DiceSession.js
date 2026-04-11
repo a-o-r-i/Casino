@@ -1,5 +1,7 @@
 (() =>
 {
+const CountdownAutoplayStorageKey = "gambling.countdownAutoplayOnLoad";
+
 const ParseSessionState = (Main) =>
 {
     const StateNode = Main.querySelector("[data-dice-state]");
@@ -37,8 +39,18 @@ const SetOpponentVisuals = (Main, State) =>
     const OpponentAvatar = Main.querySelector("[data-opponent-avatar]");
     const OpponentFallback = Main.querySelector("[data-opponent-fallback]");
     const CallBotWrap = Main.querySelector("[data-call-bot-wrap]");
+    const JoinWrap = Main.querySelector("[data-join-wrap]");
+    const JoinForm = Main.querySelector("[data-session-join-form]");
 
-    if (!OpponentName || !OpponentSubtitle || !OpponentAvatar || !OpponentFallback || !CallBotWrap)
+    if (
+        !OpponentName ||
+        !OpponentSubtitle ||
+        !OpponentAvatar ||
+        !OpponentFallback ||
+        !CallBotWrap ||
+        !JoinWrap ||
+        !JoinForm
+    )
     {
         return;
     }
@@ -78,7 +90,13 @@ const SetOpponentVisuals = (Main, State) =>
         OpponentAvatar.classList.add("hidden");
     }
 
+    if (State.join_url)
+    {
+        JoinForm.action = State.join_url;
+    }
+
     CallBotWrap.hidden = !State.can_call_bot;
+    JoinWrap.hidden = !State.can_join;
 };
 
 const FormatDoubleRollResult = (FacesValue, TotalValue) =>
@@ -164,6 +182,29 @@ const SetSceneIndicatorVisibility = (Main, VisibleValue) =>
     }
 
     Indicators.hidden = !VisibleValue;
+};
+
+const RenderViewerState = (Main, State) =>
+{
+    const CountNode = Main.querySelector("[data-session-viewer-count]");
+    const ButtonNode = Main.querySelector("[data-session-viewers-button]");
+    const ListNode = Main.querySelector("[data-session-viewers-list]");
+    const ViewerCount = Math.max(Number.parseInt(State?.viewer_count || "0", 10), 0);
+
+    if (CountNode)
+    {
+        CountNode.textContent = String(ViewerCount);
+    }
+
+    if (ButtonNode)
+    {
+        ButtonNode.setAttribute("aria-label", `${ViewerCount} viewer${ViewerCount === 1 ? "" : "s"} watching`);
+    }
+
+    if (ListNode)
+    {
+        ListNode.innerHTML = BuildViewerListMarkup(State?.viewers);
+    }
 };
 
 const TextTransition = {
@@ -303,6 +344,55 @@ const SetScoreVisuals = (Main, State) =>
     }
 };
 
+const EscapeHtml = (Value) =>
+{
+    return String(Value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+};
+
+const BuildViewerAvatarMarkup = (Viewer) =>
+{
+    const ViewerName = Viewer?.display_name || Viewer?.username || "?";
+
+    if (Viewer?.avatar_url)
+    {
+        return `
+            <span data-session-viewer-avatar>
+              <img
+                alt="${EscapeHtml(ViewerName)}"
+                src="${EscapeHtml(Viewer.avatar_static_url || Viewer.avatar_url)}"
+              >
+            </span>
+        `;
+    }
+
+    return `<span data-session-viewer-avatar>${EscapeHtml(ViewerName.slice(0, 1))}</span>`;
+};
+
+const BuildViewerListMarkup = (Viewers) =>
+{
+    if (!Array.isArray(Viewers) || !Viewers.length)
+    {
+        return `<div data-session-viewers-empty>No viewers</div>`;
+    }
+
+    return Viewers.map((Viewer) =>
+    {
+        const ViewerName = Viewer?.display_name || Viewer?.username || "?";
+
+        return `
+            <div data-session-viewer-row>
+              ${BuildViewerAvatarMarkup(Viewer)}
+              <div data-session-viewer-name>${EscapeHtml(ViewerName)}</div>
+            </div>
+        `;
+    }).join("");
+};
+
 const SetDoubleRollResultVisuals = (Main, State, ResultsValue = {}) =>
 {
     const CreatorWrap = Main.querySelector('[data-double-roll-result-wrap="creator"]');
@@ -380,6 +470,65 @@ const BuildSessionNarrative = (State) =>
     return {
         title: State.status_text,
     };
+};
+
+const GetWinSoundSignature = (State) =>
+{
+    if (!State || State.status !== "resolved" || State.did_win !== true)
+    {
+        return "";
+    }
+
+    return JSON.stringify({
+        creatorScore: State.creator_score ?? "",
+        id: State.id || "",
+        opponentScore: State.opponent_score ?? "",
+        resultFace: State.result_face ?? "",
+        rounds: Array.isArray(State.rounds) ? State.rounds.length : 0,
+        winnerId: State.winner_id || "",
+    });
+};
+
+const GetCountdownSoundSignature = (State) =>
+{
+    if (!State || State.status !== "countdown" || !Number.isFinite(Number(State.countdown_ends_at)))
+    {
+        return "";
+    }
+
+    return `${State.id || ""}:${Number(State.countdown_ends_at)}`;
+};
+
+const ShouldAutoplayCountdownFromState = (State) =>
+{
+    if (!State || State.status !== "countdown")
+    {
+        return false;
+    }
+
+    const RemainingSeconds = Number.parseInt(State.countdown_remaining, 10);
+    return Number.isFinite(RemainingSeconds) && RemainingSeconds >= 4;
+};
+
+const ConsumeCountdownAutoplayRequest = () =>
+{
+    try
+    {
+        const StoredValue = window.sessionStorage.getItem(CountdownAutoplayStorageKey);
+
+        if (!StoredValue)
+        {
+            return false;
+        }
+
+        window.sessionStorage.removeItem(CountdownAutoplayStorageKey);
+        return true;
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+        return false;
+    }
 };
 
 const WaitFor = (DelayMs) =>
@@ -628,6 +777,12 @@ const InitializeDiceSessionPage = ({ main }) =>
     let IsHoldingBalanceDisplay = false;
     let IdleViewerSignature = "";
     let PollTimeout = 0;
+    const HasRequestedCountdownAutoplay = ConsumeCountdownAutoplayRequest();
+    const ShouldAutoplayInitialCountdown =
+        InitialState.status === "countdown" &&
+        (HasRequestedCountdownAutoplay || ShouldAutoplayCountdownFromState(InitialState));
+    let PlayedCountdownSoundSignature = GetCountdownSoundSignature(InitialState);
+    let PlayedWinSoundSignature = "";
     let ReadyInterval = 0;
     const ReturnLink = main.querySelector("[data-session-return-link]");
     const BalanceContext = {
@@ -657,6 +812,42 @@ const InitializeDiceSessionPage = ({ main }) =>
         IdleViewerSignature = Signature;
     };
 
+    const MaybePlayWinSound = (State) =>
+    {
+        const Signature = GetWinSoundSignature(State);
+
+        if (!Signature || Signature === PlayedWinSoundSignature)
+        {
+            return;
+        }
+
+        PlayedWinSoundSignature = Signature;
+        window.GamblingApp?.playSound?.("win", {
+            restart: true,
+        });
+    };
+
+    const MaybePlayCountdownSound = (State) =>
+    {
+        const Signature = GetCountdownSoundSignature(State);
+
+        if (!Signature)
+        {
+            PlayedCountdownSoundSignature = "";
+            return;
+        }
+
+        if (Signature === PlayedCountdownSoundSignature)
+        {
+            return;
+        }
+
+        PlayedCountdownSoundSignature = Signature;
+        window.GamblingApp?.playSound?.("countdown", {
+            restart: true,
+        });
+    };
+
     const PlayFirstToSequence = async (State) =>
     {
         const DiceViewerController = GetDiceViewerController(main);
@@ -677,6 +868,7 @@ const InitializeDiceSessionPage = ({ main }) =>
             ReleaseGlobalBalanceDisplay(BalanceContext);
             SetBalance(State);
             ApplyResolvedState(main, State);
+            MaybePlayWinSound(State);
             return;
         }
 
@@ -922,6 +1114,7 @@ const InitializeDiceSessionPage = ({ main }) =>
         ReleaseGlobalBalanceDisplay(BalanceContext);
         SetBalance(State);
         ApplyResolvedState(main, State);
+        MaybePlayWinSound(State);
         PendingRevealState = null;
     };
 
@@ -949,6 +1142,7 @@ const InitializeDiceSessionPage = ({ main }) =>
         }
 
         SetOpponentVisuals(main, LastState);
+        RenderViewerState(main, LastState);
         SetPanelResultVisuals(main, LastState, {
             revealResolved:
                 LastState.status === "resolved" &&
@@ -1038,6 +1232,7 @@ const InitializeDiceSessionPage = ({ main }) =>
                             ReleaseGlobalBalanceDisplay(BalanceContext);
                             SetBalance(LastState);
                             ApplyResolvedState(main, LastState);
+                            MaybePlayWinSound(LastState);
                         }
                     });
                     return;
@@ -1151,9 +1346,11 @@ const InitializeDiceSessionPage = ({ main }) =>
             return;
         }
 
+        const ResolvedState = PendingRevealState;
         ReleaseGlobalBalanceDisplay(BalanceContext);
-        SetBalance(PendingRevealState);
-        ApplyResolvedState(main, PendingRevealState);
+        SetBalance(ResolvedState);
+        ApplyResolvedState(main, ResolvedState);
+        MaybePlayWinSound(ResolvedState);
         HasAppliedResolvedFace = true;
         PendingRevealState = null;
     };
@@ -1161,6 +1358,13 @@ const InitializeDiceSessionPage = ({ main }) =>
     DiceViewerContainer.addEventListener("dice:finished", HandleDiceFinished);
 
     RenderLatestState();
+
+    if (ShouldAutoplayInitialCountdown)
+    {
+        window.GamblingApp?.playSound?.("countdown", {
+            restart: true,
+        });
+    }
 
     ReadyInterval = window.setInterval(() =>
     {
@@ -1196,6 +1400,7 @@ const InitializeDiceSessionPage = ({ main }) =>
                 return;
             }
 
+            MaybePlayCountdownSound(State);
             LastState = State;
             RenderLatestState();
         });

@@ -636,7 +636,24 @@ const ApplyRollSeed = (Body, SeedValue, Actor) =>
     );
 };
 
-const FindRollSeed = (Actor, TargetFace) =>
+const MeasureRollSeedDurationMs = (Actor, SeedValue) =>
+{
+    ApplyRollSeed(Actor.simulationBody, SeedValue, Actor);
+
+    for (let StepIndex = 0; StepIndex < PhysicsSettings.maxSimulationSteps; StepIndex += 1)
+    {
+        Actor.simulationWorld.step(PhysicsSettings.stepTime);
+
+        if (Actor.simulationBody.sleepState === CANNON.Body.SLEEPING)
+        {
+            return Math.round((StepIndex + 1) * PhysicsSettings.stepTime * 1000);
+        }
+    }
+
+    return Math.round(PhysicsSettings.maxSimulationSteps * PhysicsSettings.stepTime * 1000);
+};
+
+const FindRollPlan = (Actor, TargetFace) =>
 {
     const Face = ClampDieValue(TargetFace);
 
@@ -657,14 +674,22 @@ const FindRollSeed = (Actor, TargetFace) =>
 
             if (ReadFaceFromQuaternion(Actor.simulationBody.quaternion) === Face)
             {
-                return SeedValue;
+                return {
+                    durationMs: Math.round((StepIndex + 1) * PhysicsSettings.stepTime * 1000),
+                    seed: SeedValue,
+                };
             }
 
             break;
         }
     }
 
-    return null;
+    const FallbackSeed = BuildRollSeed();
+
+    return {
+        durationMs: MeasureRollSeedDurationMs(Actor, FallbackSeed),
+        seed: FallbackSeed,
+    };
 };
 
 const CreateActor = (Scene, DiceMeshTemplate, Key, CenterX, SpawnValue) =>
@@ -945,17 +970,17 @@ const MountDiceViewer = (Root, Options = {}) =>
                     return null;
                 }
 
-                const SeedValue = FindRollSeed(Actor, RollItem.face);
-                const FallbackSeed = SeedValue || BuildRollSeed();
+                const RollPlan = FindRollPlan(Actor, RollItem.face);
 
                 Actor.mesh.visible = true;
 
                 return {
                     actor: Actor,
+                    durationMs: RollPlan?.durationMs || 0,
                     face: RollItem.face,
                     finished: false,
-                    launchQuaternion: CreateLaunchQuaternion(FallbackSeed),
-                    seed: FallbackSeed,
+                    launchQuaternion: CreateLaunchQuaternion(RollPlan.seed),
+                    seed: RollPlan.seed,
                     spawnPosition: new THREE.Vector3(
                         Actor.spawnPosition.x,
                         Actor.spawnPosition.y,
@@ -973,6 +998,19 @@ const MountDiceViewer = (Root, Options = {}) =>
             StartNextRoll();
             return;
         }
+
+        const TargetDurationMs = LiftSettings.durationMs + Math.max(
+            ...PreparedRolls.map((RollValue) =>
+            {
+                return Number(RollValue.durationMs) || 0;
+            }),
+            0,
+        ) + 120;
+
+        window.GamblingApp?.playSound?.("dice-roll", {
+            restart: false,
+            targetDurationMs: TargetDurationMs,
+        });
 
         Root.dispatchEvent(
             new CustomEvent("dice:started", {
@@ -1050,6 +1088,7 @@ const MountDiceViewer = (Root, Options = {}) =>
             }, {});
 
         ActiveRoll = null;
+        window.GamblingApp?.stopSound?.("dice-roll");
         CompletedRoll.resolve?.(ResultValue);
         StartNextRoll();
     };
@@ -1060,6 +1099,8 @@ const MountDiceViewer = (Root, Options = {}) =>
         {
             CancelRoll(RollQueue.shift(), ResolveValue);
         }
+
+        window.GamblingApp?.stopSound?.("dice-roll");
 
         if (!ActiveRoll)
         {
@@ -1415,6 +1456,7 @@ const MountDiceViewer = (Root, Options = {}) =>
         CancelTopReset(null);
         Renderer.setAnimationLoop(null);
         delete Root.DiceController;
+        window.GamblingApp?.stopSound?.("dice-roll");
 
         for (let Index = CleanupFunctions.length - 1; Index >= 0; Index -= 1)
         {

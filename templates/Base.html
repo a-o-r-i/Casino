@@ -666,6 +666,10 @@
 
       [data-chat-bubble]
       {
+        display: block;
+        width: fit-content;
+        max-width: 100%;
+        min-width: 0;
         margin-top: 0.42rem;
         padding: 0.7rem 0.82rem;
         border: 1px solid rgba(255, 255, 255, 0.08);
@@ -685,6 +689,7 @@
 
       [data-chat-row][data-self="true"] [data-chat-bubble]
       {
+        margin-left: auto;
         background: rgba(255, 255, 255, 0.07);
         border-color: rgba(255, 255, 255, 0.1);
       }
@@ -1530,6 +1535,44 @@
         color: #86efac;
       }
 
+      [data-sound-control]
+      {
+        width: 100%;
+      }
+
+      [data-sound-slider-row]
+      {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 0.9rem;
+      }
+
+      [data-sound-slider-icon]
+      {
+        color: rgba(255, 255, 255, 0.62);
+        flex: 0 0 auto;
+      }
+
+      [data-sound-volume-input]
+      {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        accent-color: #ffffff;
+        cursor: pointer;
+        touch-action: pan-y;
+      }
+
+      [data-sound-volume-value]
+      {
+        min-width: 2.7rem;
+        color: rgba(255, 255, 255, 0.74);
+        font-size: 0.76rem;
+        font-weight: 600;
+        text-align: right;
+      }
+
       @media (max-width: 640px)
       {
         [data-site-chat-shell]
@@ -1575,6 +1618,12 @@
     data-notification-state-url="{% if is_authenticated %}{{ url_for('notification_state') }}{% endif %}"
     data-presence-heartbeat-url="{% if is_authenticated %}{{ presence_heartbeat_url }}{% endif %}"
     data-presence-offline-url="{% if is_authenticated %}{{ presence_offline_url }}{% endif %}"
+    data-sfx-win-url="{{ asset_url('assets/sfx/Win.mp3') }}"
+    data-sfx-dice-roll-url="{{ asset_url('assets/sfx/DiceRolling.mp3') }}"
+    data-sfx-countdown-url="{{ asset_url('assets/sfx/Countdown.mp3') }}"
+    data-sfx-coinflip-full-url="{{ asset_url('assets/sfx/FlippingCoin.mp3') }}"
+    data-sfx-coinflip-spin-url="{{ asset_url('assets/sfx/Flipping.mp3') }}"
+    data-sfx-coinflip-reveal-url="{{ asset_url('assets/sfx/FlippedCoin.mp3') }}"
     {% if not is_authenticated %}data-auth-locked="true"{% endif %}
   >
     <div
