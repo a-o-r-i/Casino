@@ -259,7 +259,7 @@
             class="coinflip-status-card rounded-2xl border border-white/8 px-5 py-5 text-center"
             data-session-status-wrap
           >
-          <p class="text-xl font-semibold text-white sm:text-2xl" data-session-status>{{ session_state.status_text }}</p>
+          <p class="text-xl font-semibold text-white sm:text-2xl" data-session-status>{{ session_state.display_status_text }}</p>
           </div>
         </div>
       </section>
@@ -350,7 +350,7 @@
     </div>
 
     <div
-      class="mt-8 {% if session_state.status == 'resolved' %}flex{% else %}hidden{% endif %} justify-center"
+      class="mt-8 {% if session_state.status == 'resolved' and not session_state.reveal_pending %}flex{% else %}hidden{% endif %} justify-center"
       data-session-return-wrap
     >
       <a

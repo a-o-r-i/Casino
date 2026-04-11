@@ -651,7 +651,7 @@ const InitializeCoinflipSessionPage = ({ main }) =>
         return null;
     }
 
-    if (InitialState.status === "resolved")
+    if (InitialState.status === "resolved" && !InitialState.reveal_pending)
     {
         RevealSessionReturnLink(main);
     }
@@ -659,7 +659,7 @@ const InitializeCoinflipSessionPage = ({ main }) =>
     const StateUrl = SessionRoot.dataset.stateUrl;
     let LastState = InitialState;
     let PendingRevealState = null;
-    let HasShownResult = InitialState.status === "resolved";
+    let HasShownResult = InitialState.status === "resolved" && !InitialState.reveal_pending;
     let IsDisposed = false;
     let IsHoldingBalanceDisplay = false;
     let PollTimeout = 0;

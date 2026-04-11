@@ -311,7 +311,7 @@
       <aside
         class="dice-side-panel rounded-3xl border p-6"
         data-dice-panel="creator"
-        data-result-state="{% if session_state.status == 'resolved' %}{% if session_state.winner_id == session_state.creator.id %}win{% else %}loss{% endif %}{% else %}neutral{% endif %}"
+        data-result-state="{% if session_state.status == 'resolved' and not session_state.reveal_pending %}{% if session_state.winner_id == session_state.creator.id %}win{% else %}loss{% endif %}{% else %}neutral{% endif %}"
         data-route-card
       >
         <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Creator</p>
@@ -337,7 +337,7 @@
         </div>
 
         <div class="mt-8 text-center {% if not session_state.is_first_to %}hidden{% endif %}" data-first-to-score-wrap>
-          <p class="text-[2.75rem] font-semibold tracking-[-0.06em] text-white" data-creator-score>{{ session_state.creator_score }}</p>
+          <p class="text-[2.75rem] font-semibold tracking-[-0.06em] text-white" data-creator-score>{% if session_state.reveal_pending %}0{% else %}{{ session_state.creator_score }}{% endif %}</p>
           <div class="mt-4 {% if not session_state.is_double_roll %}hidden{% endif %}" data-double-roll-result-wrap="creator">
             <p class="mt-2 text-sm font-medium text-white/62" data-double-roll-result="creator">Awaiting roll</p>
           </div>
@@ -353,7 +353,7 @@
 
         <section class="dice-scene mt-6" data-dice-viewer data-dice-scene aria-label="Rolling die viewer">
           {% if session_state.is_first_to %}
-            <div class="dice-indicators" data-dice-indicators {% if session_state.status != 'resolved' %}hidden{% endif %}>
+            <div class="dice-indicators" data-dice-indicators {% if session_state.status != 'resolved' or session_state.reveal_pending %}hidden{% endif %}>
               <div class="dice-indicator" data-dice-indicator-wrap="creator">
                 <div class="dice-indicator-badge">
                   <span class="truncate text-sm font-medium text-white" data-dice-indicator-label="creator">
@@ -421,7 +421,7 @@
           </div>
 
           <div class="dice-status-card rounded-2xl border border-white/8 px-5 py-5 text-center">
-          <p class="text-2xl font-semibold tracking-[-0.04em] text-white" data-session-status>{{ session_state.status_text }}</p>
+          <p class="text-2xl font-semibold tracking-[-0.04em] text-white" data-session-status>{{ session_state.display_status_text }}</p>
           </div>
         </div>
       </section>
@@ -429,7 +429,7 @@
       <aside
         class="dice-side-panel rounded-3xl border p-6"
         data-dice-panel="opponent"
-        data-result-state="{% if session_state.status == 'resolved' and session_state.opponent %}{% if session_state.winner_id == session_state.opponent.id %}win{% else %}loss{% endif %}{% else %}neutral{% endif %}"
+        data-result-state="{% if session_state.status == 'resolved' and session_state.opponent and not session_state.reveal_pending %}{% if session_state.winner_id == session_state.opponent.id %}win{% else %}loss{% endif %}{% else %}neutral{% endif %}"
         data-route-card
       >
         <p class="text-xs font-medium uppercase tracking-[0.16em] text-white/40">Opponent</p>
@@ -484,7 +484,7 @@
         </div>
 
         <div class="mt-8 text-center {% if not session_state.is_first_to %}hidden{% endif %}" data-first-to-score-wrap>
-          <p class="text-[2.75rem] font-semibold tracking-[-0.06em] text-white" data-opponent-score>{{ session_state.opponent_score }}</p>
+          <p class="text-[2.75rem] font-semibold tracking-[-0.06em] text-white" data-opponent-score>{% if session_state.reveal_pending %}0{% else %}{{ session_state.opponent_score }}{% endif %}</p>
           <div class="mt-4 {% if not session_state.is_double_roll %}hidden{% endif %}" data-double-roll-result-wrap="opponent">
             <p class="mt-2 text-sm font-medium text-white/62" data-double-roll-result="opponent">Awaiting roll</p>
           </div>
@@ -519,7 +519,7 @@
     </div>
 
     <div
-      class="mt-8 {% if session_state.status == 'resolved' %}flex{% else %}hidden{% endif %} justify-center"
+      class="mt-8 {% if session_state.status == 'resolved' and not session_state.reveal_pending %}flex{% else %}hidden{% endif %} justify-center"
       data-session-return-wrap
     >
       <a

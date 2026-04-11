@@ -763,7 +763,7 @@ const InitializeDiceSessionPage = ({ main }) =>
         return null;
     }
 
-    if (InitialState.status === "resolved")
+    if (InitialState.status === "resolved" && !InitialState.reveal_pending)
     {
         RevealSessionReturnLink(main);
     }
@@ -771,7 +771,7 @@ const InitializeDiceSessionPage = ({ main }) =>
     const StateUrl = SessionRoot.dataset.stateUrl;
     let LastState = InitialState;
     let PendingRevealState = null;
-    let HasShownResult = false;
+    let HasShownResult = InitialState.status === "resolved" && !InitialState.reveal_pending;
     let HasAppliedResolvedFace = false;
     let IsDisposed = false;
     let IsHoldingBalanceDisplay = false;

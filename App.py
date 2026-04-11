@@ -2269,8 +2269,7 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         creator_user_id=creator["id"],
         opponent_user_id=opponent["id"] if opponent else None,
     )
-
-    return {
+    session_state = {
         "bet_cents": coinflip_session["bet_cents"],
         "bet_display": format_money(coinflip_session["bet_cents"]),
         "can_call_bot": is_creator and not opponent and not coinflip_session["result_side"],
@@ -2308,6 +2307,14 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         "winner_id": coinflip_session["winner_id"],
         "winner_name": coinflip_session["winner_name"],
     }
+
+    session_state["reveal_pending"] = coinflip_session_reveal_pending(coinflip_session)
+    session_state["display_status_text"] = (
+        "Flipping..."
+        if session_state["reveal_pending"]
+        else session_state["status_text"]
+    )
+    return session_state
 
 
 def build_coinflip_lobby_sessions(current_user_id):
@@ -2453,8 +2460,7 @@ def build_dice_session_state(dice_session, current_user_id):
         creator_user_id=creator["id"],
         opponent_user_id=opponent["id"] if opponent else None,
     )
-
-    return {
+    session_state = {
         "bet_cents": dice_session["bet_cents"],
         "bet_display": format_money(dice_session["bet_cents"]),
         "can_call_bot": is_creator and not opponent and not dice_session_is_resolved(dice_session),
@@ -2501,6 +2507,14 @@ def build_dice_session_state(dice_session, current_user_id):
         "winner_id": dice_session["winner_id"],
         "winner_name": dice_session["winner_name"],
     }
+
+    session_state["reveal_pending"] = dice_session_reveal_pending(session_state, dice_session)
+    session_state["display_status_text"] = (
+        "Rolling..."
+        if session_state["reveal_pending"]
+        else session_state["status_text"]
+    )
+    return session_state
 
 
 def build_dice_lobby_sessions(current_user_id):
@@ -2605,19 +2619,21 @@ def build_dice_lobby_payload(current_user_id):
 
 
 def build_coinflip_chat_share_status(session_state, coinflip_session):
-    status = session_state["status"]
-    status_text = session_state["status_text"]
+    if session_state.get("reveal_pending"):
+        return "countdown", "Flipping..."
+
+    return session_state["status"], session_state["status_text"]
+
+
+def coinflip_session_reveal_pending(coinflip_session):
     resolved_at = coinflip_session.get("resolved_at")
 
-    if (
-        status == "resolved"
+    return bool(
+        coinflip_session.get("result_side")
         and coinflip_session.get("opponent")
         and resolved_at
         and time.time() < resolved_at + COINFLIP_CHAT_REVEAL_SECONDS
-    ):
-        return "countdown", "Flipping..."
-
-    return status, status_text
+    )
 
 
 def get_dice_chat_reveal_seconds(session_state):
@@ -2662,19 +2678,21 @@ def get_dice_chat_reveal_seconds(session_state):
 
 
 def build_dice_chat_share_status(session_state, dice_session):
-    status = session_state["status"]
-    status_text = session_state["status_text"]
+    if session_state.get("reveal_pending"):
+        return "countdown", "Rolling..."
+
+    return session_state["status"], session_state["status_text"]
+
+
+def dice_session_reveal_pending(session_state, dice_session):
     resolved_at = dice_session.get("resolved_at")
 
-    if (
-        status == "resolved"
+    return bool(
+        session_state.get("status") == "resolved"
         and dice_session.get("opponent")
         and resolved_at
         and time.time() < resolved_at + get_dice_chat_reveal_seconds(session_state)
-    ):
-        return "countdown", "Rolling..."
-
-    return status, status_text
+    )
 
 
 def build_chat_session_share_payload(game, session_id, current_user_id):
