@@ -663,13 +663,11 @@
                 : AnchorRect.right + Gap;
 
             Left = Math.max(Margin, Math.min(Left, window.innerWidth - Width - Margin));
-            const ArrowTarget = AnchorRect.top + Math.min(AnchorRect.height * 0.35, 18);
-
             const ArrowTop = Math.max(
-                20,
+                14,
                 Math.min(
-                    ArrowTarget - Top - 8,
-                    Height - 32,
+                    AnchorRect.top - Top - 10,
+                    42,
                 ),
             );
 

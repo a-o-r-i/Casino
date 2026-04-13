@@ -3282,7 +3282,7 @@ def inject_auth_state():
 
 @app.route("/")
 def index():
-    return redirect(url_for("play"))
+    return render_template("Index.html", active_page="play")
 
 
 @app.route("/play")

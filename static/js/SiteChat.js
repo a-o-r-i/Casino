@@ -10,6 +10,13 @@
     const HiddenPollMultiplier = 2.4;
     const ChatDragStorageKey = "gambling.chat.drag-position";
     const ChatDragViewportMargin = 16;
+    const ChatResizeStorageKey = "gambling.chat.panel-size";
+    const ChatDefaultDesktopHeight = 500;
+    const ChatDefaultDesktopWidth = 360;
+    const ChatMinHeightPx = 390;
+    const ChatMinWidthPx = 320;
+    const ChatMaxHeightPx = 640;
+    const ChatMaxWidthPx = 520;
     const FocusedMessageHighlightMs = 2600;
     const LocalTypingWindowMs = 3200;
     const PresenceHeartbeatIntervalMs = 4000;
@@ -35,6 +42,7 @@
     const ChatReplyBanner = ChatShell.querySelector("[data-chat-reply]");
     const ChatReplyName = ChatShell.querySelector("[data-chat-reply-name]");
     const ChatReplyPreview = ChatShell.querySelector("[data-chat-reply-preview]");
+    const ChatResizeHandle = ChatShell.querySelector("[data-chat-resize-handle]");
     const ChatCloseButton = ChatShell.querySelector("[data-chat-close]");
     const ChatSubtitle = ChatShell.querySelector("[data-chat-subtitle]");
     const ChatSendButton = ChatShell.querySelector("[data-chat-send]");
@@ -97,7 +105,12 @@
         x: 0,
         y: 0,
     };
+    let ChatPanelSize = {
+        height: ChatDefaultDesktopHeight,
+        width: ChatDefaultDesktopWidth,
+    };
     let ChatDragState = null;
+    let ChatResizeState = null;
 
     const EscapeHtml = (Value) =>
     {
@@ -235,6 +248,80 @@
         };
     };
 
+    const GetChatSizeLimits = () =>
+    {
+        return {
+            maxHeight: Math.max(
+                ChatMinHeightPx,
+                Math.min(ChatMaxHeightPx, window.innerHeight - 108),
+            ),
+            maxWidth: Math.max(
+                ChatMinWidthPx,
+                Math.min(ChatMaxWidthPx, window.innerWidth - (ChatDragViewportMargin * 2)),
+            ),
+            minHeight: ChatMinHeightPx,
+            minWidth: ChatMinWidthPx,
+        };
+    };
+
+    const ClampChatSize = (Size) =>
+    {
+        const Limits = GetChatSizeLimits();
+        const Width = Number(Size?.width);
+        const Height = Number(Size?.height);
+
+        return {
+            height: Clamp(
+                Number.isFinite(Height) ? Height : ChatDefaultDesktopHeight,
+                Limits.minHeight,
+                Limits.maxHeight,
+            ),
+            width: Clamp(
+                Number.isFinite(Width) ? Width : ChatDefaultDesktopWidth,
+                Limits.minWidth,
+                Limits.maxWidth,
+            ),
+        };
+    };
+
+    const ReadStoredChatPanelSize = () =>
+    {
+        try
+        {
+            const RawValue = window.localStorage.getItem(ChatResizeStorageKey);
+
+            if (!RawValue)
+            {
+                return {
+                    height: ChatDefaultDesktopHeight,
+                    width: ChatDefaultDesktopWidth,
+                };
+            }
+
+            return ClampChatSize(JSON.parse(RawValue));
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+            return {
+                height: ChatDefaultDesktopHeight,
+                width: ChatDefaultDesktopWidth,
+            };
+        }
+    };
+
+    const PersistChatPanelSize = (Size) =>
+    {
+        try
+        {
+            window.localStorage.setItem(ChatResizeStorageKey, JSON.stringify(ClampChatSize(Size)));
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+        }
+    };
+
     const ReadStoredChatDragPosition = () =>
     {
         try
@@ -363,6 +450,75 @@
         {
             PositionProfileCard();
         }
+    };
+
+    const SyncChatPositionWithinViewport = ({ persist = false } = {}) =>
+    {
+        const ClampedPosition = ClampChatDragPosition(ChatDragPosition, ChatDragPosition);
+        ApplyChatDragPosition(ClampedPosition, {
+            persist,
+        });
+    };
+
+    const ApplyChatPanelSize = (Size, { persist = false } = {}) =>
+    {
+        ChatPanelSize = ClampChatSize(Size);
+
+        if (!ChatPanel)
+        {
+            return;
+        }
+
+        if (IsMobileViewport())
+        {
+            ChatPanel.style.width = "";
+            ChatPanel.style.height = "";
+            return;
+        }
+
+        ChatPanel.style.width = `${ChatPanelSize.width}px`;
+        ChatPanel.style.height = `${ChatPanelSize.height}px`;
+
+        if (persist)
+        {
+            PersistChatPanelSize(ChatPanelSize);
+        }
+
+        SyncChatPositionWithinViewport({
+            persist,
+        });
+
+        if (ChatProfileCard?.dataset.open === "true")
+        {
+            PositionProfileCard();
+        }
+    };
+
+    const SyncChatPanelSize = ({ useStoredSize = false } = {}) =>
+    {
+        if (IsMobileViewport())
+        {
+            ChatPanelSize = {
+                height: ChatDefaultDesktopHeight,
+                width: ChatDefaultDesktopWidth,
+            };
+            ChatShell.dataset.chatResizing = "false";
+            ChatResizeState = null;
+
+            if (ChatPanel)
+            {
+                ChatPanel.style.width = "";
+                ChatPanel.style.height = "";
+            }
+
+            return;
+        }
+
+        const DesiredSize = useStoredSize ? ReadStoredChatPanelSize() : ChatPanelSize;
+
+        ApplyChatPanelSize(DesiredSize, {
+            persist: true,
+        });
     };
 
     const SyncChatDragPosition = ({ useStoredPosition = false } = {}) =>
@@ -563,9 +719,35 @@
         ChatHeader.setPointerCapture?.(EventValue.pointerId);
     };
 
+    const StartChatResize = (EventValue) =>
+    {
+        if (
+            !ChatResizeHandle ||
+            EventValue.button !== 0 ||
+            IsMobileViewport()
+        )
+        {
+            return;
+        }
+
+        EventValue.preventDefault();
+        EventValue.stopPropagation();
+        HideProfileCard();
+        ChatResizeState = {
+            pointerId: EventValue.pointerId,
+            startClientX: EventValue.clientX,
+            startClientY: EventValue.clientY,
+            startSize: {
+                ...ChatPanelSize,
+            },
+        };
+        ChatShell.dataset.chatResizing = "true";
+        ChatResizeHandle.setPointerCapture?.(EventValue.pointerId);
+    };
+
     const UpdateChatDrag = (EventValue) =>
     {
-        if (!ChatDragState || EventValue.pointerId !== ChatDragState.pointerId)
+        if (ChatResizeState || !ChatDragState || EventValue.pointerId !== ChatDragState.pointerId)
         {
             return;
         }
@@ -577,6 +759,21 @@
         const ClampedPosition = ClampChatDragPosition(DesiredPosition, ChatDragPosition);
 
         ApplyChatDragPosition(ClampedPosition);
+    };
+
+    const UpdateChatResize = (EventValue) =>
+    {
+        if (!ChatResizeState || EventValue.pointerId !== ChatResizeState.pointerId)
+        {
+            return;
+        }
+
+        const DesiredSize = {
+            height: ChatResizeState.startSize.height + (ChatResizeState.startClientY - EventValue.clientY),
+            width: ChatResizeState.startSize.width + (ChatResizeState.startClientX - EventValue.clientX),
+        };
+
+        ApplyChatPanelSize(DesiredSize);
     };
 
     const EndChatDrag = (EventValue) =>
@@ -595,6 +792,24 @@
         ChatDragState = null;
         ChatShell.dataset.chatDragging = "false";
         PersistChatDragPosition(ChatDragPosition);
+    };
+
+    const EndChatResize = (EventValue) =>
+    {
+        if (!ChatResizeState)
+        {
+            return;
+        }
+
+        if (EventValue && EventValue.pointerId !== ChatResizeState.pointerId)
+        {
+            return;
+        }
+
+        ChatResizeHandle?.releasePointerCapture?.(ChatResizeState.pointerId);
+        ChatResizeState = null;
+        ChatShell.dataset.chatResizing = "false";
+        PersistChatPanelSize(ChatPanelSize);
     };
 
     const BuildAvatarMarkup = (User) =>
@@ -1928,6 +2143,7 @@
 
     ChatShell.addEventListener("error", HandleAvatarError, true);
     ChatHeader?.addEventListener("pointerdown", StartChatDrag);
+    ChatResizeHandle?.addEventListener("pointerdown", StartChatResize);
 
     ChatToggleButton?.addEventListener("click", () =>
     {
@@ -2220,11 +2436,15 @@
         ScheduleHideProfileCard();
     });
 
+    window.addEventListener("pointermove", UpdateChatResize);
     window.addEventListener("pointermove", UpdateChatDrag);
+    window.addEventListener("pointerup", EndChatResize);
     window.addEventListener("pointerup", EndChatDrag);
+    window.addEventListener("pointercancel", EndChatResize);
     window.addEventListener("pointercancel", EndChatDrag);
     window.addEventListener("resize", () =>
     {
+        SyncChatPanelSize();
         SyncChatDragPosition();
         PositionProfileCard();
     });
@@ -2281,6 +2501,9 @@
     UpdateComposerState();
     SetTypingSummary([]);
     SetChatOpen(!IsMobileViewport(), { FocusComposer: false });
+    SyncChatPanelSize({
+        useStoredSize: true,
+    });
     SyncChatDragPosition({
         useStoredPosition: true,
     });

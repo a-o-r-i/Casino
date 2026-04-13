@@ -3,7 +3,20 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% set share_meta_title = "Shuffling - Live Coinflip, Dice, Chat, and Leaderboards" %}
+    {% set share_meta_description %}{% block meta_description %}Shuffling is a live gambling hub with coinflip, dice battles, player profiles, leaderboards, and a real-time site chat.{% endblock %}{% endset %}
+    {% set share_meta_description = share_meta_description | striptags | trim %}
     <title>{% block title %}Gambling{% endblock %}</title>
+    <meta name="description" content="{{ share_meta_description }}">
+    <meta name="theme-color" content="#07090d">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Shuffling">
+    <meta property="og:title" content="{{ share_meta_title }}">
+    <meta property="og:description" content="{{ share_meta_description }}">
+    <meta property="og:url" content="{{ request.base_url }}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ share_meta_title }}">
+    <meta name="twitter:description" content="{{ share_meta_description }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -298,8 +311,10 @@
         bottom: 4.35rem;
         width: 100%;
         display: flex;
-        min-height: 420px;
-        max-height: min(500px, calc(100vh - 6.75rem));
+        min-width: 320px;
+        min-height: 390px;
+        max-width: min(520px, calc(100vw - 2rem));
+        max-height: min(640px, calc(100vh - 6.75rem));
         flex-direction: column;
         overflow: hidden;
         border: 1px solid rgba(255, 255, 255, 0.09);
@@ -351,6 +366,53 @@
         align-items: center;
         gap: 0.5rem;
         flex-shrink: 0;
+      }
+
+      [data-chat-resize-handle]
+      {
+        position: absolute;
+        left: 0.8rem;
+        bottom: 0.78rem;
+        display: inline-flex;
+        width: 1.2rem;
+        height: 1.2rem;
+        align-items: flex-end;
+        justify-content: flex-start;
+        gap: 0.17rem;
+        color: rgba(255, 255, 255, 0.34);
+        cursor: nesw-resize;
+        opacity: 0.78;
+        user-select: none;
+      }
+
+      [data-chat-resize-handle] span
+      {
+        display: block;
+        width: 2px;
+        border-radius: 9999px;
+        background: currentColor;
+      }
+
+      [data-chat-resize-handle] span:nth-child(1)
+      {
+        height: 0.35rem;
+      }
+
+      [data-chat-resize-handle] span:nth-child(2)
+      {
+        height: 0.6rem;
+      }
+
+      [data-chat-resize-handle] span:nth-child(3)
+      {
+        height: 0.82rem;
+      }
+
+      [data-site-chat-shell][data-chat-open="true"] [data-chat-resize-handle]:hover,
+      [data-site-chat-shell][data-chat-resizing="true"] [data-chat-resize-handle]
+      {
+        color: rgba(255, 255, 255, 0.78);
+        opacity: 1;
       }
 
       [data-chat-title]
@@ -1589,6 +1651,11 @@
           max-height: min(72vh, 470px);
           border-radius: 8px;
         }
+
+        [data-chat-resize-handle]
+        {
+          display: none;
+        }
       }
 
       @media (min-width: 641px)
@@ -1912,6 +1979,12 @@
               </button>
             </div>
           </form>
+
+          <div aria-hidden="true" data-chat-resize-handle>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
         </div>
 
         <section data-chat-profile-card aria-hidden="true"></section>
