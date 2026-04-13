@@ -69,6 +69,23 @@
         });
     };
 
+    const CreateNodeFromMarkup = (Markup) =>
+    {
+        const Template = document.createElement("template");
+        Template.innerHTML = String(Markup || "").trim();
+        return Template.content.firstElementChild;
+    };
+
+    const SetTextContent = (TargetNode, Value) =>
+    {
+        if (!(TargetNode instanceof Node))
+        {
+            return;
+        }
+
+        TargetNode.textContent = String(Value ?? "");
+    };
+
     const BuildAvatarMarkup = (Row, SizeClass = "h-12 w-12") =>
     {
         const FallbackUrl = Row?.avatar_static_url || Row?.avatar_url || "";
@@ -94,6 +111,32 @@
         `;
     };
 
+    const SyncAvatarNode = (ContainerNode, Row) =>
+    {
+        if (!(ContainerNode instanceof Element))
+        {
+            return;
+        }
+
+        const ImageNode = ContainerNode.querySelector("img");
+
+        if (ImageNode instanceof HTMLImageElement)
+        {
+            ImageNode.alt = String(Row?.display_name || Row?.username || "");
+            return;
+        }
+
+        const FallbackNode = ContainerNode.firstElementChild;
+
+        if (FallbackNode)
+        {
+            SetTextContent(
+                FallbackNode,
+                (Row?.display_name || Row?.username || "?").slice(0, 1),
+            );
+        }
+    };
+
     const RenderPlayerRow = (Row) =>
     {
         const StatusColor = Row.is_online ? "bg-emerald-400" : "bg-white/28";
@@ -106,16 +149,16 @@
               data-user-id="${EscapeHtml(Row.id)}"
               type="button"
             >
-              <span class="shrink-0">
+              <span class="shrink-0" data-admin-player-avatar>
                 ${BuildAvatarMarkup(Row)}
               </span>
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-[1.02rem] font-medium text-white">${EscapeHtml(Row.display_name)}</span>
-                <span class="mt-1 block truncate text-xs text-white/34">@${EscapeHtml(Row.username)}</span>
+                <span class="block truncate text-[1.02rem] font-medium text-white" data-admin-player-display>${EscapeHtml(Row.display_name)}</span>
+                <span class="mt-1 block truncate text-xs text-white/34" data-admin-player-username>@${EscapeHtml(Row.username)}</span>
               </span>
               <span class="flex shrink-0 items-center gap-3">
-                <span class="text-sm font-medium text-white/48">${EscapeHtml(BalanceCopy)}</span>
-                <span class="inline-flex h-2.5 w-2.5 rounded-full ${StatusColor}"></span>
+                <span class="text-sm font-medium text-white/48" data-admin-player-balance>${EscapeHtml(BalanceCopy)}</span>
+                <span class="inline-flex h-2.5 w-2.5 rounded-full ${StatusColor}" data-admin-player-status-dot></span>
               </span>
             </button>
         `;
@@ -130,26 +173,24 @@
         `;
     };
 
-    const RenderDetailRow = (Label, Value) =>
+    const RenderDetailRow = (Key, Label, Value, AdditionalClassName = "") =>
     {
         return `
-            <div class="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-2.5">
+            <div class="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-2.5 ${AdditionalClassName}">
               <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">${EscapeHtml(Label)}</div>
-              <div class="mt-1 text-sm font-medium text-white">${EscapeHtml(Value)}</div>
+              <div class="mt-1 text-sm font-medium text-white" data-admin-popout-value="${EscapeHtml(Key)}">${EscapeHtml(Value)}</div>
             </div>
         `;
     };
 
-    const BuildPopoutMarkup = (Row, Side = "right") =>
+    const BuildPopoutMarkup = (Row) =>
     {
-        const ArrowMarkup = Side === "left"
-            ? `<span class="pointer-events-none absolute right-0 h-4 w-4 translate-x-1/2 rotate-45 border-r border-t border-white/10 bg-[#101116]" style="top: var(--admin-popout-arrow-top, 48px);"></span>`
-            : `<span class="pointer-events-none absolute left-0 h-4 w-4 -translate-x-1/2 rotate-45 border-l border-b border-white/10 bg-[#101116]" style="top: var(--admin-popout-arrow-top, 48px);"></span>`;
         const LogoutMarkup = Row.can_force_logout
             ? `
                 <button
                   class="inline-flex h-10 w-full items-center justify-center rounded-[12px] border border-red-400/14 bg-red-500/10 px-3 text-sm font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
                   data-admin-force-logout
+                  data-admin-popout-logout
                   data-url="${EscapeHtml(Row.force_logout_url || "")}"
                   type="button"
                 >
@@ -160,6 +201,7 @@
                 <a
                   class="inline-flex h-10 w-full items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
                   data-admin-logout-href
+                  data-admin-popout-logout
                   href="/logout"
                 >
                   Logout
@@ -173,30 +215,32 @@
             <div
               class="relative pointer-events-auto"
               data-admin-popout-shell
-              style="transform-origin: ${Side === "left" ? "right center" : "left center"};"
+              data-user-id="${EscapeHtml(Row.id)}"
             >
-              ${ArrowMarkup}
+              <span
+                class="pointer-events-none absolute h-4 w-4 rotate-45 bg-[#101116]"
+                data-admin-popout-arrow
+                style="top: var(--admin-popout-arrow-top, 36px);"
+              ></span>
               <div class="rounded-[22px] border border-white/10 bg-[rgba(16,17,22,0.88)] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
                 <div class="flex items-center gap-3">
-                  <span class="shrink-0">
+                  <span class="shrink-0" data-admin-popout-avatar>
                     ${BuildAvatarMarkup(Row, "h-10 w-10")}
                   </span>
                   <div class="min-w-0">
-                    <div class="truncate text-[1.05rem] font-semibold text-white">${EscapeHtml(Row.display_name)}</div>
-                    <div class="mt-0.5 truncate text-[11px] text-white/38">@${EscapeHtml(Row.username)}</div>
+                    <div class="truncate text-[1.05rem] font-semibold text-white" data-admin-popout-display>${EscapeHtml(Row.display_name)}</div>
+                    <div class="mt-0.5 truncate text-[11px] text-white/38" data-admin-popout-username>@${EscapeHtml(Row.username)}</div>
                   </div>
                 </div>
 
                 <div class="mt-3 grid grid-cols-2 gap-2">
-                  ${RenderDetailRow("Status", StatusCopy)}
-                  ${RenderDetailRow("Balance", Row.balance_display || "$0")}
-                  ${RenderDetailRow("Wagered", Row.total_wagered_display || "$0")}
-                  ${RenderDetailRow("Level", LevelCopy)}
-                  ${RenderDetailRow("Win rate", FormatPercent(Row.win_rate))}
-                  ${RenderDetailRow("Registered", FormatRelativeTime(Row.registered_at))}
-                  <div class="col-span-2">
-                    ${RenderDetailRow("Activity", ActivityCopy)}
-                  </div>
+                  ${RenderDetailRow("status", "Status", StatusCopy)}
+                  ${RenderDetailRow("balance", "Balance", Row.balance_display || "$0")}
+                  ${RenderDetailRow("wagered", "Wagered", Row.total_wagered_display || "$0")}
+                  ${RenderDetailRow("level", "Level", LevelCopy)}
+                  ${RenderDetailRow("win-rate", "Win rate", FormatPercent(Row.win_rate))}
+                  ${RenderDetailRow("registered", "Registered", FormatRelativeTime(Row.registered_at))}
+                  ${RenderDetailRow("activity", "Activity", ActivityCopy, "col-span-2")}
                 </div>
 
                 <form
@@ -228,6 +272,162 @@
               </div>
             </div>
         `;
+    };
+
+    const UpdatePlayerRowNode = (RowNode, Row) =>
+    {
+        if (!(RowNode instanceof HTMLElement))
+        {
+            return null;
+        }
+
+        RowNode.dataset.userId = String(Row?.id ?? "");
+        SetTextContent(
+            RowNode.querySelector("[data-admin-player-display]"),
+            Row?.display_name || Row?.username || "Unknown player",
+        );
+        SetTextContent(
+            RowNode.querySelector("[data-admin-player-username]"),
+            `@${Row?.username || ""}`,
+        );
+        SetTextContent(
+            RowNode.querySelector("[data-admin-player-balance]"),
+            Row?.balance_display || "$0",
+        );
+        SyncAvatarNode(RowNode.querySelector("[data-admin-player-avatar]"), Row);
+
+        const StatusDotNode = RowNode.querySelector("[data-admin-player-status-dot]");
+
+        if (StatusDotNode instanceof HTMLElement)
+        {
+            StatusDotNode.classList.toggle("bg-emerald-400", Boolean(Row?.is_online));
+            StatusDotNode.classList.toggle("bg-white/28", !Row?.is_online);
+        }
+
+        return RowNode;
+    };
+
+    const BuildPlayerRowNode = (Row) =>
+    {
+        return UpdatePlayerRowNode(CreateNodeFromMarkup(RenderPlayerRow(Row)), Row);
+    };
+
+    const SyncPlayerRows = (PlayersNode, Rows) =>
+    {
+        if (!(PlayersNode instanceof HTMLElement))
+        {
+            return;
+        }
+
+        if (!Rows.length)
+        {
+            const EmptyStateNode = CreateNodeFromMarkup(RenderEmptyPlayerList("No players match the current filter."));
+            PlayersNode.replaceChildren(...(EmptyStateNode ? [EmptyStateNode] : []));
+            return;
+        }
+
+        const ExistingRowsById = new Map(
+            Array.from(PlayersNode.querySelectorAll("[data-admin-player-row]")).map((Node) =>
+            {
+                return [Node.dataset.userId || "", Node];
+            }),
+        );
+        const NextRowNodes = Rows.map((Row) =>
+        {
+            const UserId = String(Row?.id ?? "");
+            const ExistingNode = ExistingRowsById.get(UserId);
+
+            if (ExistingNode)
+            {
+                return UpdatePlayerRowNode(ExistingNode, Row);
+            }
+
+            return BuildPlayerRowNode(Row);
+        }).filter(Boolean);
+
+        PlayersNode.replaceChildren(...NextRowNodes);
+    };
+
+    const SyncPopoutArrowNode = (ArrowNode, Side) =>
+    {
+        if (!(ArrowNode instanceof HTMLElement))
+        {
+            return;
+        }
+
+        ArrowNode.className = Side === "left"
+            ? "pointer-events-none absolute right-0 h-4 w-4 translate-x-1/2 rotate-45 border-r border-t border-white/10 bg-[#101116]"
+            : "pointer-events-none absolute left-0 h-4 w-4 -translate-x-1/2 rotate-45 border-l border-b border-white/10 bg-[#101116]";
+    };
+
+    const UpdatePopoutShell = (ShellNode, Row, Side) =>
+    {
+        if (!(ShellNode instanceof HTMLElement))
+        {
+            return null;
+        }
+
+        const StatusCopy = Row?.is_online ? "Active" : "Offline";
+        const LevelCopy = `${Row?.reward_level || 0} (${Row?.reward_badge || "Unranked"})`;
+        const ActivityCopy = Row?.current_path_label || "--";
+
+        ShellNode.dataset.userId = String(Row?.id ?? "");
+        ShellNode.style.transformOrigin = Side === "left" ? "right top" : "left top";
+        SyncPopoutArrowNode(ShellNode.querySelector("[data-admin-popout-arrow]"), Side);
+        SyncAvatarNode(ShellNode.querySelector("[data-admin-popout-avatar]"), Row);
+        SetTextContent(
+            ShellNode.querySelector("[data-admin-popout-display]"),
+            Row?.display_name || Row?.username || "Unknown player",
+        );
+        SetTextContent(
+            ShellNode.querySelector("[data-admin-popout-username]"),
+            `@${Row?.username || ""}`,
+        );
+        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"status\"]"), StatusCopy);
+        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"balance\"]"), Row?.balance_display || "$0");
+        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"wagered\"]"), Row?.total_wagered_display || "$0");
+        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"level\"]"), LevelCopy);
+        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"win-rate\"]"), FormatPercent(Row?.win_rate));
+        SetTextContent(
+            ShellNode.querySelector("[data-admin-popout-value=\"registered\"]"),
+            FormatRelativeTime(Row?.registered_at),
+        );
+        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"activity\"]"), ActivityCopy);
+
+        const BalanceForm = ShellNode.querySelector("[data-admin-popout-balance-form]");
+
+        if (BalanceForm instanceof HTMLFormElement)
+        {
+            BalanceForm.action = String(Row?.balance_adjust_url || "");
+        }
+
+        const LogoutButton = ShellNode.querySelector("[data-admin-force-logout]");
+
+        if (LogoutButton instanceof HTMLButtonElement)
+        {
+            LogoutButton.dataset.url = String(Row?.force_logout_url || "");
+        }
+
+        return ShellNode;
+    };
+
+    const EnsurePopoutShell = (PopoutNode, Row) =>
+    {
+        if (!(PopoutNode instanceof HTMLElement))
+        {
+            return null;
+        }
+
+        const ExistingShell = PopoutNode.querySelector("[data-admin-popout-shell]");
+
+        if (ExistingShell instanceof HTMLElement && ExistingShell.dataset.userId === String(Row?.id ?? ""))
+        {
+            return ExistingShell;
+        }
+
+        const ShellNode = CreateNodeFromMarkup(BuildPopoutMarkup(Row));
+        PopoutNode.replaceChildren(...(ShellNode ? [ShellNode] : []));
+        return ShellNode;
     };
 
     const InitializeAdminPanelPage = ({ main }) =>
@@ -312,7 +512,7 @@
         const HidePopoutNow = () =>
         {
             PopoutAnimationToken += 1;
-            PopoutNode.innerHTML = "";
+            PopoutNode.replaceChildren();
             PopoutNode.classList.add("pointer-events-none");
             PopoutNode.classList.remove("pointer-events-auto");
             PopoutNode.classList.add("hidden");
@@ -424,7 +624,15 @@
             PopoutNode.setAttribute("aria-hidden", "false");
             PopoutNode.style.left = "0px";
             PopoutNode.style.top = "0px";
-            PopoutNode.innerHTML = BuildPopoutMarkup(Row, "right");
+            const ShellNode = EnsurePopoutShell(PopoutNode, Row);
+
+            if (!(ShellNode instanceof HTMLElement))
+            {
+                HidePopoutNow();
+                return;
+            }
+
+            UpdatePopoutShell(ShellNode, Row, "right");
 
             const Width = PopoutNode.offsetWidth || 290;
             let Side = "right";
@@ -434,28 +642,38 @@
                 Side = "left";
             }
 
-            PopoutNode.innerHTML = BuildPopoutMarkup(Row, Side);
+            UpdatePopoutShell(ShellNode, Row, Side);
 
             const Height = PopoutNode.offsetHeight || 320;
-            const PreferredTop = AnchorRect.top - 14;
-            const Top = Math.max(
+            const PreferredTop = AnchorRect.top - 28;
+            let Top = Math.max(
                 Margin,
                 Math.min(
                     PreferredTop,
                     window.innerHeight - Height - Margin,
                 ),
             );
+
+            if (Top >= AnchorRect.top - 4)
+            {
+                Top = Math.max(
+                    Margin,
+                    AnchorRect.top - Math.min(48, Math.max(28, Height * 0.14)),
+                );
+            }
+
             let Left = Side === "left"
                 ? AnchorRect.left - Width - Gap
                 : AnchorRect.right + Gap;
 
             Left = Math.max(Margin, Math.min(Left, window.innerWidth - Width - Margin));
+            const ArrowTarget = AnchorRect.top + Math.min(AnchorRect.height * 0.35, 18);
 
             const ArrowTop = Math.max(
-                22,
+                20,
                 Math.min(
-                    AnchorRect.top + AnchorRect.height / 2 - Top - 8,
-                    Height - 30,
+                    ArrowTarget - Top - 8,
+                    Height - 32,
                 ),
             );
 
@@ -465,7 +683,7 @@
 
             if (animate)
             {
-                AnimatePopoutIn(PopoutNode.querySelector("[data-admin-popout-shell]"));
+                AnimatePopoutIn(ShellNode);
             }
         };
 
@@ -503,9 +721,7 @@
             const FilteredPlayers = GetFilteredPlayers();
 
             PlayerCountNode.textContent = `${FilteredPlayers.length} / ${AllPlayers.length}`;
-            PlayersNode.innerHTML = FilteredPlayers.length
-                ? FilteredPlayers.map((Row) => RenderPlayerRow(Row)).join("")
-                : RenderEmptyPlayerList("No players match the current filter.");
+            SyncPlayerRows(PlayersNode, FilteredPlayers);
 
             ApplyGlobalBalance(LastState);
             ReopenSelectedPopout();
