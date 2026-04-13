@@ -481,6 +481,17 @@ const SyncActorMeshFromBody = (Actor, Body) =>
 
 const GetActorFacePosition = (Actor, PositionMode = "rest") =>
 {
+    if (PositionMode === "current")
+    {
+        const CurrentPosition = Actor.renderBody?.position || Actor.mesh.position;
+
+        return {
+            x: CurrentPosition.x,
+            y: CurrentPosition.y,
+            z: CurrentPosition.z,
+        };
+    }
+
     if (PositionMode === "top")
     {
         return {
@@ -1052,7 +1063,10 @@ const MountDiceViewer = (Root, Options = {}) =>
 
         if (LandedFace !== RollValue.face)
         {
-            SetActorFace(RollValue.actor, RollValue.face);
+            // Keep the landed spot and only correct the orientation if the physics roll settles on the wrong face.
+            SetActorFace(RollValue.actor, RollValue.face, {
+                position: "current",
+            });
         }
         else
         {

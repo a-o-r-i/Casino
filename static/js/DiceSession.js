@@ -1,6 +1,83 @@
 (() =>
 {
 const CountdownAutoplayStorageKey = "gambling.countdownAutoplayOnLoad";
+const FirstToPlaybackStorageKeyPrefix = "gambling.dice-session-playback:";
+const RevealCompletionStorageKeyPrefix = "gambling.dice-reveal-complete:";
+
+const BuildRevealCompletionStorageKey = (SessionId) =>
+{
+    return `${RevealCompletionStorageKeyPrefix}${SessionId || ""}`;
+};
+
+const BuildRevealCompletionSignature = (State) =>
+{
+    return JSON.stringify({
+        creatorScore: Number.parseInt(State?.creator_score ?? "0", 10) || 0,
+        id: State?.id || "",
+        isDoubleRoll: Boolean(State?.is_double_roll),
+        isFirstTo: Boolean(State?.is_first_to),
+        opponentScore: Number.parseInt(State?.opponent_score ?? "0", 10) || 0,
+        resultFace: State?.result_face || "",
+        roundsLength: Array.isArray(State?.rounds) ? State.rounds.length : 0,
+        winnerId: State?.winner_id || "",
+    });
+};
+
+const PersistRevealCompletion = (State) =>
+{
+    if (State?.status !== "resolved" || !State?.id || !State?.winner_id)
+    {
+        return;
+    }
+
+    try
+    {
+        window.sessionStorage.setItem(
+            BuildRevealCompletionStorageKey(State.id),
+            BuildRevealCompletionSignature(State),
+        );
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+    }
+};
+
+const HasRevealCompletion = (State) =>
+{
+    if (State?.status !== "resolved" || !State?.id || !State?.winner_id)
+    {
+        return false;
+    }
+
+    try
+    {
+        return window.sessionStorage.getItem(BuildRevealCompletionStorageKey(State.id))
+            === BuildRevealCompletionSignature(State);
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+        return false;
+    }
+};
+
+const ClearRevealCompletion = (SessionId) =>
+{
+    if (!SessionId)
+    {
+        return;
+    }
+
+    try
+    {
+        window.sessionStorage.removeItem(BuildRevealCompletionStorageKey(SessionId));
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+    }
+};
 
 const ParseSessionState = (Main) =>
 {
@@ -531,6 +608,119 @@ const ConsumeCountdownAutoplayRequest = () =>
     }
 };
 
+const BuildFirstToPlaybackStorageKey = (SessionId) =>
+{
+    return `${FirstToPlaybackStorageKeyPrefix}${SessionId || ""}`;
+};
+
+const BuildFirstToPlaybackSignature = (State) =>
+{
+    const Rounds = Array.isArray(State?.rounds) ? State.rounds : [];
+
+    return JSON.stringify({
+        creatorScore: Number.parseInt(State?.creator_score ?? "0", 10) || 0,
+        id: State?.id || "",
+        isDoubleRoll: Boolean(State?.is_double_roll),
+        opponentScore: Number.parseInt(State?.opponent_score ?? "0", 10) || 0,
+        roundsLength: Rounds.length,
+        winnerId: State?.winner_id || "",
+    });
+};
+
+const PersistFirstToPlaybackProgress = (State, Progress) =>
+{
+    if (!State?.id || !State?.is_first_to)
+    {
+        return;
+    }
+
+    try
+    {
+        window.sessionStorage.setItem(BuildFirstToPlaybackStorageKey(State.id), JSON.stringify({
+            phase: String(Progress?.phase || ""),
+            phaseStartedAt: Date.now(),
+            roundIndex: Math.max(Number.parseInt(Progress?.roundIndex ?? "0", 10) || 0, 0),
+            signature: BuildFirstToPlaybackSignature(State),
+        }));
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+    }
+};
+
+const ReadFirstToPlaybackProgress = (State) =>
+{
+    if (!State?.id || !State?.is_first_to)
+    {
+        return null;
+    }
+
+    try
+    {
+        const RawValue = window.sessionStorage.getItem(BuildFirstToPlaybackStorageKey(State.id));
+
+        if (!RawValue)
+        {
+            return null;
+        }
+
+        const ParsedValue = JSON.parse(RawValue);
+
+        if (ParsedValue?.signature !== BuildFirstToPlaybackSignature(State) || !ParsedValue?.phase)
+        {
+            return null;
+        }
+
+        return {
+            phase: String(ParsedValue.phase),
+            phaseStartedAt: Number.isFinite(Number(ParsedValue.phaseStartedAt))
+                ? Number(ParsedValue.phaseStartedAt)
+                : Date.now(),
+            roundIndex: Math.max(Number.parseInt(ParsedValue.roundIndex ?? "0", 10) || 0, 0),
+        };
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+        return null;
+    }
+};
+
+const ClearFirstToPlaybackProgress = (SessionId) =>
+{
+    if (!SessionId)
+    {
+        return;
+    }
+
+    try
+    {
+        window.sessionStorage.removeItem(BuildFirstToPlaybackStorageKey(SessionId));
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+    }
+};
+
+const GetPlaybackPhaseElapsedMs = (Progress) =>
+{
+    const PhaseStartedAt = Number(Progress?.phaseStartedAt);
+
+    if (!Number.isFinite(PhaseStartedAt))
+    {
+        return 0;
+    }
+
+    return Math.max(0, Date.now() - PhaseStartedAt);
+};
+
+const GetRemainingPlaybackDelayMs = (Progress, TotalMs) =>
+{
+    return Math.max(0, TotalMs - GetPlaybackPhaseElapsedMs(Progress));
+};
+
 const WaitFor = (DelayMs) =>
 {
     return new Promise((Resolve) =>
@@ -689,8 +879,27 @@ const HideSessionReturnLink = async (ReturnLink) =>
     ReturnLink.classList.add("opacity-0", "scale-[0.92]", "pointer-events-none");
 };
 
-const SetRedoVisibility = (Main, State) =>
+const SetShareVisibility = (Main, State, OptionsValue = {}) =>
 {
+    const {
+        forceHidden = false,
+    } = OptionsValue;
+    const ShareButton = Main.querySelector("[data-share-chat-session]");
+
+    if (!ShareButton)
+    {
+        return;
+    }
+
+    ShareButton.classList.toggle("hidden", forceHidden || !State?.can_share_chat);
+    ShareButton.classList.toggle("inline-flex", !forceHidden && Boolean(State?.can_share_chat));
+};
+
+const SetRedoVisibility = (Main, State, OptionsValue = {}) =>
+{
+    const {
+        forceHidden = false,
+    } = OptionsValue;
     const RedoForm = Main.querySelector("[data-session-redo-form]");
 
     if (!RedoForm)
@@ -703,8 +912,8 @@ const SetRedoVisibility = (Main, State) =>
         RedoForm.action = State.redo_url;
     }
 
-    RedoForm.classList.toggle("hidden", !State?.can_redo);
-    RedoForm.classList.toggle("flex", Boolean(State?.can_redo));
+    RedoForm.classList.toggle("hidden", forceHidden || !State?.can_redo);
+    RedoForm.classList.toggle("flex", !forceHidden && Boolean(State?.can_redo));
 };
 
 const ApplyResolvedState = (Main, State) =>
@@ -714,16 +923,25 @@ const ApplyResolvedState = (Main, State) =>
     });
     SetSessionNarrative(Main, BuildSessionNarrative(State));
     RevealSessionReturnLink(Main);
+    SetShareVisibility(Main, State);
     SetRedoVisibility(Main, State);
 };
 
-const RenderUnresolvedState = (Main, State) =>
+const RenderUnresolvedState = (Main, State, OptionsValue = {}) =>
 {
+    const {
+        forceHideResolvedActions = false,
+    } = OptionsValue;
     SetPanelResultVisuals(Main, State, {
         revealResolved: false,
     });
     SetSessionNarrative(Main, BuildSessionNarrative(State));
-    SetRedoVisibility(Main, State);
+    SetShareVisibility(Main, State, {
+        forceHidden: forceHideResolvedActions && State?.status === "resolved",
+    });
+    SetRedoVisibility(Main, State, {
+        forceHidden: forceHideResolvedActions,
+    });
 };
 
 const PollSessionState = async (StateUrl, OnState) =>
@@ -763,7 +981,27 @@ const InitializeDiceSessionPage = ({ main }) =>
         return null;
     }
 
-    if (InitialState.status === "resolved" && !InitialState.reveal_pending)
+    const BuildUiState = (State) =>
+    {
+        if (!HasRevealCompletion(State))
+        {
+            return State;
+        }
+
+        return {
+            ...State,
+            can_redo: Boolean(State?.redo_url),
+            can_share_chat: true,
+            reveal_pending: false,
+        };
+    };
+
+    const IsRevealPlaybackPending = (State) =>
+    {
+        return Boolean(State?.status === "resolved" && State?.reveal_pending && !HasRevealCompletion(State));
+    };
+
+    if (InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState))
     {
         RevealSessionReturnLink(main);
     }
@@ -771,7 +1009,7 @@ const InitializeDiceSessionPage = ({ main }) =>
     const StateUrl = SessionRoot.dataset.stateUrl;
     let LastState = InitialState;
     let PendingRevealState = null;
-    let HasShownResult = InitialState.status === "resolved" && !InitialState.reveal_pending;
+    let HasShownResult = InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState);
     let HasAppliedResolvedFace = false;
     let IsDisposed = false;
     let IsHoldingBalanceDisplay = false;
@@ -861,88 +1099,125 @@ const InitializeDiceSessionPage = ({ main }) =>
                 creator: true,
                 opponent: true,
             };
-
-        if (!DiceViewerController || !FinalRound)
-        {
-            PendingRevealState = null;
-            ReleaseGlobalBalanceDisplay(BalanceContext);
-            SetBalance(State);
-            ApplyResolvedState(main, State);
-            MaybePlayWinSound(State);
-            return;
-        }
-
-        DiceViewerController.setPlayersVisible(ViewerPlayers);
-        SetSceneIndicatorVisibility(main, !State.is_double_roll);
-        DiceViewerController.setFaces(
-            State.is_double_roll
-                ? {
-                    left: 1,
-                    right: 1,
-                }
-                : {
-                    creator: 1,
-                    opponent: 1,
-                },
-            {
-                position: "top",
-            },
-        );
-        SetScoreVisuals(main, {
-            ...State,
-            creator_score: 0,
-            opponent_score: 0,
-        });
-        SetDoubleRollResultVisuals(main, State, {
-            creatorText: "Awaiting roll",
-            opponentText: "Awaiting roll",
-        });
-        SetSessionNarrative(main, {
-            detail: State.is_double_roll
-                ? `FT${State.target_wins}. ${State.creator.display_name} and ${State.opponent.display_name} roll two dice each round.`
-                : `FT${State.target_wins}. ${State.creator.display_name} opens the match and ${State.opponent.display_name} answers second.`,
-            title: `${State.creator.display_name} rolls first.`,
-        });
-
-        await WaitFor(State.is_double_roll ? DoublePlaybackDelays.introMs : FirstToPlaybackDelays.introMs);
-
+        const IdleViewerFaces = State.is_double_roll
+            ? {
+                left: 1,
+                right: 1,
+            }
+            : {
+                creator: 1,
+                opponent: 1,
+            };
         const Rounds = Array.isArray(State.rounds) ? State.rounds : [];
+        const PhaseOrder = ["creator_roll", "between_players", "opponent_roll", "round_result", "between_rounds"];
+        const ResumeProgress = ReadFirstToPlaybackProgress(State);
+        const ResumePhase = ResumeProgress?.phase || "";
+        const ResumeRoundIndex = ResumeProgress
+            ? Math.min(ResumeProgress.roundIndex, Math.max(Rounds.length - 1, 0))
+            : 0;
 
-        for (let RoundIndex = 0; RoundIndex < Rounds.length; RoundIndex += 1)
+        const IsActive = () =>
         {
-            const Round = Rounds[RoundIndex];
+            return !IsDisposed && PendingRevealState === State;
+        };
 
-            if (IsDisposed || PendingRevealState !== State)
+        const BeginPlaybackPhase = (Phase, RoundIndex) =>
+        {
+            const Progress = {
+                phase: Phase,
+                phaseStartedAt: Date.now(),
+                roundIndex: RoundIndex,
+            };
+
+            PersistFirstToPlaybackProgress(State, Progress);
+            return Progress;
+        };
+
+        const GetPreviousScore = (RoundIndex) =>
+        {
+            if (RoundIndex > 0)
             {
-                return;
+                return {
+                    creator_score: Rounds[RoundIndex - 1].creator_score,
+                    opponent_score: Rounds[RoundIndex - 1].opponent_score,
+                };
             }
 
-            const PreviousScore = RoundIndex > 0
-                ? Rounds[RoundIndex - 1]
-                : {
-                    creator_score: 0,
-                    opponent_score: 0,
-                };
+            return {
+                creator_score: 0,
+                opponent_score: 0,
+            };
+        };
+
+        const ApplyBaseScene = () =>
+        {
+            DiceViewerController.setPlayersVisible(ViewerPlayers);
+            SetSceneIndicatorVisibility(main, !State.is_double_roll);
+        };
+
+        const SetIntroState = () =>
+        {
+            ApplyBaseScene();
+            DiceViewerController.setFaces(IdleViewerFaces, {
+                position: "top",
+            });
+            SetScoreVisuals(main, {
+                ...State,
+                creator_score: 0,
+                opponent_score: 0,
+            });
+            SetDoubleRollResultVisuals(main, State, {
+                creatorText: "Awaiting roll",
+                opponentText: "Awaiting roll",
+            });
+            SetSessionNarrative(main, {
+                detail: State.is_double_roll
+                    ? `FT${State.target_wins}. ${State.creator.display_name} and ${State.opponent.display_name} roll two dice each round.`
+                    : `FT${State.target_wins}. ${State.creator.display_name} opens the match and ${State.opponent.display_name} answers second.`,
+                title: `${State.creator.display_name} rolls first.`,
+            });
+        };
+
+        const SetCreatorRollState = (RoundIndex) =>
+        {
+            const PreviousScore = GetPreviousScore(RoundIndex);
+
+            ApplyBaseScene();
+            DiceViewerController.setFaces(IdleViewerFaces, {
+                position: "top",
+            });
+            SetScoreVisuals(main, {
+                ...State,
+                creator_score: PreviousScore.creator_score,
+                opponent_score: PreviousScore.opponent_score,
+            });
+            SetDoubleRollResultVisuals(main, State, {
+                creatorText: "Awaiting roll",
+                opponentText: "Awaiting roll",
+            });
+            SetSessionNarrative(main, {
+                detail: State.is_double_roll
+                    ? `Score ${PreviousScore.creator_score}-${PreviousScore.opponent_score}. ${State.creator.display_name} throws both dice.`
+                    : `Score ${PreviousScore.creator_score}-${PreviousScore.opponent_score}. Creator throw is live.`,
+                title: `${State.creator.display_name} is rolling.`,
+            });
+        };
+
+        const SetBetweenPlayersState = (RoundIndex) =>
+        {
+            const PreviousScore = GetPreviousScore(RoundIndex);
+            const Round = Rounds[RoundIndex];
+
+            ApplyBaseScene();
 
             if (State.is_double_roll)
             {
-                SetSessionNarrative(main, {
-                    detail: `Score ${PreviousScore.creator_score}-${PreviousScore.opponent_score}. ${State.creator.display_name} throws both dice.`,
-                    title: `${State.creator.display_name} is rolling.`,
-                });
-
-                await DiceViewerController.playFaces({
+                DiceViewerController.setFaces({
                     left: Round.creator_faces?.[0] || 1,
                     right: Round.creator_faces?.[1] || 1,
+                }, {
+                    position: "current",
                 });
-
-                if (IsDisposed || PendingRevealState !== State)
-                {
-                    return;
-                }
-
-                await WaitFor(DoublePlaybackDelays.scoreRevealMs);
-
                 SetDoubleRollResultVisuals(main, State, {
                     creatorText: FormatDoubleRollResult(Round.creator_faces, Round.creator_total),
                     opponentText: "Awaiting roll",
@@ -951,140 +1226,338 @@ const InitializeDiceSessionPage = ({ main }) =>
                     detail: `${State.creator.display_name} posts ${Round.creator_total}.`,
                     title: `${Round.creator_total} total`,
                 });
-
-                await WaitFor(DoublePlaybackDelays.betweenPlayersMs);
-
-                if (IsDisposed || PendingRevealState !== State)
-                {
-                    return;
-                }
-
-                SetSessionNarrative(main, {
-                    detail: `${State.opponent.display_name} needs more than ${Round.creator_total}.`,
-                    title: `${State.opponent.display_name} is rolling.`,
-                });
-
-                await DiceViewerController.playFaces({
-                    left: Round.opponent_faces?.[0] || 1,
-                    right: Round.opponent_faces?.[1] || 1,
-                });
-
-                if (IsDisposed || PendingRevealState !== State)
-                {
-                    return;
-                }
-
-                await WaitFor(DoublePlaybackDelays.scoreRevealMs);
-
-                SetScoreVisuals(main, {
-                    ...State,
-                    creator_score: Round.creator_score,
-                    opponent_score: Round.opponent_score,
-                });
-                SetDoubleRollResultVisuals(main, State, {
-                    creatorText: FormatDoubleRollResult(Round.creator_faces, Round.creator_total),
-                    opponentText: FormatDoubleRollResult(Round.opponent_faces, Round.opponent_total),
-                });
-
-                SetSessionNarrative(main, {
-                    detail:
-                        Round.winner === "tie"
-                            ? `Both players landed ${Round.creator_total}. Score stays ${Round.creator_score}-${Round.opponent_score}.`
-                            : `Totals ${Round.creator_total}-${Round.opponent_total}. Score ${Round.creator_score}-${Round.opponent_score}.`,
-                    title:
-                        Round.winner === "tie"
-                            ? "Tie round. Both players reroll."
-                            : `${Round.winner === "creator" ? State.creator.display_name : State.opponent.display_name} takes the round.`,
-                });
             }
             else
             {
-                SetSessionNarrative(main, {
-                    detail: `Score ${PreviousScore.creator_score}-${PreviousScore.opponent_score}. Creator throw is live.`,
-                    title: `${State.creator.display_name} is rolling.`,
+                DiceViewerController.setFaces({
+                    creator: Round.creator_face,
+                    opponent: 1,
+                }, {
+                    position: "current",
                 });
-
-                await DiceViewerController.play(Round.creator_face, {
-                    player: "creator",
-                });
-
-                if (IsDisposed || PendingRevealState !== State)
-                {
-                    return;
-                }
-
-                await WaitFor(FirstToPlaybackDelays.betweenPlayersMs);
-
                 SetSessionNarrative(main, {
                     detail: `${State.opponent.display_name} needs to beat ${Round.creator_face}.`,
                     title: `${State.opponent.display_name} is rolling.`,
                 });
+            }
 
-                await DiceViewerController.play(Round.opponent_face, {
-                    player: "opponent",
+            SetScoreVisuals(main, {
+                ...State,
+                creator_score: PreviousScore.creator_score,
+                opponent_score: PreviousScore.opponent_score,
+            });
+        };
+
+        const SetOpponentRollState = (RoundIndex) =>
+        {
+            const PreviousScore = GetPreviousScore(RoundIndex);
+            const Round = Rounds[RoundIndex];
+
+            ApplyBaseScene();
+
+            if (State.is_double_roll)
+            {
+                DiceViewerController.setFaces({
+                    left: Round.creator_faces?.[0] || 1,
+                    right: Round.creator_faces?.[1] || 1,
+                }, {
+                    position: "current",
                 });
-
-                if (IsDisposed || PendingRevealState !== State)
-                {
-                    return;
-                }
-
-                await WaitFor(FirstToPlaybackDelays.scoreRevealMs);
-
-                SetScoreVisuals(main, {
-                    ...State,
-                    creator_score: Round.creator_score,
-                    opponent_score: Round.opponent_score,
+                SetDoubleRollResultVisuals(main, State, {
+                    creatorText: FormatDoubleRollResult(Round.creator_faces, Round.creator_total),
+                    opponentText: "Awaiting roll",
                 });
-
                 SetSessionNarrative(main, {
-                    detail: `Score ${Round.creator_score}-${Round.opponent_score}.`,
-                    title:
-                        Round.winner === "tie"
-                            ? "Tie round. Both players reroll."
-                            : `${Round.winner === "creator" ? State.creator.display_name : State.opponent.display_name} takes the round.`,
+                    detail: `${State.opponent.display_name} needs more than ${Round.creator_total}.`,
+                    title: `${State.opponent.display_name} is rolling.`,
+                });
+            }
+            else
+            {
+                DiceViewerController.setFaces({
+                    creator: Round.creator_face,
+                    opponent: 1,
+                }, {
+                    position: "current",
+                });
+                SetSessionNarrative(main, {
+                    detail: `${State.opponent.display_name} needs to beat ${Round.creator_face}.`,
+                    title: `${State.opponent.display_name} is rolling.`,
                 });
             }
 
+            SetScoreVisuals(main, {
+                ...State,
+                creator_score: PreviousScore.creator_score,
+                opponent_score: PreviousScore.opponent_score,
+            });
+        };
+
+        const SetRoundResultState = (RoundIndex) =>
+        {
+            const Round = Rounds[RoundIndex];
+
+            ApplyBaseScene();
+
+            if (State.is_double_roll)
+            {
+                DiceViewerController.setFaces({
+                    left: Round.opponent_faces?.[0] || 1,
+                    right: Round.opponent_faces?.[1] || 1,
+                }, {
+                    position: "current",
+                });
+            }
+            else
+            {
+                DiceViewerController.setFaces({
+                    creator: Round.creator_face,
+                    opponent: Round.opponent_face,
+                }, {
+                    position: "current",
+                });
+            }
+
+            SetScoreVisuals(main, {
+                ...State,
+                creator_score: Round.creator_score,
+                opponent_score: Round.opponent_score,
+            });
+            SetDoubleRollResultVisuals(main, State, {
+                creatorText: FormatDoubleRollResult(Round.creator_faces, Round.creator_total),
+                opponentText: FormatDoubleRollResult(Round.opponent_faces, Round.opponent_total),
+            });
+            SetSessionNarrative(main, {
+                detail:
+                    State.is_double_roll
+                        ? (
+                            Round.winner === "tie"
+                                ? `Both players landed ${Round.creator_total}. Score stays ${Round.creator_score}-${Round.opponent_score}.`
+                                : `Totals ${Round.creator_total}-${Round.opponent_total}. Score ${Round.creator_score}-${Round.opponent_score}.`
+                        )
+                        : `Score ${Round.creator_score}-${Round.opponent_score}.`,
+                title:
+                    Round.winner === "tie"
+                        ? "Tie round. Both players reroll."
+                        : `${Round.winner === "creator" ? State.creator.display_name : State.opponent.display_name} takes the round.`,
+            });
+        };
+
+        const SetBetweenRoundsState = (RoundIndex) =>
+        {
+            const Round = Rounds[RoundIndex];
+
+            ApplyBaseScene();
+            DiceViewerController.setFaces(IdleViewerFaces, {
+                position: "top",
+            });
+            SetScoreVisuals(main, {
+                ...State,
+                creator_score: Round.creator_score,
+                opponent_score: Round.opponent_score,
+            });
+            SetDoubleRollResultVisuals(main, State, {
+                creatorText: "Awaiting roll",
+                opponentText: "Awaiting roll",
+            });
+            SetSessionNarrative(main, {
+                detail: `Next up: round ${Round.round_number + 1}.`,
+                title: `${Round.creator_score}-${Round.opponent_score}`,
+            });
+        };
+
+        if (!DiceViewerController || !FinalRound)
+        {
+            ClearFirstToPlaybackProgress(State.id);
+            PersistRevealCompletion(State);
+            PendingRevealState = null;
+            ReleaseGlobalBalanceDisplay(BalanceContext);
+            SetBalance(BuildUiState(State));
+            ApplyResolvedState(main, BuildUiState(State));
+            MaybePlayWinSound(State);
+            return;
+        }
+
+        const IntroDelayMs = State.is_double_roll ? DoublePlaybackDelays.introMs : FirstToPlaybackDelays.introMs;
+        const BetweenPlayersDelayMs = State.is_double_roll
+            ? DoublePlaybackDelays.betweenPlayersMs
+            : FirstToPlaybackDelays.betweenPlayersMs;
+        const BetweenRoundsDelayMs =
+            280 +
+            (State.is_double_roll ? DoublePlaybackDelays.betweenRoundsMs : FirstToPlaybackDelays.betweenRoundsMs);
+        const StartRoundIndex = ResumeProgress && ResumePhase && ResumePhase !== "intro"
+            ? ResumeRoundIndex
+            : 0;
+
+        if (!ResumeProgress || ResumePhase === "intro")
+        {
+            const IntroProgress = ResumeProgress?.phase === "intro"
+                ? ResumeProgress
+                : BeginPlaybackPhase("intro", 0);
+
+            SetIntroState();
+            await WaitFor(GetRemainingPlaybackDelayMs(IntroProgress, IntroDelayMs));
+
+            if (!IsActive())
+            {
+                return;
+            }
+        }
+
+        for (let RoundIndex = StartRoundIndex; RoundIndex < Rounds.length; RoundIndex += 1)
+        {
+            const Round = Rounds[RoundIndex];
+            const HasNextRound = RoundIndex < (Rounds.length - 1);
             const ResultHoldMs =
                 Round.winner === "tie"
                     ? (State.is_double_roll ? DoublePlaybackDelays.tieRoundMs : FirstToPlaybackDelays.tieRoundMs)
                     : (State.is_double_roll ? DoublePlaybackDelays.resultHoldMs : FirstToPlaybackDelays.finalRoundMs);
-            const HasNextRound = RoundIndex < (Rounds.length - 1);
+            const ResumeOrder =
+                ResumeProgress &&
+                ResumePhase &&
+                ResumePhase !== "intro" &&
+                RoundIndex === ResumeRoundIndex
+                    ? PhaseOrder.indexOf(ResumePhase)
+                    : -1;
 
-            if (HasNextRound)
+            if (ResumeOrder <= 0)
             {
-                await WaitFor(ResultHoldMs);
+                BeginPlaybackPhase("creator_roll", RoundIndex);
+                SetCreatorRollState(RoundIndex);
 
-                if (IsDisposed || PendingRevealState !== State)
+                if (State.is_double_roll)
+                {
+                    await DiceViewerController.playFaces({
+                        left: Round.creator_faces?.[0] || 1,
+                        right: Round.creator_faces?.[1] || 1,
+                    });
+                }
+                else
+                {
+                    await DiceViewerController.play(Round.creator_face, {
+                        player: "creator",
+                    });
+                }
+
+                if (!IsActive())
                 {
                     return;
                 }
 
-                SetSessionNarrative(main, {
-                    detail: `Next up: round ${Round.round_number + 1}.`,
-                    title: `${Round.creator_score}-${Round.opponent_score}`,
-                });
-
-                await DiceViewerController.resetPlayersToTop(ViewerPlayers);
-
-                if (IsDisposed || PendingRevealState !== State)
+                if (State.is_double_roll)
                 {
-                    return;
-                }
+                    await WaitFor(DoublePlaybackDelays.scoreRevealMs);
 
-                SetDoubleRollResultVisuals(main, State, {
-                    creatorText: "Awaiting roll",
-                    opponentText: "Awaiting roll",
-                });
-                await WaitFor(State.is_double_roll ? DoublePlaybackDelays.betweenRoundsMs : FirstToPlaybackDelays.betweenRoundsMs);
-                continue;
+                    if (!IsActive())
+                    {
+                        return;
+                    }
+                }
             }
 
-            await WaitFor(ResultHoldMs);
+            if (ResumeOrder <= 1)
+            {
+                const BetweenPlayersProgress =
+                    ResumeOrder === 1
+                        ? ResumeProgress
+                        : BeginPlaybackPhase("between_players", RoundIndex);
+
+                SetBetweenPlayersState(RoundIndex);
+                await WaitFor(GetRemainingPlaybackDelayMs(BetweenPlayersProgress, BetweenPlayersDelayMs));
+
+                if (!IsActive())
+                {
+                    return;
+                }
+            }
+
+            if (ResumeOrder <= 2)
+            {
+                BeginPlaybackPhase("opponent_roll", RoundIndex);
+                SetOpponentRollState(RoundIndex);
+
+                if (State.is_double_roll)
+                {
+                    await DiceViewerController.playFaces({
+                        left: Round.opponent_faces?.[0] || 1,
+                        right: Round.opponent_faces?.[1] || 1,
+                    });
+                    await WaitFor(DoublePlaybackDelays.scoreRevealMs);
+                }
+                else
+                {
+                    await DiceViewerController.play(Round.opponent_face, {
+                        player: "opponent",
+                    });
+                    await WaitFor(FirstToPlaybackDelays.scoreRevealMs);
+                }
+
+                if (!IsActive())
+                {
+                    return;
+                }
+            }
+
+            if (ResumeOrder <= 3)
+            {
+                const RoundResultProgress =
+                    ResumeOrder === 3
+                        ? ResumeProgress
+                        : BeginPlaybackPhase("round_result", RoundIndex);
+
+                SetRoundResultState(RoundIndex);
+
+                if (!HasNextRound)
+                {
+                    ClearFirstToPlaybackProgress(State.id);
+                    PersistRevealCompletion(State);
+                    ReleaseGlobalBalanceDisplay(BalanceContext);
+                    SetBalance(BuildUiState(State));
+                    ApplyResolvedState(main, BuildUiState(State));
+                    MaybePlayWinSound(State);
+                }
+
+                await WaitFor(GetRemainingPlaybackDelayMs(RoundResultProgress, ResultHoldMs));
+
+                if (!IsActive())
+                {
+                    return;
+                }
+            }
+
+            if (HasNextRound && ResumeOrder <= 4)
+            {
+                if (ResumeOrder === 4)
+                {
+                    SetBetweenRoundsState(RoundIndex);
+                    await WaitFor(GetRemainingPlaybackDelayMs(ResumeProgress, BetweenRoundsDelayMs));
+                }
+                else
+                {
+                    BeginPlaybackPhase("between_rounds", RoundIndex);
+                    SetSessionNarrative(main, {
+                        detail: `Next up: round ${Round.round_number + 1}.`,
+                        title: `${Round.creator_score}-${Round.opponent_score}`,
+                    });
+                    await DiceViewerController.resetPlayersToTop(ViewerPlayers);
+
+                    if (!IsActive())
+                    {
+                        return;
+                    }
+
+                    SetBetweenRoundsState(RoundIndex);
+                    await WaitFor(State.is_double_roll ? DoublePlaybackDelays.betweenRoundsMs : FirstToPlaybackDelays.betweenRoundsMs);
+                }
+
+                if (!IsActive())
+                {
+                    return;
+                }
+            }
         }
 
-        if (IsDisposed || PendingRevealState !== State)
+        if (!IsActive())
         {
             return;
         }
@@ -1099,6 +1572,8 @@ const InitializeDiceSessionPage = ({ main }) =>
             DiceViewerController.setFaces({
                 left: WinningFaces?.[0] || 1,
                 right: WinningFaces?.[1] || 1,
+            }, {
+                position: "current",
             });
         }
         else
@@ -1106,14 +1581,18 @@ const InitializeDiceSessionPage = ({ main }) =>
             DiceViewerController.setFaces({
                 creator: FinalRound.creator_face,
                 opponent: FinalRound.opponent_face,
+            }, {
+                position: "current",
             });
         }
 
+        ClearFirstToPlaybackProgress(State.id);
+        PersistRevealCompletion(State);
         SetScoreVisuals(main, State);
         SetDoubleRollResultVisuals(main, State);
         ReleaseGlobalBalanceDisplay(BalanceContext);
-        SetBalance(State);
-        ApplyResolvedState(main, State);
+        SetBalance(BuildUiState(State));
+        ApplyResolvedState(main, BuildUiState(State));
         MaybePlayWinSound(State);
         PendingRevealState = null;
     };
@@ -1141,18 +1620,31 @@ const InitializeDiceSessionPage = ({ main }) =>
             return;
         }
 
-        SetOpponentVisuals(main, LastState);
-        RenderViewerState(main, LastState);
-        SetPanelResultVisuals(main, LastState, {
+        const UiState = BuildUiState(LastState);
+        const IsRevealUiLocked = Boolean(PendingRevealState && !HasRevealCompletion(LastState));
+
+        if (LastState.status !== "resolved")
+        {
+            ClearRevealCompletion(LastState.id);
+        }
+
+        SetOpponentVisuals(main, UiState);
+        RenderViewerState(main, UiState);
+        SetPanelResultVisuals(main, UiState, {
             revealResolved:
                 LastState.status === "resolved" &&
-                !PendingRevealState &&
+                !IsRevealUiLocked &&
                 (
                     (LastState.is_first_to && HasShownResult) ||
                     (!LastState.is_first_to && HasAppliedResolvedFace)
                 ),
         });
-        SetSceneIndicatorVisuals(main, LastState);
+        SetSceneIndicatorVisuals(main, UiState);
+
+        if (!LastState.is_first_to || LastState.status !== "resolved" || !IsRevealPlaybackPending(LastState))
+        {
+            ClearFirstToPlaybackProgress(LastState.id);
+        }
 
         const DiceViewerController = GetDiceViewerController(main);
 
@@ -1185,8 +1677,8 @@ const InitializeDiceSessionPage = ({ main }) =>
 
             if (LastState.status !== "resolved")
             {
-                SetScoreVisuals(main, LastState);
-                SetDoubleRollResultVisuals(main, LastState);
+                SetScoreVisuals(main, UiState);
+                SetDoubleRollResultVisuals(main, UiState);
                 ApplyIdleViewerState(
                     `first-to:${LastState.is_double_roll ? "double" : "single"}:idle`,
                     () =>
@@ -1198,8 +1690,8 @@ const InitializeDiceSessionPage = ({ main }) =>
                     },
                 );
                 SetSceneIndicatorVisibility(main, false);
-                SetBalance(LastState);
-                RenderUnresolvedState(main, LastState);
+                SetBalance(UiState);
+                RenderUnresolvedState(main, UiState);
                 return;
             }
 
@@ -1209,33 +1701,47 @@ const InitializeDiceSessionPage = ({ main }) =>
 
             if (LastState.status === "resolved" && FinalRound)
             {
-                if (PendingRevealState)
+                if (IsRevealUiLocked)
                 {
+                    SetShareVisibility(main, LastState, {
+                        forceHidden: true,
+                    });
+                    SetRedoVisibility(main, LastState, {
+                        forceHidden: true,
+                    });
                     return;
                 }
 
                 if (!HasShownResult)
                 {
-                    HoldGlobalBalanceDisplay(BalanceContext);
-                    PendingRevealState = LastState;
-                    HasShownResult = true;
-
-                    PlayFirstToSequence(LastState).catch((ErrorValue) =>
+                    if (IsRevealPlaybackPending(LastState))
                     {
-                        console.error(ErrorValue);
+                        HoldGlobalBalanceDisplay(BalanceContext);
+                        PendingRevealState = LastState;
+                        HasShownResult = true;
 
-                        if (PendingRevealState === LastState)
+                        PlayFirstToSequence(LastState).catch((ErrorValue) =>
                         {
-                            PendingRevealState = null;
-                            SetScoreVisuals(main, LastState);
-                            SetDoubleRollResultVisuals(main, LastState);
-                            ReleaseGlobalBalanceDisplay(BalanceContext);
-                            SetBalance(LastState);
-                            ApplyResolvedState(main, LastState);
-                            MaybePlayWinSound(LastState);
-                        }
-                    });
-                    return;
+                            console.error(ErrorValue);
+
+                            if (PendingRevealState === LastState)
+                            {
+                                ClearFirstToPlaybackProgress(LastState.id);
+                                PersistRevealCompletion(LastState);
+                                PendingRevealState = null;
+                                SetScoreVisuals(main, LastState);
+                                SetDoubleRollResultVisuals(main, LastState);
+                                ReleaseGlobalBalanceDisplay(BalanceContext);
+                                SetBalance(BuildUiState(LastState));
+                                ApplyResolvedState(main, BuildUiState(LastState));
+                                MaybePlayWinSound(LastState);
+                            }
+                        });
+                        return;
+                    }
+
+                    PersistRevealCompletion(LastState);
+                    HasShownResult = true;
                 }
 
                 if (LastState.is_double_roll)
@@ -1248,6 +1754,8 @@ const InitializeDiceSessionPage = ({ main }) =>
                     DiceViewerController.setFaces({
                         left: WinningFaces?.[0] || 1,
                         right: WinningFaces?.[1] || 1,
+                    }, {
+                        position: "current",
                     });
                 }
                 else
@@ -1255,13 +1763,15 @@ const InitializeDiceSessionPage = ({ main }) =>
                     DiceViewerController.setFaces({
                         creator: FinalRound.creator_face,
                         opponent: FinalRound.opponent_face,
+                    }, {
+                        position: "current",
                     });
                 }
-                SetScoreVisuals(main, LastState);
-                SetDoubleRollResultVisuals(main, LastState);
+                SetScoreVisuals(main, UiState);
+                SetDoubleRollResultVisuals(main, UiState);
                 ReleaseGlobalBalanceDisplay(BalanceContext);
-                SetBalance(LastState);
-                ApplyResolvedState(main, LastState);
+                SetBalance(BuildUiState(LastState));
+                ApplyResolvedState(main, BuildUiState(LastState));
                 return;
             }
 
@@ -1279,10 +1789,10 @@ const InitializeDiceSessionPage = ({ main }) =>
                     position: "top",
                 },
             );
-            SetScoreVisuals(main, LastState);
-            SetDoubleRollResultVisuals(main, LastState);
-            SetBalance(LastState);
-            RenderUnresolvedState(main, LastState);
+            SetScoreVisuals(main, UiState);
+            SetDoubleRollResultVisuals(main, UiState);
+            SetBalance(UiState);
+            RenderUnresolvedState(main, UiState);
             return;
         }
 
@@ -1291,27 +1801,39 @@ const InitializeDiceSessionPage = ({ main }) =>
         if (LastState.status === "resolved" && LastState.result_face)
         {
             ResetIdleViewerSignature();
-            if (PendingRevealState)
+            if (IsRevealUiLocked)
             {
+                SetShareVisibility(main, LastState, {
+                    forceHidden: true,
+                });
+                SetRedoVisibility(main, LastState, {
+                    forceHidden: true,
+                });
                 return;
             }
 
             if (!HasShownResult)
             {
-                HoldGlobalBalanceDisplay(BalanceContext);
-                PendingRevealState = LastState;
+                if (IsRevealPlaybackPending(LastState))
+                {
+                    HoldGlobalBalanceDisplay(BalanceContext);
+                    PendingRevealState = LastState;
+                    HasShownResult = true;
+                    SetSessionNarrative(main, {
+                        detail: "The final die is rolling now.",
+                        title: "Rolling...",
+                    });
+                    DiceViewerController.play(LastState.result_face, {
+                        dropPoint: {
+                            x: 0,
+                            z: 0,
+                        },
+                    });
+                    return;
+                }
+
+                PersistRevealCompletion(LastState);
                 HasShownResult = true;
-                SetSessionNarrative(main, {
-                    detail: "The final die is rolling now.",
-                    title: "Rolling...",
-                });
-                DiceViewerController.play(LastState.result_face, {
-                    dropPoint: {
-                        x: 0,
-                        z: 0,
-                    },
-                });
-                return;
             }
 
             if (!HasAppliedResolvedFace)
@@ -1320,8 +1842,8 @@ const InitializeDiceSessionPage = ({ main }) =>
                 HasAppliedResolvedFace = true;
             }
             ReleaseGlobalBalanceDisplay(BalanceContext);
-            SetBalance(LastState);
-            ApplyResolvedState(main, LastState);
+            SetBalance(BuildUiState(LastState));
+            ApplyResolvedState(main, BuildUiState(LastState));
             return;
         }
 
@@ -1334,9 +1856,9 @@ const InitializeDiceSessionPage = ({ main }) =>
                 shared: true,
             });
         });
-        SetDoubleRollResultVisuals(main, LastState);
-        SetBalance(LastState);
-        RenderUnresolvedState(main, LastState);
+        SetDoubleRollResultVisuals(main, UiState);
+        SetBalance(UiState);
+        RenderUnresolvedState(main, UiState);
     };
 
     const HandleDiceFinished = () =>
@@ -1347,9 +1869,10 @@ const InitializeDiceSessionPage = ({ main }) =>
         }
 
         const ResolvedState = PendingRevealState;
+        PersistRevealCompletion(ResolvedState);
         ReleaseGlobalBalanceDisplay(BalanceContext);
-        SetBalance(ResolvedState);
-        ApplyResolvedState(main, ResolvedState);
+        SetBalance(BuildUiState(ResolvedState));
+        ApplyResolvedState(main, BuildUiState(ResolvedState));
         MaybePlayWinSound(ResolvedState);
         HasAppliedResolvedFace = true;
         PendingRevealState = null;

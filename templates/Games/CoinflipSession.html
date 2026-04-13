@@ -325,7 +325,7 @@
 
     <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
       <button
-        class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+        class="{% if not session_state.can_share_chat %}hidden{% else %}inline-flex{% endif %} h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
         data-share-chat-session
         data-share-game="coinflip"
         data-share-session-id="{{ session_state.id }}"

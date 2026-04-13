@@ -1322,7 +1322,6 @@
                       <span data-chat-suggestion-emoji>${Suggestion.emoji}</span>
                       <span data-chat-suggestion-copy>
                         <span data-chat-suggestion-title>:${EscapeHtml(Suggestion.alias)}:</span>
-                        <span data-chat-suggestion-subtitle>Insert emoji</span>
                       </span>
                     </button>
                 `;
@@ -2122,7 +2121,7 @@
 
     ChatMessages?.addEventListener("mouseover", (EventValue) =>
     {
-        const Trigger = EventValue.target.closest("[data-chat-message][data-user-id]");
+        const Trigger = EventValue.target.closest("[data-chat-author][data-user-id]");
 
         if (!Trigger || !ChatMessages.contains(Trigger))
         {
@@ -2156,7 +2155,7 @@
 
     ChatMessages?.addEventListener("mouseout", (EventValue) =>
     {
-        const Trigger = EventValue.target.closest("[data-chat-message][data-user-id]");
+        const Trigger = EventValue.target.closest("[data-chat-author][data-user-id]");
 
         if (!Trigger)
         {
@@ -2170,7 +2169,7 @@
             return;
         }
 
-        if (RelatedTarget?.closest("[data-chat-message][data-user-id]") === Trigger)
+        if (RelatedTarget?.closest("[data-chat-author][data-user-id]") === Trigger)
         {
             return;
         }

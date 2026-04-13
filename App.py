@@ -2269,11 +2269,15 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         creator_user_id=creator["id"],
         opponent_user_id=opponent["id"] if opponent else None,
     )
+    reveal_pending = coinflip_session_reveal_pending(coinflip_session)
+    can_redo = status == "resolved" and is_participant and not reveal_pending
+    can_share_chat = status != "resolved" or not reveal_pending
     session_state = {
         "bet_cents": coinflip_session["bet_cents"],
         "bet_display": format_money(coinflip_session["bet_cents"]),
         "can_call_bot": is_creator and not opponent and not coinflip_session["result_side"],
         "can_join": status == "open" and not is_participant,
+        "can_share_chat": can_share_chat,
         "countdown_ends_at": countdown_ends_at,
         "countdown_remaining": countdown_remaining,
         "creator": creator,
@@ -2293,7 +2297,7 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         "opponent_choice": coinflip_session["opponent_choice"],
         "pot_cents": coinflip_session["bet_cents"] * 2,
         "pot_display": format_money(coinflip_session["bet_cents"] * 2),
-        "can_redo": status == "resolved" and is_participant,
+        "can_redo": can_redo,
         "redo_url": (
             url_for("redo_coinflip_session", session_id=coinflip_session["id"])
             if status == "resolved" and is_participant and has_request_context()
@@ -2308,7 +2312,7 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         "winner_name": coinflip_session["winner_name"],
     }
 
-    session_state["reveal_pending"] = coinflip_session_reveal_pending(coinflip_session)
+    session_state["reveal_pending"] = reveal_pending
     session_state["display_status_text"] = (
         "Flipping..."
         if session_state["reveal_pending"]
@@ -2332,20 +2336,21 @@ def build_coinflip_lobby_sessions(current_user_id):
 
     for coinflip_session in COINFLIP_SESSIONS.values():
         session_state = build_coinflip_session_state(coinflip_session, current_user_id)
+        lobby_status, lobby_status_text = build_coinflip_chat_share_status(session_state, coinflip_session)
         is_owner = session_state["creator"]["id"] == current_user_id
         is_joinable = session_state["status"] == "open" and not is_owner
 
-        if session_state["status"] == "open":
+        if lobby_status == "open":
             session_summary["open"] += 1
-        elif session_state["status"] == "countdown":
+        elif lobby_status == "countdown":
             session_summary["live"] += 1
-        elif session_state["status"] == "resolved":
+        elif lobby_status == "resolved":
             session_summary["resolved"] += 1
 
         sessions.append(
             {
                 "bet_display": session_state["bet_display"],
-                "countdown_ends_at": session_state["countdown_ends_at"],
+                "countdown_ends_at": None if session_state["reveal_pending"] else session_state["countdown_ends_at"],
                 "created_at": coinflip_session["created_at"],
                 "creator_choice": session_state["creator_choice"],
                 "creator_name": session_state["creator"]["display_name"],
@@ -2355,8 +2360,8 @@ def build_coinflip_lobby_sessions(current_user_id):
                 "join_url": url_for("join_coinflip_session", session_id=session_state["id"]),
                 "opponent_name": session_state["opponent"]["display_name"] if session_state["opponent"] else None,
                 "pot_display": session_state["pot_display"],
-                "status": session_state["status"],
-                "status_text": session_state["status_text"],
+                "status": lobby_status,
+                "status_text": lobby_status_text,
                 "view_url": url_for("coinflip_session", session_id=session_state["id"]),
             }
         )
@@ -2460,11 +2465,20 @@ def build_dice_session_state(dice_session, current_user_id):
         creator_user_id=creator["id"],
         opponent_user_id=opponent["id"] if opponent else None,
     )
+    reveal_pending = dice_session_reveal_pending({
+        "is_double_roll": is_double_roll,
+        "is_first_to": is_first_to,
+        "rounds": dice_session.get("rounds", []),
+        "status": status,
+    }, dice_session)
+    can_redo = status == "resolved" and is_participant and not reveal_pending
+    can_share_chat = status != "resolved" or not reveal_pending
     session_state = {
         "bet_cents": dice_session["bet_cents"],
         "bet_display": format_money(dice_session["bet_cents"]),
         "can_call_bot": is_creator and not opponent and not dice_session_is_resolved(dice_session),
         "can_join": status == "open" and not is_participant,
+        "can_share_chat": can_share_chat,
         "countdown_ends_at": countdown_ends_at,
         "countdown_remaining": countdown_remaining,
         "creator": creator,
@@ -2491,7 +2505,7 @@ def build_dice_session_state(dice_session, current_user_id):
         "opponent_score": dice_session.get("opponent_score", 0),
         "pot_cents": dice_session["bet_cents"] * 2,
         "pot_display": format_money(dice_session["bet_cents"] * 2),
-        "can_redo": status == "resolved" and is_participant,
+        "can_redo": can_redo,
         "redo_url": (
             url_for("redo_dice_session", session_id=dice_session["id"])
             if status == "resolved" and is_participant and has_request_context()
@@ -2508,7 +2522,7 @@ def build_dice_session_state(dice_session, current_user_id):
         "winner_name": dice_session["winner_name"],
     }
 
-    session_state["reveal_pending"] = dice_session_reveal_pending(session_state, dice_session)
+    session_state["reveal_pending"] = reveal_pending
     session_state["display_status_text"] = (
         "Rolling..."
         if session_state["reveal_pending"]
@@ -2532,20 +2546,21 @@ def build_dice_lobby_sessions(current_user_id):
 
     for dice_session in DICE_SESSIONS.values():
         session_state = build_dice_session_state(dice_session, current_user_id)
+        lobby_status, lobby_status_text = build_dice_chat_share_status(session_state, dice_session)
         is_owner = session_state["creator"]["id"] == current_user_id
         is_joinable = session_state["status"] == "open" and not is_owner
 
-        if session_state["status"] == "open":
+        if lobby_status == "open":
             session_summary["open"] += 1
-        elif session_state["status"] == "countdown":
+        elif lobby_status == "countdown":
             session_summary["live"] += 1
-        elif session_state["status"] == "resolved":
+        elif lobby_status == "resolved":
             session_summary["resolved"] += 1
 
         sessions.append(
             {
                 "bet_display": session_state["bet_display"],
-                "countdown_ends_at": session_state["countdown_ends_at"],
+                "countdown_ends_at": None if session_state["reveal_pending"] else session_state["countdown_ends_at"],
                 "created_at": dice_session["created_at"],
                 "creator_name": session_state["creator"]["display_name"],
                 "id": session_state["id"],
@@ -2571,8 +2586,8 @@ def build_dice_lobby_sessions(current_user_id):
                     if session_state["is_first_to"]
                     else session_state["creator_label"]
                 ),
-                "status": session_state["status"],
-                "status_text": session_state["status_text"],
+                "status": lobby_status,
+                "status_text": lobby_status_text,
                 "target_wins": session_state["target_wins"],
                 "view_url": url_for("dice_session", session_id=session_state["id"]),
             }

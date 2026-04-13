@@ -1,6 +1,77 @@
 (() =>
 {
 const CountdownAutoplayStorageKey = "gambling.countdownAutoplayOnLoad";
+const RevealCompletionStorageKeyPrefix = "gambling.coinflip-reveal-complete:";
+
+const BuildRevealCompletionStorageKey = (SessionId) =>
+{
+    return `${RevealCompletionStorageKeyPrefix}${SessionId || ""}`;
+};
+
+const BuildRevealCompletionSignature = (State) =>
+{
+    return JSON.stringify({
+        id: State?.id || "",
+        resultSide: State?.result_side || "",
+        winnerId: State?.winner_id || "",
+    });
+};
+
+const PersistRevealCompletion = (State) =>
+{
+    if (State?.status !== "resolved" || !State?.id || !State?.result_side)
+    {
+        return;
+    }
+
+    try
+    {
+        window.sessionStorage.setItem(
+            BuildRevealCompletionStorageKey(State.id),
+            BuildRevealCompletionSignature(State),
+        );
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+    }
+};
+
+const HasRevealCompletion = (State) =>
+{
+    if (State?.status !== "resolved" || !State?.id || !State?.result_side)
+    {
+        return false;
+    }
+
+    try
+    {
+        return window.sessionStorage.getItem(BuildRevealCompletionStorageKey(State.id))
+            === BuildRevealCompletionSignature(State);
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+        return false;
+    }
+};
+
+const ClearRevealCompletion = (SessionId) =>
+{
+    if (!SessionId)
+    {
+        return;
+    }
+
+    try
+    {
+        window.sessionStorage.removeItem(BuildRevealCompletionStorageKey(SessionId));
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+    }
+};
 
 const ParseSessionState = (Main) =>
 {
@@ -512,8 +583,27 @@ const HideSessionReturnLink = async (ReturnLink) =>
     ReturnLink.classList.add("opacity-0", "scale-[0.92]", "pointer-events-none");
 };
 
-const SetRedoVisibility = (Main, State) =>
+const SetShareVisibility = (Main, State, OptionsValue = {}) =>
 {
+    const {
+        forceHidden = false,
+    } = OptionsValue;
+    const ShareButton = Main.querySelector("[data-share-chat-session]");
+
+    if (!ShareButton)
+    {
+        return;
+    }
+
+    ShareButton.classList.toggle("hidden", forceHidden || !State?.can_share_chat);
+    ShareButton.classList.toggle("inline-flex", !forceHidden && Boolean(State?.can_share_chat));
+};
+
+const SetRedoVisibility = (Main, State, OptionsValue = {}) =>
+{
+    const {
+        forceHidden = false,
+    } = OptionsValue;
     const RedoForm = Main.querySelector("[data-session-redo-form]");
 
     if (!RedoForm)
@@ -526,14 +616,15 @@ const SetRedoVisibility = (Main, State) =>
         RedoForm.action = State.redo_url;
     }
 
-    RedoForm.classList.toggle("hidden", !State?.can_redo);
-    RedoForm.classList.toggle("flex", Boolean(State?.can_redo));
+    RedoForm.classList.toggle("hidden", forceHidden || !State?.can_redo);
+    RedoForm.classList.toggle("flex", !forceHidden && Boolean(State?.can_redo));
 };
 
 const ApplyResolvedState = (Main, State) =>
 {
     SetSessionStatus(Main, State.status_text);
     RevealSessionReturnLink(Main);
+    SetShareVisibility(Main, State);
     SetRedoVisibility(Main, State);
 };
 
@@ -611,6 +702,7 @@ const ConsumeCountdownAutoplayRequest = () =>
 const RenderUnresolvedState = (Main, State) =>
 {
     SetSessionStatus(Main, State.status_text);
+    SetShareVisibility(Main, State);
     SetRedoVisibility(Main, State);
 };
 
@@ -651,7 +743,27 @@ const InitializeCoinflipSessionPage = ({ main }) =>
         return null;
     }
 
-    if (InitialState.status === "resolved" && !InitialState.reveal_pending)
+    const BuildUiState = (State) =>
+    {
+        if (!HasRevealCompletion(State))
+        {
+            return State;
+        }
+
+        return {
+            ...State,
+            can_redo: Boolean(State?.redo_url),
+            can_share_chat: true,
+            reveal_pending: false,
+        };
+    };
+
+    const IsRevealPlaybackPending = (State) =>
+    {
+        return Boolean(State?.status === "resolved" && State?.reveal_pending && !HasRevealCompletion(State));
+    };
+
+    if (InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState))
     {
         RevealSessionReturnLink(main);
     }
@@ -659,7 +771,7 @@ const InitializeCoinflipSessionPage = ({ main }) =>
     const StateUrl = SessionRoot.dataset.stateUrl;
     let LastState = InitialState;
     let PendingRevealState = null;
-    let HasShownResult = InitialState.status === "resolved" && !InitialState.reveal_pending;
+    let HasShownResult = InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState);
     let IsDisposed = false;
     let IsHoldingBalanceDisplay = false;
     let PollTimeout = 0;
@@ -741,9 +853,16 @@ const InitializeCoinflipSessionPage = ({ main }) =>
             return;
         }
 
-        SetChoiceVisuals(main, LastState);
-        SetOpponentVisuals(main, LastState);
-        RenderViewerState(main, LastState);
+        const UiState = BuildUiState(LastState);
+
+        if (LastState.status !== "resolved")
+        {
+            ClearRevealCompletion(LastState.id);
+        }
+
+        SetChoiceVisuals(main, UiState);
+        SetOpponentVisuals(main, UiState);
+        RenderViewerState(main, UiState);
 
         const CoinViewerController = GetCoinViewerController(main);
 
@@ -759,30 +878,44 @@ const InitializeCoinflipSessionPage = ({ main }) =>
             if (PendingRevealState)
             {
                 SetSessionStatus(main, "Flipping...");
+                SetShareVisibility(main, LastState, {
+                    forceHidden: true,
+                });
+                SetRedoVisibility(main, LastState, {
+                    forceHidden: true,
+                });
                 return;
             }
 
             if (!HasShownResult)
             {
-                HoldGlobalBalanceDisplay(BalanceContext);
-                PendingRevealState = LastState;
-                HasShownResult = true;
-                SetSessionStatus(main, "Flipping...");
-                CoinViewerController.play(LastState.result_side);
-                return;
+                if (!IsRevealPlaybackPending(LastState))
+                {
+                    PersistRevealCompletion(LastState);
+                    HasShownResult = true;
+                }
+                else
+                {
+                    HoldGlobalBalanceDisplay(BalanceContext);
+                    PendingRevealState = LastState;
+                    HasShownResult = true;
+                    SetSessionStatus(main, "Flipping...");
+                    CoinViewerController.play(LastState.result_side);
+                    return;
+                }
             }
 
             CoinViewerController.setSide(LastState.result_side);
             ReleaseGlobalBalanceDisplay(BalanceContext);
-            SetBalance(LastState);
-            ApplyResolvedState(main, LastState);
+            SetBalance(UiState);
+            ApplyResolvedState(main, BuildUiState(LastState));
             return;
         }
 
         CoinViewerController.setResultState?.("neutral");
         CoinViewerController.setSide("Heads");
-        SetBalance(LastState);
-        RenderUnresolvedState(main, LastState);
+        SetBalance(UiState);
+        RenderUnresolvedState(main, UiState);
     };
 
     const HandleCoinflipFinished = () =>
@@ -798,9 +931,10 @@ const InitializeCoinflipSessionPage = ({ main }) =>
         }
 
         const ResolvedState = PendingRevealState;
+        PersistRevealCompletion(ResolvedState);
         ReleaseGlobalBalanceDisplay(BalanceContext);
-        SetBalance(ResolvedState);
-        ApplyResolvedState(main, ResolvedState);
+        SetBalance(BuildUiState(ResolvedState));
+        ApplyResolvedState(main, BuildUiState(ResolvedState));
         MaybePlayWinSound(ResolvedState);
         PendingRevealState = null;
     };
