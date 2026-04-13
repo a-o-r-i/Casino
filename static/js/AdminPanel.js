@@ -645,7 +645,11 @@
             UpdatePopoutShell(ShellNode, Row, Side);
 
             const Height = PopoutNode.offsetHeight || 320;
-            const PreferredTop = AnchorRect.top - 28;
+            const PanelRect = PanelRoot.getBoundingClientRect();
+            const PreferredTop = Math.min(
+                AnchorRect.top - 18,
+                PanelRect.top + 18,
+            );
             let Top = Math.max(
                 Margin,
                 Math.min(
@@ -653,14 +657,6 @@
                     window.innerHeight - Height - Margin,
                 ),
             );
-
-            if (Top >= AnchorRect.top - 4)
-            {
-                Top = Math.max(
-                    Margin,
-                    AnchorRect.top - Math.min(48, Math.max(28, Height * 0.14)),
-                );
-            }
 
             let Left = Side === "left"
                 ? AnchorRect.left - Width - Gap
