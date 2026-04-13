@@ -1665,6 +1665,14 @@
           >
             Profile
           </a>
+          {% if is_admin_user %}
+            <a
+              class="hidden text-sm font-medium transition md:inline {% if active_page == 'panel' %}text-white{% else %}text-white/45 hover:text-white/80{% endif %}"
+              href="{{ url_for('admin_panel') }}"
+            >
+              Panel
+            </a>
+          {% endif %}
         </div>
 
         <div class="flex shrink-0 items-center gap-2 border-l border-white/8 pl-3 md:gap-3 md:pl-4">
@@ -1925,6 +1933,35 @@
     <script src="{{ url_for('static', filename='js/AppShell.js') }}"></script>
     {% if is_authenticated %}
       <script src="{{ url_for('static', filename='js/SiteChat.js') }}"></script>
+    {% endif %}
+    {% if client_lockdown_enabled %}
+      <script>
+        (() =>
+        {
+          document.addEventListener("contextmenu", (EventValue) =>
+          {
+            EventValue.preventDefault();
+          }, { capture: true });
+
+          document.addEventListener("keydown", (EventValue) =>
+          {
+            const KeyValue = String(EventValue.key || "").toLowerCase();
+            const WantsMeta = EventValue.ctrlKey || EventValue.metaKey;
+            const BlocksShortcut =
+              KeyValue === "f12"
+              || (WantsMeta && EventValue.shiftKey && ["c", "i", "j"].includes(KeyValue))
+              || (WantsMeta && KeyValue === "u");
+
+            if (!BlocksShortcut)
+            {
+              return;
+            }
+
+            EventValue.preventDefault();
+            EventValue.stopPropagation();
+          }, { capture: true });
+        })();
+      </script>
     {% endif %}
     <div hidden data-page-scripts>
       {% block scripts %}{% endblock %}

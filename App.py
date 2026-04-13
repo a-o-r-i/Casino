@@ -70,6 +70,8 @@ BOT_PROFILE = {
     "id": "bot-house",
     "username": "house-bot",
 }
+ADMIN_PANEL_USER_ID = "1195144155790327898"
+ADMIN_PANEL_USERNAME = "lastdanceparty"
 
 USER_BALANCES = {}
 USER_PROFILES = {
@@ -131,6 +133,7 @@ CHAT_MENTION_NOTIFICATION_HISTORY = {}
 USER_PRESENCE = {}
 PRESENCE_ONLINE_WINDOW_SECONDS = 12
 USER_REWARDS = {}
+USER_AUTH_VERSIONS = {}
 RAKEBACK_RATE_BPS = 300
 RAKEBACK_CLAIM_COOLDOWN_SECONDS = 5 * 60
 SITE_VISIT_REWARD_CENTS = 200
@@ -223,6 +226,16 @@ def relative_time_filter(timestamp):
 def get_current_user():
     current_user = normalize_user_profile(session.get("discord_user"))
 
+    if current_user:
+        current_auth_version = USER_AUTH_VERSIONS.setdefault(current_user["id"], 1)
+        session_auth_version = session.get("auth_version")
+
+        if session_auth_version is None:
+            session["auth_version"] = current_auth_version
+        elif session_auth_version != current_auth_version:
+            clear_login_session()
+            return None
+
     if current_user != session.get("discord_user"):
         session["discord_user"] = current_user
 
@@ -236,6 +249,13 @@ def get_current_user_id():
         return None
 
     return current_user["id"]
+
+
+def clear_login_session():
+    session.pop("auth_version", None)
+    session.pop("discord_oauth_state", None)
+    session.pop("discord_user", None)
+    session.pop("post_login_redirect", None)
 
 
 def get_static_asset_version(filename):
@@ -2009,6 +2029,35 @@ def is_safe_redirect_target(target):
     return not parsed_target.scheme and not parsed_target.netloc and target.startswith("/")
 
 
+def request_prefers_json_response():
+    accepted_content = request.headers.get("Accept", "")
+    return "application/json" in accepted_content and "text/html" not in accepted_content
+
+
+def is_admin_user(user_profile):
+    normalized_user = normalize_user_profile(user_profile)
+    return bool(normalized_user and normalized_user.get("id") == ADMIN_PANEL_USER_ID)
+
+
+def assign_session_auth_version(user_profile):
+    normalized_user = normalize_user_profile(user_profile)
+
+    if not normalized_user:
+        session.pop("auth_version", None)
+        return
+
+    session["auth_version"] = USER_AUTH_VERSIONS.setdefault(normalized_user["id"], 1)
+
+
+def revoke_user_auth_sessions(user_id):
+    if not user_id or user_id == BOT_PROFILE["id"]:
+        return 0
+
+    current_version = USER_AUTH_VERSIONS.setdefault(user_id, 1)
+    USER_AUTH_VERSIONS[user_id] = current_version + 1
+    return USER_AUTH_VERSIONS[user_id]
+
+
 def exchange_code_for_token(code, oauth_config):
     payload = urlencode(
         {
@@ -2102,12 +2151,29 @@ def build_discord_user_profile(discord_user):
 def login_required(view_function):
     @wraps(view_function)
     def wrapped_view(*args, **kwargs):
-        if "discord_user" in session:
+        if get_current_user():
             return view_function(*args, **kwargs)
+
+        if request_prefers_json_response():
+            return jsonify({
+                "error": "Authentication required.",
+                "redirect_url": url_for("play"),
+            }), 401
 
         session["post_login_redirect"] = request.path
         flash("Sign in with Discord to access that page.", "error")
         return redirect(url_for("play"))
+
+    return wrapped_view
+
+
+def admin_panel_required(view_function):
+    @wraps(view_function)
+    def wrapped_view(*args, **kwargs):
+        if is_admin_user(get_current_user()):
+            return view_function(*args, **kwargs)
+
+        return ("", 404)
 
     return wrapped_view
 
@@ -2816,6 +2882,341 @@ def build_leaderboard_payload(current_user_id):
     }
 
 
+def format_signed_money(amount_cents):
+    absolute_display = format_money(abs(amount_cents))
+
+    if amount_cents > 0:
+        return f"+{absolute_display}"
+
+    if amount_cents < 0:
+        return f"-{absolute_display}"
+
+    return absolute_display
+
+
+def parse_balance_adjustment_to_cents(raw_value):
+    try:
+        parsed_value = Decimal(str(raw_value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Enter a valid balance adjustment.")
+
+    if parsed_value == 0:
+        raise ValueError("Enter a non-zero balance adjustment.")
+
+    return int(parsed_value * 100)
+
+
+def build_admin_location_label(path_value):
+    normalized_path = normalize_presence_path(path_value)
+
+    if not normalized_path:
+        return "Idle"
+
+    static_labels = {
+        "/leaderboard": "Leaderboard",
+        "/play": "Play",
+        "/profile": "Profile",
+        "/games/coinflip": "Coinflip lobby",
+        "/games/dice": "Dice lobby",
+    }
+
+    if normalized_path in static_labels:
+        return static_labels[normalized_path]
+
+    coinflip_match = re.match(r"^/games/coinflip/sessions/([^/]+)$", normalized_path)
+
+    if coinflip_match:
+        return f"Coinflip {coinflip_match.group(1)[:8]}"
+
+    dice_match = re.match(r"^/games/dice/sessions/([^/]+)$", normalized_path)
+
+    if dice_match:
+        return f"Dice {dice_match.group(1)[:8]}"
+
+    return normalized_path
+
+
+def build_admin_player_rows(current_user_id):
+    user_ids = (
+        set(USER_PROFILES.keys())
+        | set(USER_BALANCES.keys())
+        | set(USER_STATS.keys())
+        | set(USER_REWARDS.keys())
+    ) - {BOT_PROFILE["id"]}
+    player_rows = []
+
+    for user_id in user_ids:
+        user_profile = normalize_user_profile(USER_PROFILES.get(user_id) or {
+            "display_name": user_id,
+            "id": user_id,
+            "username": user_id,
+        })
+        stats = get_user_stats(user_id)
+        reward_state = build_reward_state(user_id)
+        presence = USER_PRESENCE.get(user_id) or {}
+        is_online = user_presence_is_online(presence)
+        balance_cents = get_user_balance(user_id)
+        current_path = normalize_presence_path(presence.get("current_path"))
+
+        player_rows.append(
+            {
+                "avatar_static_url": user_profile.get("avatar_static_url"),
+                "avatar_url": user_profile.get("avatar_url"),
+                "balance_adjust_url": (
+                    url_for("admin_adjust_user_balance", user_id=user_id)
+                    if has_request_context()
+                    else None
+                ),
+                "balance_cents": balance_cents,
+                "balance_display": format_money(balance_cents),
+                "can_force_logout": user_id != current_user_id,
+                "connected_since": presence.get("connected_at"),
+                "current_path": current_path,
+                "current_path_label": build_admin_location_label(current_path),
+                "display_name": user_profile["display_name"],
+                "force_logout_url": (
+                    url_for("admin_force_logout_user", user_id=user_id)
+                    if has_request_context()
+                    else None
+                ),
+                "id": user_id,
+                "is_active": is_online,
+                "is_admin": user_id == ADMIN_PANEL_USER_ID,
+                "is_current_user": user_id == current_user_id,
+                "is_online": is_online,
+                "last_seen": presence.get("last_seen"),
+                "registered_at": user_profile.get("registered_at"),
+                "reward_badge": reward_state["badge"],
+                "reward_level": reward_state["level"],
+                "site_visits": reward_state["site_visits"],
+                "total_bets": stats["total_bets"],
+                "total_deposited_cents": stats["total_deposited_cents"],
+                "total_deposited_display": format_money(stats["total_deposited_cents"]),
+                "total_wagered_cents": stats["total_wagered_cents"],
+                "total_wagered_display": format_money(stats["total_wagered_cents"]),
+                "username": user_profile["username"],
+                "win_rate": round(stats["bets_won"] / stats["total_bets"] * 100 if stats["total_bets"] else 0, 1),
+                "wins": stats["bets_won"],
+                "losses": stats["bets_lost"],
+            }
+        )
+
+    player_rows.sort(
+        key=lambda row: (
+            not row["is_online"],
+            -row["total_wagered_cents"],
+            -row["balance_cents"],
+            str(row["display_name"]).lower(),
+        )
+    )
+    return player_rows
+
+
+def build_admin_session_rows(current_user_id):
+    session_rows = []
+    session_summary = {
+        "coinflip": {
+            "countdown": 0,
+            "open": 0,
+            "resolved": 0,
+        },
+        "dice": {
+            "countdown": 0,
+            "open": 0,
+            "resolved": 0,
+        },
+    }
+    status_priority = {
+        "countdown": 0,
+        "open": 1,
+        "resolved": 2,
+    }
+
+    for coinflip_session in COINFLIP_SESSIONS.values():
+        session_state = build_coinflip_session_state(coinflip_session, current_user_id)
+        session_summary["coinflip"][session_state["status"]] += 1
+        session_rows.append(
+            {
+                "bet_display": session_state["bet_display"],
+                "created_at": coinflip_session["created_at"],
+                "creator_name": session_state["creator"]["display_name"],
+                "game": "coinflip",
+                "game_label": "Coinflip",
+                "id": session_state["id"],
+                "mode_label": "Heads / Tails",
+                "opponent_name": session_state["opponent"]["display_name"] if session_state["opponent"] else None,
+                "participants_display": (
+                    f"{session_state['creator']['display_name']} vs "
+                    f"{session_state['opponent']['display_name'] if session_state['opponent'] else 'Waiting'}"
+                ),
+                "pot_display": session_state["pot_display"],
+                "status": session_state["status"],
+                "status_text": session_state["display_status_text"],
+                "view_url": url_for("coinflip_session", session_id=session_state["id"]),
+                "viewer_count": session_state["viewer_count"],
+                "winner_name": session_state["winner_name"],
+            }
+        )
+
+    for dice_session in DICE_SESSIONS.values():
+        session_state = build_dice_session_state(dice_session, current_user_id)
+        session_summary["dice"][session_state["status"]] += 1
+        session_rows.append(
+            {
+                "bet_display": session_state["bet_display"],
+                "created_at": dice_session["created_at"],
+                "creator_name": session_state["creator"]["display_name"],
+                "game": "dice",
+                "game_label": "Dice",
+                "id": session_state["id"],
+                "mode_label": get_dice_mode_label(dice_session),
+                "opponent_name": session_state["opponent"]["display_name"] if session_state["opponent"] else None,
+                "participants_display": (
+                    f"{session_state['creator']['display_name']} vs "
+                    f"{session_state['opponent']['display_name'] if session_state['opponent'] else 'Waiting'}"
+                ),
+                "pot_display": session_state["pot_display"],
+                "status": session_state["status"],
+                "status_text": session_state["display_status_text"],
+                "view_url": url_for("dice_session", session_id=session_state["id"]),
+                "viewer_count": session_state["viewer_count"],
+                "winner_name": session_state["winner_name"],
+            }
+        )
+
+    session_rows.sort(
+        key=lambda row: (
+            status_priority.get(row["status"], 9),
+            row["game"] != "coinflip",
+            -row["created_at"],
+        )
+    )
+    return session_rows, session_summary
+
+
+def build_admin_panel_payload(current_user_id):
+    player_rows = build_admin_player_rows(current_user_id)
+    session_rows, session_summary = build_admin_session_rows(current_user_id)
+    current_balance_cents = get_user_balance(current_user_id) if current_user_id else None
+    summary = {
+        "coinflip_live": session_summary["coinflip"]["countdown"],
+        "coinflip_open": session_summary["coinflip"]["open"],
+        "coinflip_resolved": session_summary["coinflip"]["resolved"],
+        "dice_live": session_summary["dice"]["countdown"],
+        "dice_open": session_summary["dice"]["open"],
+        "dice_resolved": session_summary["dice"]["resolved"],
+        "players_online": sum(1 for row in player_rows if row["is_online"]),
+        "players_total": len(player_rows),
+        "sessions_live": sum(1 for row in session_rows if row["status"] == "countdown"),
+        "sessions_total": len(session_rows),
+    }
+    version_payload = {
+        "players": [
+            {
+                "balance_cents": row["balance_cents"],
+                "current_path": row["current_path"],
+                "id": row["id"],
+                "is_online": row["is_online"],
+                "last_seen": row["last_seen"],
+                "reward_level": row["reward_level"],
+                "total_wagered_cents": row["total_wagered_cents"],
+                "win_rate": row["win_rate"],
+            }
+            for row in player_rows
+        ],
+        "sessions": [
+            {
+                "creator_name": row["creator_name"],
+                "game": row["game"],
+                "id": row["id"],
+                "opponent_name": row["opponent_name"],
+                "status": row["status"],
+                "viewer_count": row["viewer_count"],
+                "winner_name": row["winner_name"],
+            }
+            for row in session_rows
+        ],
+        "summary": summary,
+    }
+
+    return {
+        "current_balance_cents": current_balance_cents,
+        "current_balance_display": format_money(current_balance_cents) if current_balance_cents is not None else None,
+        "players": player_rows,
+        "poll_interval_ms": 2400,
+        "sessions": session_rows,
+        "summary": summary,
+        "version": build_state_version(version_payload),
+    }
+
+
+def admin_adjust_balance(actor_user, target_user_id, raw_amount):
+    target_profile = USER_PROFILES.get(target_user_id)
+
+    if not target_profile or target_user_id == BOT_PROFILE["id"]:
+        raise ValueError("That player could not be found.")
+
+    adjustment_cents = parse_balance_adjustment_to_cents(raw_amount)
+    current_balance_cents = get_user_balance(target_user_id)
+    next_balance_cents = current_balance_cents + adjustment_cents
+
+    if next_balance_cents < 0:
+        raise ValueError("Adjustment would make the balance negative.")
+
+    set_user_balance(target_user_id, next_balance_cents)
+
+    if adjustment_cents > 0:
+        get_user_stats(target_user_id)["total_deposited_cents"] += adjustment_cents
+
+    actor_snapshot = make_user_snapshot(actor_user)
+    add_app_notification(
+        actor_user=actor_snapshot,
+        event_type="admin_balance_adjusted",
+        message=(
+            f"{actor_snapshot['display_name']} adjusted your balance by "
+            f"{format_signed_money(adjustment_cents)}."
+        ),
+        recipient_user_id=target_user_id,
+        title="Balance updated",
+        tone="success" if adjustment_cents > 0 else "info",
+    )
+
+    return {
+        "adjustment_cents": adjustment_cents,
+        "adjustment_display": format_signed_money(adjustment_cents),
+        "balance_cents": next_balance_cents,
+        "balance_display": format_money(next_balance_cents),
+        "user_id": target_user_id,
+    }
+
+
+def admin_force_logout(actor_user, target_user_id):
+    actor_snapshot = make_user_snapshot(actor_user)
+
+    if target_user_id == actor_snapshot["id"]:
+        raise ValueError("Use the normal logout action for your own account.")
+
+    target_profile = USER_PROFILES.get(target_user_id)
+
+    if not target_profile or target_user_id == BOT_PROFILE["id"]:
+        raise ValueError("That player could not be found.")
+
+    revoke_user_auth_sessions(target_user_id)
+    mark_user_presence_offline(target_user_id)
+    add_app_notification(
+        actor_user=actor_snapshot,
+        event_type="admin_forced_logout",
+        message=f"{actor_snapshot['display_name']} signed you out.",
+        recipient_user_id=target_user_id,
+        title="Signed out",
+    )
+
+    return {
+        "signed_out": True,
+        "user_id": target_user_id,
+    }
+
+
 def get_coinflip_session_or_404(session_id):
     coinflip_session = COINFLIP_SESSIONS.get(session_id)
 
@@ -2837,6 +3238,7 @@ def get_dice_session_or_404(session_id):
 @app.before_request
 def load_current_user():
     g.discord_user = get_current_user()
+    g.is_admin_user = is_admin_user(g.discord_user)
     g.current_balance_cents = None
 
     if g.discord_user:
@@ -2850,6 +3252,7 @@ def load_current_user():
 @app.context_processor
 def inject_auth_state():
     discord_user = g.get("discord_user") or get_current_user()
+    admin_user = is_admin_user(discord_user)
     notification_cursor = 0
     chat_user_profile_url = url_for("chat_user_state", user_id="__user_id__")
 
@@ -2864,10 +3267,12 @@ def inject_auth_state():
         "chat_state_url": url_for("chat_state") if discord_user else None,
         "chat_mention_query_url": url_for("chat_mention_suggestions") if discord_user else None,
         "chat_user_profile_url": chat_user_profile_url,
+        "client_lockdown_enabled": bool(discord_user and not admin_user),
         "current_balance_cents": g.current_balance_cents,
         "current_balance_display": format_money(g.current_balance_cents) if g.current_balance_cents is not None else None,
         "discord_oauth_ready": is_discord_oauth_ready(),
         "discord_user": discord_user,
+        "is_admin_user": admin_user,
         "is_authenticated": discord_user is not None,
         "notification_cursor": notification_cursor,
         "presence_heartbeat_url": url_for("presence_heartbeat") if discord_user else None,
@@ -3142,6 +3547,74 @@ def claim_level_reward():
         "current_balance_cents": current_balance_cents,
         "current_balance_display": format_money(current_balance_cents),
         "rewards": reward_state,
+    })
+
+
+@app.route("/panel")
+@admin_panel_required
+def admin_panel():
+    with STATE_LOCK:
+        sync_all_game_sessions()
+        admin_panel_state = build_admin_panel_payload(get_current_user_id())
+
+    return render_template(
+        "AdminPanel.html",
+        active_page="panel",
+        admin_panel_state=admin_panel_state,
+    )
+
+
+@app.route("/panel/state")
+@admin_panel_required
+def admin_panel_state():
+    requested_version = request.args.get("version")
+
+    with STATE_LOCK:
+        sync_all_game_sessions()
+        payload = build_admin_panel_payload(get_current_user_id())
+
+    if requested_version and requested_version == payload["version"]:
+        return ("", 204)
+
+    return jsonify(payload)
+
+
+@app.route("/panel/users/<user_id>/balance", methods=["POST"])
+@admin_panel_required
+def admin_adjust_user_balance(user_id):
+    payload = request.get_json(silent=True)
+    raw_amount = (
+        payload.get("amount")
+        if isinstance(payload, dict)
+        else request.form.get("amount")
+    )
+
+    try:
+        with STATE_LOCK:
+            result = admin_adjust_balance(get_current_user(), user_id, raw_amount)
+            panel_payload = build_admin_panel_payload(get_current_user_id())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        **result,
+        "panel": panel_payload,
+    })
+
+
+@app.route("/panel/users/<user_id>/logout", methods=["POST"])
+@admin_panel_required
+def admin_force_logout_user(user_id):
+    try:
+        with STATE_LOCK:
+            result = admin_force_logout(get_current_user(), user_id)
+            panel_payload = build_admin_panel_payload(get_current_user_id())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        **result,
+        "panel": panel_payload,
     })
 
 
@@ -3729,6 +4202,7 @@ def discord_callback():
         return redirect(url_for("play"))
 
     session["discord_user"] = build_discord_user_profile(discord_user)
+    assign_session_auth_version(session["discord_user"])
     ensure_user_balance(session["discord_user"])
 
     redirect_target = session.pop("post_login_redirect", None)
@@ -3741,9 +4215,13 @@ def discord_callback():
 
 @app.route("/logout")
 def logout():
-    session.pop("discord_oauth_state", None)
-    session.pop("discord_user", None)
-    session.pop("post_login_redirect", None)
+    current_user = get_current_user()
+
+    if current_user:
+        with STATE_LOCK:
+            mark_user_presence_offline(current_user["id"])
+
+    clear_login_session()
     flash("Signed out.", "success")
     return redirect(url_for("play"))
 

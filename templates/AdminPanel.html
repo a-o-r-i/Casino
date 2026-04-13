@@ -1,0 +1,50 @@
+{% extends "Base.html" %}
+
+{% block title %}Panel | Gambling{% endblock %}
+{% block page_key %}admin-panel{% endblock %}
+
+{% block content %}
+  <section class="mx-auto w-full max-w-[960px] px-4 py-8 md:px-6">
+    <div
+      class="relative rounded-[30px] border border-white/10 bg-black/45 p-6 shadow-[0_20px_64px_rgba(0,0,0,0.3)]"
+      data-admin-panel
+      data-route-card
+      data-state-url="{{ url_for('admin_panel_state') }}"
+    >
+      <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <h1 class="text-[2.2rem] font-semibold tracking-[-0.05em] text-white">Panel</h1>
+
+        <div class="w-full md:w-auto">
+          <input
+            class="h-12 w-full rounded-[18px] border border-white/10 bg-white/[0.03] px-5 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/18 focus:bg-white/[0.05] md:w-[320px]"
+            data-admin-player-filter
+            placeholder="Search player, @user, uid"
+            type="search"
+          >
+        </div>
+      </div>
+
+      <section class="mt-6">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold uppercase tracking-[0.18em] text-white/42">Players</h2>
+          <p class="text-xs text-white/34" data-admin-player-count></p>
+        </div>
+        <div class="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.02]">
+          <div class="divide-y divide-white/10" data-admin-players></div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section
+    class="pointer-events-none fixed z-50 hidden w-[min(290px,calc(100vw-1rem))]"
+    data-admin-player-popout
+    aria-hidden="true"
+  ></section>
+
+  <script data-admin-panel-state type="application/json">{{ admin_panel_state | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ asset_url('js/AdminPanel.js') }}"></script>
+{% endblock %}
