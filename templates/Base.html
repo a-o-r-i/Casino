@@ -368,6 +368,45 @@
         flex-shrink: 0;
       }
 
+      [data-chat-resize-handle]
+      {
+        position: absolute;
+        width: 1.85rem;
+        height: 1.85rem;
+        opacity: 0;
+        touch-action: none;
+        user-select: none;
+        z-index: 3;
+      }
+
+      [data-chat-resize-handle][data-chat-resize-corner="top-left"]
+      {
+        top: 0.25rem;
+        left: 0.25rem;
+        cursor: nwse-resize;
+      }
+
+      [data-chat-resize-handle][data-chat-resize-corner="top-right"]
+      {
+        top: 0.25rem;
+        right: 0.25rem;
+        cursor: nesw-resize;
+      }
+
+      [data-chat-resize-handle][data-chat-resize-corner="bottom-left"]
+      {
+        bottom: 0.25rem;
+        left: 0.25rem;
+        cursor: nesw-resize;
+      }
+
+      [data-chat-resize-handle][data-chat-resize-corner="bottom-right"]
+      {
+        right: 0.25rem;
+        bottom: 0.25rem;
+        cursor: nwse-resize;
+      }
+
       [data-chat-title]
       {
         display: block;
@@ -1605,6 +1644,11 @@
           border-radius: 8px;
         }
 
+        [data-chat-resize-handle]
+        {
+          display: none;
+        }
+
       }
 
       @media (min-width: 641px)
@@ -1929,6 +1973,10 @@
             </div>
           </form>
 
+          <div aria-hidden="true" data-chat-resize-handle data-chat-resize-corner="top-left"></div>
+          <div aria-hidden="true" data-chat-resize-handle data-chat-resize-corner="top-right"></div>
+          <div aria-hidden="true" data-chat-resize-handle data-chat-resize-corner="bottom-left"></div>
+          <div aria-hidden="true" data-chat-resize-handle data-chat-resize-corner="bottom-right"></div>
         </div>
 
         <section data-chat-profile-card aria-hidden="true"></section>

@@ -132,9 +132,17 @@
               data-admin-row-settings
               type="button"
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" aria-hidden="true">
-                <path d="M10.95 2.62c.31-1.14 1.79-1.14 2.1 0l.36 1.34a1.76 1.76 0 0 0 2.53 1.05l1.2-.67c1.01-.56 2.06.49 1.5 1.5l-.67 1.2a1.76 1.76 0 0 0 1.05 2.53l1.34.36c1.14.31 1.14 1.79 0 2.1l-1.34.36a1.76 1.76 0 0 0-1.05 2.53l.67 1.2c.56 1.01-.49 2.06-1.5 1.5l-1.2-.67a1.76 1.76 0 0 0-2.53 1.05l-.36 1.34c-.31 1.14-1.79 1.14-2.1 0l-.36-1.34a1.76 1.76 0 0 0-2.53-1.05l-1.2.67c-1.01.56-2.06-.49-1.5-1.5l.67-1.2a1.76 1.76 0 0 0-1.05-2.53l-1.34-.36c-1.14-.31-1.14-1.79 0-2.1l1.34-.36a1.76 1.76 0 0 0 1.05-2.53l-.67-1.2c-.56-1.01.49-2.06 1.5-1.5l1.2.67a1.76 1.76 0 0 0 2.53-1.05l.36-1.34Z"></path>
-                <circle cx="12" cy="12" r="3.15"></circle>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" aria-hidden="true">
+                <circle cx="12" cy="12" r="6.1"></circle>
+                <circle cx="12" cy="12" r="2.9"></circle>
+                <path d="M12 2.8v2.35"></path>
+                <path d="M12 18.85v2.35"></path>
+                <path d="m18.54 5.46-1.66 1.66"></path>
+                <path d="m7.12 16.88-1.66 1.66"></path>
+                <path d="M21.2 12h-2.35"></path>
+                <path d="M5.15 12H2.8"></path>
+                <path d="m18.54 18.54-1.66-1.66"></path>
+                <path d="m7.12 7.12-1.66-1.66"></path>
               </svg>
             </button>
         `;
@@ -419,6 +427,10 @@
             : "";
         const ActionGridClass = Row.can_cancel ? "grid-cols-2" : "grid-cols-1";
         const ResultCopy = BuildSessionResultCopy(Row);
+        const StatusBadgeMarkup = Row?.status === "open"
+            ? ""
+            : BuildStatusBadgeMarkup(GetSessionStatusLabel(Row), GetSessionStatusTone(Row));
+        const TitleClassName = StatusBadgeMarkup ? "mt-3" : "";
 
         return `
             <div
@@ -436,10 +448,8 @@
               <div class="rounded-[22px] border border-white/10 bg-[rgba(16,17,22,0.88)] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                      ${BuildStatusBadgeMarkup(GetSessionStatusLabel(Row), GetSessionStatusTone(Row))}
-                    </div>
-                    <div class="mt-3 truncate text-[1.02rem] font-semibold text-white">${EscapeHtml(Row.participants_display)}</div>
+                    ${StatusBadgeMarkup ? `<div class="flex flex-wrap items-center gap-2">${StatusBadgeMarkup}</div>` : ""}
+                    <div class="${TitleClassName} truncate text-[1.02rem] font-semibold text-white">${EscapeHtml(Row.participants_display)}</div>
                     <div class="mt-1 text-[11px] uppercase tracking-[0.12em] text-white/34">Session #${EscapeHtml(Row.id)}</div>
                   </div>
                 </div>
@@ -837,10 +847,10 @@
             ShellNode.style.transformOrigin = Side === "left" ? "right center" : "left center";
 
             const Height = PopoutNode.offsetHeight || 360;
-            const AnchorCenterY = AnchorRect.top + (AnchorRect.height / 2);
+            const AnchorFocusY = AnchorRect.top + Math.min(AnchorRect.height / 2, 26);
             const Top = Math.max(
                 Margin,
-                Math.min(AnchorCenterY - (Height / 2), window.innerHeight - Height - Margin),
+                Math.min(AnchorRect.top - 12, window.innerHeight - Height - Margin),
             );
             let Left = Side === "left"
                 ? AnchorRect.left - Width - Gap
@@ -850,7 +860,7 @@
 
             const ArrowTop = Math.max(
                 18,
-                Math.min(AnchorCenterY - Top - 8, Height - 26),
+                Math.min(AnchorFocusY - Top - 8, Height - 26),
             );
 
             PopoutNode.style.left = `${Left}px`;
