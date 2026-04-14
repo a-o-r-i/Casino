@@ -575,6 +575,42 @@
                 && ShellNode.dataset.selectionKey === BuildSelectionKey(Selection);
         };
 
+        const GetPopoutViewportOffset = () =>
+        {
+            const ScopeNode = PopoutNode.parentElement;
+
+            if (!(ScopeNode instanceof HTMLElement))
+            {
+                return {
+                    left: 0,
+                    top: 0,
+                };
+            }
+
+            const ScopeStyles = window.getComputedStyle(ScopeNode);
+            const CreatesFixedContainingBlock = ScopeStyles.transform !== "none"
+                || ScopeStyles.filter !== "none"
+                || ScopeStyles.perspective !== "none"
+                || ScopeStyles.willChange.includes("transform")
+                || ScopeStyles.willChange.includes("filter")
+                || ScopeStyles.willChange.includes("perspective");
+
+            if (!CreatesFixedContainingBlock)
+            {
+                return {
+                    left: 0,
+                    top: 0,
+                };
+            }
+
+            const ScopeRect = ScopeNode.getBoundingClientRect();
+
+            return {
+                left: ScopeRect.left,
+                top: ScopeRect.top,
+            };
+        };
+
         const GetPlayers = () =>
         {
             return Array.isArray(LastState?.players) ? LastState.players : [];
@@ -835,6 +871,7 @@
             const Margin = 12;
             const Gap = 18;
             const AnchorRect = AnchorNode.getBoundingClientRect();
+            const PopoutViewportOffset = GetPopoutViewportOffset();
             const Width = PopoutNode.offsetWidth || 320;
             let Side = "right";
 
@@ -863,8 +900,8 @@
                 Math.min(AnchorFocusY - Top - 8, Height - 26),
             );
 
-            PopoutNode.style.left = `${Left}px`;
-            PopoutNode.style.top = `${Top}px`;
+            PopoutNode.style.left = `${Left - PopoutViewportOffset.left}px`;
+            PopoutNode.style.top = `${Top - PopoutViewportOffset.top}px`;
             PopoutNode.style.setProperty("--admin-popout-arrow-top", `${ArrowTop}px`);
 
             if (animate && !ShouldReuseShell)
