@@ -101,7 +101,7 @@
     const BuildAvatarMarkup = (Row, SizeClass = "h-12 w-12") =>
     {
         const FallbackUrl = Row?.avatar_static_url || Row?.avatar_url || "";
-        const AvatarUrl = Row?.avatar_url || FallbackUrl;
+        const AvatarUrl = FallbackUrl || Row?.avatar_url || "";
 
         if (AvatarUrl)
         {
@@ -128,19 +128,14 @@
         return `
             <button
               aria-label="Open ${EscapeHtml(Label)} settings"
-              class="inline-flex h-9 items-center gap-2 rounded-[12px] border border-white/10 bg-white/[0.04] px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/54 transition hover:bg-white/[0.08] hover:text-white"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.04] text-white/54 transition hover:bg-white/[0.08] hover:text-white"
               data-admin-row-settings
               type="button"
             >
-              <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.7" aria-hidden="true">
-                <path d="M4 6h12"></path>
-                <path d="M4 10h12"></path>
-                <path d="M4 14h12"></path>
-                <circle cx="7" cy="6" r="1.3" fill="currentColor" stroke="none"></circle>
-                <circle cx="11" cy="10" r="1.3" fill="currentColor" stroke="none"></circle>
-                <circle cx="14" cy="14" r="1.3" fill="currentColor" stroke="none"></circle>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" aria-hidden="true">
+                <path d="M10.95 2.62c.31-1.14 1.79-1.14 2.1 0l.36 1.34a1.76 1.76 0 0 0 2.53 1.05l1.2-.67c1.01-.56 2.06.49 1.5 1.5l-.67 1.2a1.76 1.76 0 0 0 1.05 2.53l1.34.36c1.14.31 1.14 1.79 0 2.1l-1.34.36a1.76 1.76 0 0 0-1.05 2.53l.67 1.2c.56 1.01-.49 2.06-1.5 1.5l-1.2-.67a1.76 1.76 0 0 0-2.53 1.05l-.36 1.34c-.31 1.14-1.79 1.14-2.1 0l-.36-1.34a1.76 1.76 0 0 0-2.53-1.05l-1.2.67c-1.01.56-2.06-.49-1.5-1.5l.67-1.2a1.76 1.76 0 0 0-1.05-2.53l-1.34-.36c-1.14-.31-1.14-1.79 0-2.1l1.34-.36a1.76 1.76 0 0 0 1.05-2.53l-.67-1.2c-.56-1.01.49-2.06 1.5-1.5l1.2.67a1.76 1.76 0 0 0 2.53-1.05l.36-1.34Z"></path>
+                <circle cx="12" cy="12" r="3.15"></circle>
               </svg>
-              <span>Settings</span>
             </button>
         `;
     };
@@ -233,11 +228,6 @@
                 : "Waiting for player...";
         }
 
-        if (Row?.reveal_pending)
-        {
-            return "Reveal pending on the live page.";
-        }
-
         if (Row?.game === "coinflip")
         {
             if (Row?.winner_name && Row?.result_side)
@@ -305,9 +295,6 @@
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-2">
                   <div class="truncate text-[1rem] font-medium text-white">${EscapeHtml(Row.participants_display)}</div>
-                  <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/38">
-                    ${EscapeHtml(Row.game_label)}
-                  </span>
                 </div>
                 <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/34">
                   <span>#${EscapeHtml(Row.id)}</span>
@@ -450,9 +437,6 @@
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-2">
-                      <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/42">
-                        ${EscapeHtml(Row.game_label)}
-                      </span>
                       ${BuildStatusBadgeMarkup(GetSessionStatusLabel(Row), GetSessionStatusTone(Row))}
                     </div>
                     <div class="mt-3 truncate text-[1.02rem] font-semibold text-white">${EscapeHtml(Row.participants_display)}</div>
@@ -503,6 +487,9 @@
         let PopoutAnimationToken = 0;
         let SelectedPopout = null;
         let ShouldAnimatePopoutOpen = false;
+        let RenderedCoinflipSignature = "";
+        let RenderedDiceSignature = "";
+        let RenderedPlayersSignature = "";
         const PlayerCountNode = PanelRoot.querySelector("[data-admin-player-count]");
         const PlayerFilterInput = PanelRoot.querySelector("[data-admin-player-filter]");
         const PlayersNode = PanelRoot.querySelector("[data-admin-players]");
@@ -538,6 +525,44 @@
                 secondary: String(Secondary ?? ""),
                 type: Type,
             };
+        };
+
+        const BuildRenderSignature = (Value) =>
+        {
+            try
+            {
+                return JSON.stringify(Value ?? null);
+            }
+            catch (ErrorValue)
+            {
+                console.error(ErrorValue);
+                return String(Date.now());
+            }
+        };
+
+        const BuildSelectionKey = (Selection) =>
+        {
+            if (!Selection)
+            {
+                return "";
+            }
+
+            return [Selection.type, Selection.primary, Selection.secondary].join(":");
+        };
+
+        const PopoutHasFocusedField = () =>
+        {
+            const ActiveElement = document.activeElement;
+
+            return ActiveElement instanceof HTMLElement
+                && PopoutNode.contains(ActiveElement)
+                && ActiveElement.matches("input, textarea, select");
+        };
+
+        const PopoutShellMatchesSelection = (ShellNode, Selection) =>
+        {
+            return ShellNode instanceof HTMLElement
+                && ShellNode.dataset.selectionKey === BuildSelectionKey(Selection);
         };
 
         const GetPlayers = () =>
@@ -752,6 +777,7 @@
         {
             const {
                 animate = false,
+                preserveExisting = false,
             } = Options;
             const Row = FindSelectionRow(Selection);
             const AnchorNode = GetSelectionAnchorElement(Selection);
@@ -763,20 +789,32 @@
                 return;
             }
 
-            const Markup = Selection.type === "player"
-                ? BuildPlayerPopoutMarkup(Row)
-                : BuildSessionPopoutMarkup(Row);
-            const ShellNode = CreateNodeFromMarkup(Markup);
+            let ShellNode = PopoutNode.querySelector("[data-admin-popout-shell]");
+            const ShouldReuseShell = preserveExisting && PopoutShellMatchesSelection(ShellNode, Selection);
 
-            if (!(ShellNode instanceof HTMLElement))
+            if (!ShouldReuseShell)
             {
-                SelectedPopout = null;
-                HidePopoutNow();
-                return;
+                const Markup = Selection.type === "player"
+                    ? BuildPlayerPopoutMarkup(Row)
+                    : BuildSessionPopoutMarkup(Row);
+                ShellNode = CreateNodeFromMarkup(Markup);
+
+                if (!(ShellNode instanceof HTMLElement))
+                {
+                    SelectedPopout = null;
+                    HidePopoutNow();
+                    return;
+                }
+
+                ShellNode.dataset.selectionKey = BuildSelectionKey(Selection);
+                PopoutAnimationToken += 1;
+                PopoutNode.replaceChildren(ShellNode);
+            }
+            else
+            {
+                ShellNode.dataset.selectionKey = BuildSelectionKey(Selection);
             }
 
-            PopoutAnimationToken += 1;
-            PopoutNode.replaceChildren(ShellNode);
             PopoutNode.classList.remove("pointer-events-none");
             PopoutNode.classList.add("pointer-events-auto");
             PopoutNode.classList.remove("hidden");
@@ -819,14 +857,18 @@
             PopoutNode.style.top = `${Top}px`;
             PopoutNode.style.setProperty("--admin-popout-arrow-top", `${ArrowTop}px`);
 
-            if (animate)
+            if (animate && !ShouldReuseShell)
             {
                 AnimatePopoutIn(ShellNode);
             }
         };
 
-        const ReopenSelectedPopout = () =>
+        const ReopenSelectedPopout = (Options = {}) =>
         {
+            const {
+                preserveExisting = false,
+            } = Options;
+
             if (!SelectedPopout)
             {
                 HidePopoutNow();
@@ -835,6 +877,7 @@
 
             PositionPopout(SelectedPopout, {
                 animate: ShouldAnimatePopoutOpen,
+                preserveExisting,
             });
             ShouldAnimatePopoutOpen = false;
         };
@@ -871,8 +914,12 @@
             return `${TotalCount} total / ${LiveCount} live / ${OpenCount} open / ${ResolvedCount} resolved`;
         };
 
-        const Render = () =>
+        const Render = (Options = {}) =>
         {
+            const {
+                forcePopoutRefresh = false,
+            } = Options;
+
             if (!LastState)
             {
                 return;
@@ -882,17 +929,37 @@
             const FilteredPlayers = GetFilteredPlayers();
             const CoinflipSessions = GetSessionsByGame("coinflip");
             const DiceSessions = GetSessionsByGame("dice");
+            const PlayersSignature = BuildRenderSignature(FilteredPlayers);
+            const CoinflipSignature = BuildRenderSignature(CoinflipSessions);
+            const DiceSignature = BuildRenderSignature(DiceSessions);
 
             SetTextContent(PlayerCountNode, `${FilteredPlayers.length} / ${AllPlayers.length}`);
             SetTextContent(SessionTotalCountNode, `${GetSessions().length} total / ${Number(LastState?.summary?.sessions_live || 0)} live`);
             SetTextContent(CoinflipCountNode, GetSessionCountCopy("coinflip"));
             SetTextContent(DiceCountNode, GetSessionCountCopy("dice"));
-            SyncList(PlayersNode, FilteredPlayers, RenderPlayerRow, "No players match the current filter.");
-            SyncList(CoinflipSessionsNode, CoinflipSessions, RenderSessionRow, "No coinflip sessions are active.");
-            SyncList(DiceSessionsNode, DiceSessions, RenderSessionRow, "No dice sessions are active.");
+
+            if (PlayersSignature !== RenderedPlayersSignature)
+            {
+                SyncList(PlayersNode, FilteredPlayers, RenderPlayerRow, "No players match the current filter.");
+                RenderedPlayersSignature = PlayersSignature;
+            }
+
+            if (CoinflipSignature !== RenderedCoinflipSignature)
+            {
+                SyncList(CoinflipSessionsNode, CoinflipSessions, RenderSessionRow, "No coinflip sessions are active.");
+                RenderedCoinflipSignature = CoinflipSignature;
+            }
+
+            if (DiceSignature !== RenderedDiceSignature)
+            {
+                SyncList(DiceSessionsNode, DiceSessions, RenderSessionRow, "No dice sessions are active.");
+                RenderedDiceSignature = DiceSignature;
+            }
 
             ApplyGlobalBalance(LastState);
-            ReopenSelectedPopout();
+            ReopenSelectedPopout({
+                preserveExisting: !forcePopoutRefresh && PopoutHasFocusedField(),
+            });
         };
 
         const SchedulePoll = (DelayMs = LastState?.poll_interval_ms || 2400) =>
@@ -1015,7 +1082,9 @@
                     AmountInput.value = "";
                 }
 
-                Render();
+                Render({
+                    forcePopoutRefresh: true,
+                });
                 ShowToast("Balance updated", `${Payload.adjustment_display} applied.`, Payload.adjustment_cents > 0 ? "success" : "info");
             }
             catch (ErrorValue)
@@ -1065,7 +1134,9 @@
                     LastState = Payload.panel;
                 }
 
-                Render();
+                Render({
+                    forcePopoutRefresh: true,
+                });
                 ShowToast("Player signed out", "The selected account was invalidated.", "success");
             }
             catch (ErrorValue)
@@ -1115,7 +1186,9 @@
                     LastState = Payload.panel;
                 }
 
-                Render();
+                Render({
+                    forcePopoutRefresh: true,
+                });
                 ShowToast("Session canceled", `Eligible players were refunded ${Payload.refund_display || ""}.`.trim(), "success");
             }
             catch (ErrorValue)
@@ -1333,7 +1406,9 @@
                 return;
             }
 
-            ReopenSelectedPopout();
+            ReopenSelectedPopout({
+                preserveExisting: PopoutHasFocusedField(),
+            });
         };
 
         PlayerFilterInput?.addEventListener("input", HandleFilterInput);
