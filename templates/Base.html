@@ -371,17 +371,13 @@
       [data-chat-resize-handle]
       {
         position: absolute;
-        left: 0.8rem;
-        bottom: 0.78rem;
         display: inline-flex;
         width: 1.2rem;
         height: 1.2rem;
-        align-items: flex-end;
-        justify-content: flex-start;
         gap: 0.17rem;
         color: rgba(255, 255, 255, 0.34);
-        cursor: nesw-resize;
         opacity: 0.78;
+        touch-action: none;
         user-select: none;
       }
 
@@ -406,6 +402,45 @@
       [data-chat-resize-handle] span:nth-child(3)
       {
         height: 0.82rem;
+      }
+
+      [data-chat-resize-handle][data-chat-resize-corner="top-left"]
+      {
+        top: 0.78rem;
+        left: 0.8rem;
+        align-items: flex-start;
+        justify-content: flex-start;
+        cursor: nwse-resize;
+        transform: scaleY(-1);
+      }
+
+      [data-chat-resize-handle][data-chat-resize-corner="top-right"]
+      {
+        top: 0.78rem;
+        right: 0.8rem;
+        align-items: flex-start;
+        justify-content: flex-end;
+        cursor: nesw-resize;
+        transform: scale(-1, -1);
+      }
+
+      [data-chat-resize-handle][data-chat-resize-corner="bottom-left"]
+      {
+        bottom: 0.78rem;
+        left: 0.8rem;
+        align-items: flex-end;
+        justify-content: flex-start;
+        cursor: nesw-resize;
+      }
+
+      [data-chat-resize-handle][data-chat-resize-corner="bottom-right"]
+      {
+        right: 0.8rem;
+        bottom: 0.78rem;
+        align-items: flex-end;
+        justify-content: flex-end;
+        cursor: nwse-resize;
+        transform: scaleX(-1);
       }
 
       [data-site-chat-shell][data-chat-open="true"] [data-chat-resize-handle]:hover,
@@ -1980,7 +2015,22 @@
             </div>
           </form>
 
-          <div aria-hidden="true" data-chat-resize-handle>
+          <div aria-hidden="true" data-chat-resize-handle data-chat-resize-corner="top-left">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div aria-hidden="true" data-chat-resize-handle data-chat-resize-corner="top-right">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div aria-hidden="true" data-chat-resize-handle data-chat-resize-corner="bottom-left">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div aria-hidden="true" data-chat-resize-handle data-chat-resize-corner="bottom-right">
             <span></span>
             <span></span>
             <span></span>

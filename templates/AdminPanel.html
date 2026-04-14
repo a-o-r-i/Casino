@@ -33,12 +33,37 @@
           <div class="divide-y divide-white/10" data-admin-players></div>
         </div>
       </section>
+
+      <section class="mt-8">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold uppercase tracking-[0.18em] text-white/42">Sessions</h2>
+          <p class="text-xs text-white/34" data-admin-session-total-count></p>
+        </div>
+
+        <div class="grid gap-4 xl:grid-cols-2">
+          <section class="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.02]">
+            <div class="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <h3 class="text-sm font-semibold text-white">Coinflip</h3>
+              <p class="text-xs text-white/34" data-admin-session-count="coinflip"></p>
+            </div>
+            <div class="divide-y divide-white/10" data-admin-coinflip-sessions></div>
+          </section>
+
+          <section class="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.02]">
+            <div class="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <h3 class="text-sm font-semibold text-white">Dice</h3>
+              <p class="text-xs text-white/34" data-admin-session-count="dice"></p>
+            </div>
+            <div class="divide-y divide-white/10" data-admin-dice-sessions></div>
+          </section>
+        </div>
+      </section>
     </div>
   </section>
 
   <section
-    class="pointer-events-none fixed z-50 hidden w-[min(290px,calc(100vw-1rem))]"
-    data-admin-player-popout
+    class="pointer-events-none fixed z-50 hidden w-[min(320px,calc(100vw-1rem))]"
+    data-admin-popout
     aria-hidden="true"
   ></section>
 

@@ -10,6 +10,30 @@
             .replaceAll("'", "&#39;");
     };
 
+    const FormatCountdown = (Value) =>
+    {
+        const NumberValue = Number(Value);
+
+        if (!Number.isFinite(NumberValue) || NumberValue <= 0)
+        {
+            return "0s";
+        }
+
+        return `${Math.max(0, Math.ceil(NumberValue))}s`;
+    };
+
+    const FormatPercent = (Value) =>
+    {
+        const NumberValue = Number(Value);
+
+        if (!Number.isFinite(NumberValue))
+        {
+            return "0%";
+        }
+
+        return `${Number.isInteger(NumberValue) ? NumberValue.toFixed(0) : NumberValue.toFixed(1)}%`;
+    };
+
     const FormatRelativeTime = (Timestamp) =>
     {
         const NumberValue = Number(Timestamp);
@@ -46,18 +70,6 @@
             month: "short",
             year: "numeric",
         });
-    };
-
-    const FormatPercent = (Value) =>
-    {
-        const NumberValue = Number(Value);
-
-        if (!Number.isFinite(NumberValue))
-        {
-            return "0%";
-        }
-
-        return `${Number.isInteger(NumberValue) ? NumberValue.toFixed(0) : NumberValue.toFixed(1)}%`;
     };
 
     const ShowToast = (Title, Message, Tone = "info") =>
@@ -111,65 +123,40 @@
         `;
     };
 
-    const SyncAvatarNode = (ContainerNode, Row) =>
+    const BuildSettingsButtonMarkup = (Label) =>
     {
-        if (!(ContainerNode instanceof Element))
-        {
-            return;
-        }
-
-        const ImageNode = ContainerNode.querySelector("img");
-
-        if (ImageNode instanceof HTMLImageElement)
-        {
-            ImageNode.alt = String(Row?.display_name || Row?.username || "");
-            return;
-        }
-
-        const FallbackNode = ContainerNode.firstElementChild;
-
-        if (FallbackNode)
-        {
-            SetTextContent(
-                FallbackNode,
-                (Row?.display_name || Row?.username || "?").slice(0, 1),
-            );
-        }
-    };
-
-    const RenderPlayerRow = (Row) =>
-    {
-        const StatusColor = Row.is_online ? "bg-emerald-400" : "bg-white/28";
-        const BalanceCopy = Row.balance_display || "$0";
-
         return `
             <button
-              class="flex w-full items-center gap-4 px-4 py-4 text-left transition hover:bg-white/[0.03]"
-              data-admin-player-row
-              data-user-id="${EscapeHtml(Row.id)}"
+              aria-label="Open ${EscapeHtml(Label)} settings"
+              class="inline-flex h-9 items-center gap-2 rounded-[12px] border border-white/10 bg-white/[0.04] px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/54 transition hover:bg-white/[0.08] hover:text-white"
+              data-admin-row-settings
               type="button"
             >
-              <span class="shrink-0" data-admin-player-avatar>
-                ${BuildAvatarMarkup(Row)}
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="block truncate text-[1.02rem] font-medium text-white" data-admin-player-display>${EscapeHtml(Row.display_name)}</span>
-                <span class="mt-1 block truncate text-xs text-white/34" data-admin-player-username>@${EscapeHtml(Row.username)}</span>
-              </span>
-              <span class="flex shrink-0 items-center gap-3">
-                <span class="text-sm font-medium text-white/48" data-admin-player-balance>${EscapeHtml(BalanceCopy)}</span>
-                <span class="inline-flex h-2.5 w-2.5 rounded-full ${StatusColor}" data-admin-player-status-dot></span>
-              </span>
+              <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.7" aria-hidden="true">
+                <path d="M4 6h12"></path>
+                <path d="M4 10h12"></path>
+                <path d="M4 14h12"></path>
+                <circle cx="7" cy="6" r="1.3" fill="currentColor" stroke="none"></circle>
+                <circle cx="11" cy="10" r="1.3" fill="currentColor" stroke="none"></circle>
+                <circle cx="14" cy="14" r="1.3" fill="currentColor" stroke="none"></circle>
+              </svg>
+              <span>Settings</span>
             </button>
         `;
     };
 
-    const RenderEmptyPlayerList = (Message) =>
+    const BuildStatusBadgeMarkup = (Label, Tone = "neutral") =>
     {
+        const ToneClass = Tone === "live"
+            ? "border-emerald-400/18 bg-emerald-500/10 text-emerald-100"
+            : Tone === "resolved"
+                ? "border-white/12 bg-white/[0.06] text-white/76"
+                : "border-amber-400/16 bg-amber-500/10 text-amber-100";
+
         return `
-            <div class="px-4 py-10 text-center text-sm text-white/34">
-              ${EscapeHtml(Message)}
-            </div>
+            <span class="inline-flex h-8 items-center rounded-full border px-3 text-[11px] font-semibold uppercase tracking-[0.12em] ${ToneClass}">
+              ${EscapeHtml(Label)}
+            </span>
         `;
     };
 
@@ -183,14 +170,169 @@
         `;
     };
 
-    const BuildPopoutMarkup = (Row) =>
+    const RenderEmptyList = (Message) =>
+    {
+        return `
+            <div class="px-4 py-10 text-center text-sm text-white/34">
+              ${EscapeHtml(Message)}
+            </div>
+        `;
+    };
+
+    const GetSessionStatusTone = (Row) =>
+    {
+        if (Row?.status === "countdown")
+        {
+            return "live";
+        }
+
+        if (Row?.status === "resolved")
+        {
+            return "resolved";
+        }
+
+        return "open";
+    };
+
+    const GetSessionStatusLabel = (Row) =>
+    {
+        if (Row?.status === "countdown")
+        {
+            return `Live ${FormatCountdown(Row?.countdown_remaining)}`;
+        }
+
+        if (Row?.status === "resolved")
+        {
+            return "Resolved";
+        }
+
+        return "Open";
+    };
+
+    const BuildSessionMatchupCopy = (Row) =>
+    {
+        if (Row?.game === "coinflip")
+        {
+            return `${Row?.creator_choice || "Heads"} vs ${Row?.opponent_choice || "Tails"}`;
+        }
+
+        if (Row?.creator_label && Row?.opponent_label && Row.creator_label !== Row.mode_label)
+        {
+            return `${Row.creator_label} vs ${Row.opponent_label}`;
+        }
+
+        return Row?.mode_label || "--";
+    };
+
+    const BuildSessionResultCopy = (Row) =>
+    {
+        if (Row?.status !== "resolved")
+        {
+            return Row?.status === "countdown"
+                ? `${FormatCountdown(Row?.countdown_remaining)} remaining`
+                : "Waiting for player...";
+        }
+
+        if (Row?.reveal_pending)
+        {
+            return "Reveal pending on the live page.";
+        }
+
+        if (Row?.game === "coinflip")
+        {
+            if (Row?.winner_name && Row?.result_side)
+            {
+                return `${Row.winner_name} wins on ${Row.result_side}.`;
+            }
+
+            return Row?.winner_name || "--";
+        }
+
+        if (Number.isFinite(Number(Row?.result_face)))
+        {
+            return `${Row?.winner_name || "Winner"} wins on ${Row.result_face}.`;
+        }
+
+        if (Row?.winner_name)
+        {
+            return `${Row.winner_name} wins ${Number(Row?.creator_score) || 0}-${Number(Row?.opponent_score) || 0}.`;
+        }
+
+        return "--";
+    };
+
+    const RenderPlayerRow = (Row) =>
+    {
+        const StatusColor = Row.is_online ? "bg-emerald-400" : "bg-white/28";
+        const BalanceCopy = Row.balance_display || "$0";
+
+        return `
+            <div
+              class="flex items-center gap-4 px-4 py-4 transition hover:bg-white/[0.03]"
+              data-admin-player-row
+              data-user-id="${EscapeHtml(Row.id)}"
+            >
+              <span class="shrink-0">
+                ${BuildAvatarMarkup(Row)}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-[1.02rem] font-medium text-white">${EscapeHtml(Row.display_name)}</div>
+                <div class="mt-1 truncate text-xs text-white/34">@${EscapeHtml(Row.username)}</div>
+              </div>
+              <div class="flex shrink-0 items-center gap-3">
+                <div class="text-right">
+                  <div class="text-sm font-medium text-white/52">${EscapeHtml(BalanceCopy)}</div>
+                  <div class="mt-1 flex items-center justify-end gap-2 text-[11px] uppercase tracking-[0.12em] text-white/26">
+                    <span class="inline-flex h-2.5 w-2.5 rounded-full ${StatusColor}"></span>
+                    <span>${Row.is_online ? "Online" : "Offline"}</span>
+                  </div>
+                </div>
+                ${BuildSettingsButtonMarkup("player")}
+              </div>
+            </div>
+        `;
+    };
+
+    const RenderSessionRow = (Row) =>
+    {
+        return `
+            <div
+              class="flex items-center gap-4 px-4 py-4 transition hover:bg-white/[0.03]"
+              data-admin-session-row
+              data-game="${EscapeHtml(Row.game)}"
+              data-session-id="${EscapeHtml(Row.id)}"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="truncate text-[1rem] font-medium text-white">${EscapeHtml(Row.participants_display)}</div>
+                  <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/38">
+                    ${EscapeHtml(Row.game_label)}
+                  </span>
+                </div>
+                <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/34">
+                  <span>#${EscapeHtml(Row.id)}</span>
+                  <span>${EscapeHtml(BuildSessionMatchupCopy(Row))}</span>
+                  <span>Bet ${EscapeHtml(Row.bet_display || "$0")}</span>
+                  <span>Pot ${EscapeHtml(Row.pot_display || "$0")}</span>
+                  <span>${EscapeHtml(String(Row.viewer_count || 0))} viewers</span>
+                </div>
+                <div class="mt-2 text-xs text-white/42">${EscapeHtml(Row.status_text || "--")}</div>
+              </div>
+              <div class="flex shrink-0 items-center gap-3">
+                ${BuildStatusBadgeMarkup(GetSessionStatusLabel(Row), GetSessionStatusTone(Row))}
+                ${BuildSettingsButtonMarkup(`${Row.game_label} session`)}
+              </div>
+            </div>
+        `;
+    };
+
+    const BuildPlayerPopoutMarkup = (Row) =>
     {
         const LogoutMarkup = Row.can_force_logout
             ? `
                 <button
                   class="inline-flex h-10 w-full items-center justify-center rounded-[12px] border border-red-400/14 bg-red-500/10 px-3 text-sm font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
                   data-admin-force-logout
-                  data-admin-popout-logout
                   data-url="${EscapeHtml(Row.force_logout_url || "")}"
                   type="button"
                 >
@@ -201,7 +343,6 @@
                 <a
                   class="inline-flex h-10 w-full items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
                   data-admin-logout-href
-                  data-admin-popout-logout
                   href="/logout"
                 >
                   Logout
@@ -215,6 +356,7 @@
             <div
               class="relative pointer-events-auto"
               data-admin-popout-shell
+              data-popout-type="player"
               data-user-id="${EscapeHtml(Row.id)}"
             >
               <span
@@ -224,12 +366,12 @@
               ></span>
               <div class="rounded-[22px] border border-white/10 bg-[rgba(16,17,22,0.88)] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
                 <div class="flex items-center gap-3">
-                  <span class="shrink-0" data-admin-popout-avatar>
+                  <span class="shrink-0">
                     ${BuildAvatarMarkup(Row, "h-10 w-10")}
                   </span>
                   <div class="min-w-0">
-                    <div class="truncate text-[1.05rem] font-semibold text-white" data-admin-popout-display>${EscapeHtml(Row.display_name)}</div>
-                    <div class="mt-0.5 truncate text-[11px] text-white/38" data-admin-popout-username>@${EscapeHtml(Row.username)}</div>
+                    <div class="truncate text-[1.05rem] font-semibold text-white">${EscapeHtml(Row.display_name)}</div>
+                    <div class="mt-0.5 truncate text-[11px] text-white/38">@${EscapeHtml(Row.username)}</div>
                   </div>
                 </div>
 
@@ -274,167 +416,80 @@
         `;
     };
 
-    const UpdatePlayerRowNode = (RowNode, Row) =>
+    const BuildSessionPopoutMarkup = (Row) =>
     {
-        if (!(RowNode instanceof HTMLElement))
-        {
-            return null;
-        }
+        const CancelMarkup = Row.can_cancel
+            ? `
+                <button
+                  class="inline-flex h-10 items-center justify-center rounded-[12px] border border-red-400/14 bg-red-500/10 px-3 text-sm font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
+                  data-admin-cancel-session
+                  data-url="${EscapeHtml(Row.cancel_url || "")}"
+                  type="button"
+                >
+                  Cancel session
+                </button>
+            `
+            : "";
+        const ActionGridClass = Row.can_cancel ? "grid-cols-2" : "grid-cols-1";
+        const ResultCopy = BuildSessionResultCopy(Row);
 
-        RowNode.dataset.userId = String(Row?.id ?? "");
-        SetTextContent(
-            RowNode.querySelector("[data-admin-player-display]"),
-            Row?.display_name || Row?.username || "Unknown player",
-        );
-        SetTextContent(
-            RowNode.querySelector("[data-admin-player-username]"),
-            `@${Row?.username || ""}`,
-        );
-        SetTextContent(
-            RowNode.querySelector("[data-admin-player-balance]"),
-            Row?.balance_display || "$0",
-        );
-        SyncAvatarNode(RowNode.querySelector("[data-admin-player-avatar]"), Row);
+        return `
+            <div
+              class="relative pointer-events-auto"
+              data-admin-popout-shell
+              data-popout-type="session"
+              data-game="${EscapeHtml(Row.game)}"
+              data-session-id="${EscapeHtml(Row.id)}"
+            >
+              <span
+                class="pointer-events-none absolute h-4 w-4 rotate-45 bg-[#101116]"
+                data-admin-popout-arrow
+                style="top: var(--admin-popout-arrow-top, 36px);"
+              ></span>
+              <div class="rounded-[22px] border border-white/10 bg-[rgba(16,17,22,0.88)] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/42">
+                        ${EscapeHtml(Row.game_label)}
+                      </span>
+                      ${BuildStatusBadgeMarkup(GetSessionStatusLabel(Row), GetSessionStatusTone(Row))}
+                    </div>
+                    <div class="mt-3 truncate text-[1.02rem] font-semibold text-white">${EscapeHtml(Row.participants_display)}</div>
+                    <div class="mt-1 text-[11px] uppercase tracking-[0.12em] text-white/34">Session #${EscapeHtml(Row.id)}</div>
+                  </div>
+                </div>
 
-        const StatusDotNode = RowNode.querySelector("[data-admin-player-status-dot]");
+                <div class="mt-3 grid grid-cols-2 gap-2">
+                  ${RenderDetailRow("status", "Status", Row.status_text || "--")}
+                  ${RenderDetailRow("mode", "Mode", BuildSessionMatchupCopy(Row))}
+                  ${RenderDetailRow("bet", "Bet", Row.bet_display || "$0")}
+                  ${RenderDetailRow("pot", "Pot", Row.pot_display || "$0")}
+                  ${RenderDetailRow("viewers", "Viewers", String(Row.viewer_count || 0))}
+                  ${RenderDetailRow("created", "Created", FormatRelativeTime(Row.created_at))}
+                  ${RenderDetailRow("result", "Result", ResultCopy, "col-span-2")}
+                </div>
 
-        if (StatusDotNode instanceof HTMLElement)
-        {
-            StatusDotNode.classList.toggle("bg-emerald-400", Boolean(Row?.is_online));
-            StatusDotNode.classList.toggle("bg-white/28", !Row?.is_online);
-        }
-
-        return RowNode;
-    };
-
-    const BuildPlayerRowNode = (Row) =>
-    {
-        return UpdatePlayerRowNode(CreateNodeFromMarkup(RenderPlayerRow(Row)), Row);
-    };
-
-    const SyncPlayerRows = (PlayersNode, Rows) =>
-    {
-        if (!(PlayersNode instanceof HTMLElement))
-        {
-            return;
-        }
-
-        if (!Rows.length)
-        {
-            const EmptyStateNode = CreateNodeFromMarkup(RenderEmptyPlayerList("No players match the current filter."));
-            PlayersNode.replaceChildren(...(EmptyStateNode ? [EmptyStateNode] : []));
-            return;
-        }
-
-        const ExistingRowsById = new Map(
-            Array.from(PlayersNode.querySelectorAll("[data-admin-player-row]")).map((Node) =>
-            {
-                return [Node.dataset.userId || "", Node];
-            }),
-        );
-        const NextRowNodes = Rows.map((Row) =>
-        {
-            const UserId = String(Row?.id ?? "");
-            const ExistingNode = ExistingRowsById.get(UserId);
-
-            if (ExistingNode)
-            {
-                return UpdatePlayerRowNode(ExistingNode, Row);
-            }
-
-            return BuildPlayerRowNode(Row);
-        }).filter(Boolean);
-
-        PlayersNode.replaceChildren(...NextRowNodes);
-    };
-
-    const SyncPopoutArrowNode = (ArrowNode, Side) =>
-    {
-        if (!(ArrowNode instanceof HTMLElement))
-        {
-            return;
-        }
-
-        ArrowNode.className = Side === "left"
-            ? "pointer-events-none absolute right-0 h-4 w-4 translate-x-1/2 rotate-45 border-r border-t border-white/10 bg-[#101116]"
-            : "pointer-events-none absolute left-0 h-4 w-4 -translate-x-1/2 rotate-45 border-l border-b border-white/10 bg-[#101116]";
-    };
-
-    const UpdatePopoutShell = (ShellNode, Row, Side) =>
-    {
-        if (!(ShellNode instanceof HTMLElement))
-        {
-            return null;
-        }
-
-        const StatusCopy = Row?.is_online ? "Active" : "Offline";
-        const LevelCopy = `${Row?.reward_level || 0} (${Row?.reward_badge || "Unranked"})`;
-        const ActivityCopy = Row?.current_path_label || "--";
-
-        ShellNode.dataset.userId = String(Row?.id ?? "");
-        ShellNode.style.transformOrigin = Side === "left" ? "right top" : "left top";
-        SyncPopoutArrowNode(ShellNode.querySelector("[data-admin-popout-arrow]"), Side);
-        SyncAvatarNode(ShellNode.querySelector("[data-admin-popout-avatar]"), Row);
-        SetTextContent(
-            ShellNode.querySelector("[data-admin-popout-display]"),
-            Row?.display_name || Row?.username || "Unknown player",
-        );
-        SetTextContent(
-            ShellNode.querySelector("[data-admin-popout-username]"),
-            `@${Row?.username || ""}`,
-        );
-        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"status\"]"), StatusCopy);
-        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"balance\"]"), Row?.balance_display || "$0");
-        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"wagered\"]"), Row?.total_wagered_display || "$0");
-        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"level\"]"), LevelCopy);
-        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"win-rate\"]"), FormatPercent(Row?.win_rate));
-        SetTextContent(
-            ShellNode.querySelector("[data-admin-popout-value=\"registered\"]"),
-            FormatRelativeTime(Row?.registered_at),
-        );
-        SetTextContent(ShellNode.querySelector("[data-admin-popout-value=\"activity\"]"), ActivityCopy);
-
-        const BalanceForm = ShellNode.querySelector("[data-admin-popout-balance-form]");
-
-        if (BalanceForm instanceof HTMLFormElement)
-        {
-            BalanceForm.action = String(Row?.balance_adjust_url || "");
-        }
-
-        const LogoutButton = ShellNode.querySelector("[data-admin-force-logout]");
-
-        if (LogoutButton instanceof HTMLButtonElement)
-        {
-            LogoutButton.dataset.url = String(Row?.force_logout_url || "");
-        }
-
-        return ShellNode;
-    };
-
-    const EnsurePopoutShell = (PopoutNode, Row) =>
-    {
-        if (!(PopoutNode instanceof HTMLElement))
-        {
-            return null;
-        }
-
-        const ExistingShell = PopoutNode.querySelector("[data-admin-popout-shell]");
-
-        if (ExistingShell instanceof HTMLElement && ExistingShell.dataset.userId === String(Row?.id ?? ""))
-        {
-            return ExistingShell;
-        }
-
-        const ShellNode = CreateNodeFromMarkup(BuildPopoutMarkup(Row));
-        PopoutNode.replaceChildren(...(ShellNode ? [ShellNode] : []));
-        return ShellNode;
+                <div class="mt-3 grid gap-2 ${ActionGridClass}">
+                  <a
+                    class="inline-flex h-10 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
+                    data-admin-open-session
+                    href="${EscapeHtml(Row.view_url || "#")}"
+                  >
+                    Open session
+                  </a>
+                  ${CancelMarkup}
+                </div>
+              </div>
+            </div>
+        `;
     };
 
     const InitializeAdminPanelPage = ({ main }) =>
     {
         const PanelRoot = main.querySelector("[data-admin-panel]");
         const StateScript = main.querySelector("[data-admin-panel-state]");
-        const PopoutNode = document.querySelector("[data-admin-player-popout]");
+        const PopoutNode = document.querySelector("[data-admin-popout]");
 
         if (!PanelRoot || !StateScript || !PopoutNode)
         {
@@ -445,12 +500,17 @@
         let LastState = null;
         let FilterQuery = "";
         let PollTimeout = 0;
-        let SelectedUserId = "";
         let PopoutAnimationToken = 0;
+        let SelectedPopout = null;
         let ShouldAnimatePopoutOpen = false;
         const PlayerCountNode = PanelRoot.querySelector("[data-admin-player-count]");
         const PlayerFilterInput = PanelRoot.querySelector("[data-admin-player-filter]");
         const PlayersNode = PanelRoot.querySelector("[data-admin-players]");
+        const SessionTotalCountNode = PanelRoot.querySelector("[data-admin-session-total-count]");
+        const CoinflipCountNode = PanelRoot.querySelector("[data-admin-session-count=\"coinflip\"]");
+        const DiceCountNode = PanelRoot.querySelector("[data-admin-session-count=\"dice\"]");
+        const CoinflipSessionsNode = PanelRoot.querySelector("[data-admin-coinflip-sessions]");
+        const DiceSessionsNode = PanelRoot.querySelector("[data-admin-dice-sessions]");
         const StateUrl = PanelRoot.dataset.stateUrl || "";
 
         try
@@ -471,23 +531,35 @@
             }
         };
 
-        const FindPlayerById = (UserId) =>
+        const BuildSelection = (Type, Primary, Secondary = "") =>
         {
-            const Players = Array.isArray(LastState?.players) ? LastState.players : [];
-            return Players.find((Row) => String(Row.id) === String(UserId)) || null;
+            return {
+                primary: String(Primary ?? ""),
+                secondary: String(Secondary ?? ""),
+                type: Type,
+            };
+        };
+
+        const GetPlayers = () =>
+        {
+            return Array.isArray(LastState?.players) ? LastState.players : [];
+        };
+
+        const GetSessions = () =>
+        {
+            return Array.isArray(LastState?.sessions) ? LastState.sessions : [];
         };
 
         const GetFilteredPlayers = () =>
         {
-            const Players = Array.isArray(LastState?.players) ? LastState.players : [];
             const Query = FilterQuery.trim().toLowerCase();
 
             if (!Query)
             {
-                return Players;
+                return GetPlayers();
             }
 
-            return Players.filter((Row) =>
+            return GetPlayers().filter((Row) =>
             {
                 const SearchBlob = [
                     Row.display_name,
@@ -501,12 +573,74 @@
             });
         };
 
+        const GetSessionsByGame = (Game) =>
+        {
+            return GetSessions().filter((Row) => Row.game === Game);
+        };
+
+        const FindPlayerById = (UserId) =>
+        {
+            return GetPlayers().find((Row) => String(Row.id) === String(UserId)) || null;
+        };
+
+        const FindSessionById = (Game, SessionId) =>
+        {
+            return GetSessions().find((Row) =>
+            {
+                return Row.game === Game && String(Row.id) === String(SessionId);
+            }) || null;
+        };
+
+        const FindSelectionRow = (Selection) =>
+        {
+            if (!Selection)
+            {
+                return null;
+            }
+
+            if (Selection.type === "player")
+            {
+                return FindPlayerById(Selection.primary);
+            }
+
+            if (Selection.type === "session")
+            {
+                return FindSessionById(Selection.primary, Selection.secondary);
+            }
+
+            return null;
+        };
+
         const GetPlayerRowElement = (UserId) =>
         {
-            return Array.from(PanelRoot.querySelectorAll("[data-admin-player-row]")).find((Node) =>
+            return PanelRoot.querySelector(`[data-admin-player-row][data-user-id="${CSS.escape(String(UserId))}"]`);
+        };
+
+        const GetSessionRowElement = (Game, SessionId) =>
+        {
+            return PanelRoot.querySelector(
+                `[data-admin-session-row][data-game="${CSS.escape(String(Game))}"][data-session-id="${CSS.escape(String(SessionId))}"]`,
+            );
+        };
+
+        const GetSelectionAnchorElement = (Selection) =>
+        {
+            if (!Selection)
             {
-                return Node.dataset.userId === String(UserId);
-            }) || null;
+                return null;
+            }
+
+            if (Selection.type === "player")
+            {
+                return GetPlayerRowElement(Selection.primary);
+            }
+
+            if (Selection.type === "session")
+            {
+                return GetSessionRowElement(Selection.primary, Selection.secondary);
+            }
+
+            return null;
         };
 
         const HidePopoutNow = () =>
@@ -564,7 +698,7 @@
             const LocalToken = ++PopoutAnimationToken;
             const ShellNode = PopoutNode.querySelector("[data-admin-popout-shell]");
 
-            SelectedUserId = "";
+            SelectedPopout = null;
             ShouldAnimatePopoutOpen = false;
 
             if (!animate || !(ShellNode instanceof Element) || typeof ShellNode.animate !== "function")
@@ -602,39 +736,58 @@
             });
         };
 
-        const PositionPopout = (Row, AnchorNode, Options = {}) =>
+        const SyncPopoutArrowNode = (ArrowNode, Side) =>
+        {
+            if (!(ArrowNode instanceof HTMLElement))
+            {
+                return;
+            }
+
+            ArrowNode.className = Side === "left"
+                ? "pointer-events-none absolute right-0 h-4 w-4 translate-x-1/2 rotate-45 border-r border-t border-white/10 bg-[#101116]"
+                : "pointer-events-none absolute left-0 h-4 w-4 -translate-x-1/2 rotate-45 border-l border-b border-white/10 bg-[#101116]";
+        };
+
+        const PositionPopout = (Selection, Options = {}) =>
         {
             const {
                 animate = false,
             } = Options;
+            const Row = FindSelectionRow(Selection);
+            const AnchorNode = GetSelectionAnchorElement(Selection);
 
             if (!Row || !(AnchorNode instanceof Element))
             {
+                SelectedPopout = null;
                 HidePopoutNow();
                 return;
             }
 
-            const Margin = 12;
-            const Gap = 18;
-            const AnchorRect = AnchorNode.getBoundingClientRect();
+            const Markup = Selection.type === "player"
+                ? BuildPlayerPopoutMarkup(Row)
+                : BuildSessionPopoutMarkup(Row);
+            const ShellNode = CreateNodeFromMarkup(Markup);
+
+            if (!(ShellNode instanceof HTMLElement))
+            {
+                SelectedPopout = null;
+                HidePopoutNow();
+                return;
+            }
+
             PopoutAnimationToken += 1;
+            PopoutNode.replaceChildren(ShellNode);
             PopoutNode.classList.remove("pointer-events-none");
             PopoutNode.classList.add("pointer-events-auto");
             PopoutNode.classList.remove("hidden");
             PopoutNode.setAttribute("aria-hidden", "false");
             PopoutNode.style.left = "0px";
             PopoutNode.style.top = "0px";
-            const ShellNode = EnsurePopoutShell(PopoutNode, Row);
 
-            if (!(ShellNode instanceof HTMLElement))
-            {
-                HidePopoutNow();
-                return;
-            }
-
-            UpdatePopoutShell(ShellNode, Row, "right");
-
-            const Width = PopoutNode.offsetWidth || 290;
+            const Margin = 12;
+            const Gap = 18;
+            const AnchorRect = AnchorNode.getBoundingClientRect();
+            const Width = PopoutNode.offsetWidth || 320;
             let Side = "right";
 
             if (AnchorRect.right + Gap + Width > window.innerWidth - Margin)
@@ -642,33 +795,24 @@
                 Side = "left";
             }
 
-            UpdatePopoutShell(ShellNode, Row, Side);
+            SyncPopoutArrowNode(ShellNode.querySelector("[data-admin-popout-arrow]"), Side);
+            ShellNode.style.transformOrigin = Side === "left" ? "right center" : "left center";
 
-            const Height = PopoutNode.offsetHeight || 320;
-            const PanelRect = PanelRoot.getBoundingClientRect();
-            const PreferredTop = Math.min(
-                AnchorRect.top - 18,
-                PanelRect.top + 18,
-            );
-            let Top = Math.max(
+            const Height = PopoutNode.offsetHeight || 360;
+            const AnchorCenterY = AnchorRect.top + (AnchorRect.height / 2);
+            const Top = Math.max(
                 Margin,
-                Math.min(
-                    PreferredTop,
-                    window.innerHeight - Height - Margin,
-                ),
+                Math.min(AnchorCenterY - (Height / 2), window.innerHeight - Height - Margin),
             );
-
             let Left = Side === "left"
                 ? AnchorRect.left - Width - Gap
                 : AnchorRect.right + Gap;
 
             Left = Math.max(Margin, Math.min(Left, window.innerWidth - Width - Margin));
+
             const ArrowTop = Math.max(
-                14,
-                Math.min(
-                    AnchorRect.top - Top - 10,
-                    42,
-                ),
+                18,
+                Math.min(AnchorCenterY - Top - 8, Height - 26),
             );
 
             PopoutNode.style.left = `${Left}px`;
@@ -683,25 +827,48 @@
 
         const ReopenSelectedPopout = () =>
         {
-            if (!SelectedUserId)
+            if (!SelectedPopout)
             {
                 HidePopoutNow();
                 return;
             }
 
-            const SelectedRow = FindPlayerById(SelectedUserId);
-            const AnchorNode = GetPlayerRowElement(SelectedUserId);
-
-            if (!SelectedRow || !AnchorNode)
-            {
-                HidePopoutNow();
-                return;
-            }
-
-            PositionPopout(SelectedRow, AnchorNode, {
+            PositionPopout(SelectedPopout, {
                 animate: ShouldAnimatePopoutOpen,
             });
             ShouldAnimatePopoutOpen = false;
+        };
+
+        const SyncList = (ListNode, Rows, BuildMarkup, EmptyMessage) =>
+        {
+            if (!(ListNode instanceof HTMLElement))
+            {
+                return;
+            }
+
+            if (!Rows.length)
+            {
+                const EmptyStateNode = CreateNodeFromMarkup(RenderEmptyList(EmptyMessage));
+                ListNode.replaceChildren(...(EmptyStateNode ? [EmptyStateNode] : []));
+                return;
+            }
+
+            const NextNodes = Rows
+                .map((Row) => CreateNodeFromMarkup(BuildMarkup(Row)))
+                .filter(Boolean);
+
+            ListNode.replaceChildren(...NextNodes);
+        };
+
+        const GetSessionCountCopy = (Game) =>
+        {
+            const Summary = LastState?.summary || {};
+            const LiveCount = Number(Summary[`${Game}_live`] || 0);
+            const OpenCount = Number(Summary[`${Game}_open`] || 0);
+            const ResolvedCount = Number(Summary[`${Game}_resolved`] || 0);
+            const TotalCount = LiveCount + OpenCount + ResolvedCount;
+
+            return `${TotalCount} total / ${LiveCount} live / ${OpenCount} open / ${ResolvedCount} resolved`;
         };
 
         const Render = () =>
@@ -711,11 +878,18 @@
                 return;
             }
 
-            const AllPlayers = Array.isArray(LastState.players) ? LastState.players : [];
+            const AllPlayers = GetPlayers();
             const FilteredPlayers = GetFilteredPlayers();
+            const CoinflipSessions = GetSessionsByGame("coinflip");
+            const DiceSessions = GetSessionsByGame("dice");
 
-            PlayerCountNode.textContent = `${FilteredPlayers.length} / ${AllPlayers.length}`;
-            SyncPlayerRows(PlayersNode, FilteredPlayers);
+            SetTextContent(PlayerCountNode, `${FilteredPlayers.length} / ${AllPlayers.length}`);
+            SetTextContent(SessionTotalCountNode, `${GetSessions().length} total / ${Number(LastState?.summary?.sessions_live || 0)} live`);
+            SetTextContent(CoinflipCountNode, GetSessionCountCopy("coinflip"));
+            SetTextContent(DiceCountNode, GetSessionCountCopy("dice"));
+            SyncList(PlayersNode, FilteredPlayers, RenderPlayerRow, "No players match the current filter.");
+            SyncList(CoinflipSessionsNode, CoinflipSessions, RenderSessionRow, "No coinflip sessions are active.");
+            SyncList(DiceSessionsNode, DiceSessions, RenderSessionRow, "No dice sessions are active.");
 
             ApplyGlobalBalance(LastState);
             ReopenSelectedPopout();
@@ -904,6 +1078,70 @@
             }
         };
 
+        const SubmitSessionCancel = async (Button) =>
+        {
+            const RequestUrl = Button.dataset.url || "";
+
+            if (!RequestUrl)
+            {
+                return;
+            }
+
+            Button.disabled = true;
+
+            try
+            {
+                const Response = await fetch(RequestUrl, {
+                    headers: {
+                        Accept: "application/json",
+                    },
+                    method: "POST",
+                });
+                const Payload = await Response.json().catch(() => ({}));
+
+                if (Response.status === 401 || Response.status === 404)
+                {
+                    HandleUnauthorized();
+                    return;
+                }
+
+                if (!Response.ok)
+                {
+                    throw new Error(Payload?.error || `Request failed with ${Response.status}.`);
+                }
+
+                if (Payload.panel)
+                {
+                    LastState = Payload.panel;
+                }
+
+                Render();
+                ShowToast("Session canceled", `Eligible players were refunded ${Payload.refund_display || ""}.`.trim(), "success");
+            }
+            catch (ErrorValue)
+            {
+                ShowToast("Panel error", ErrorValue.message || "Could not cancel that session.", "error");
+            }
+            finally
+            {
+                Button.disabled = false;
+            }
+        };
+
+        const OpenPlayerPopout = (UserId, Options = {}) =>
+        {
+            SelectedPopout = BuildSelection("player", UserId);
+            ShouldAnimatePopoutOpen = Options.animate !== false;
+            Render();
+        };
+
+        const OpenSessionPopout = (Game, SessionId, Options = {}) =>
+        {
+            SelectedPopout = BuildSelection("session", Game, SessionId);
+            ShouldAnimatePopoutOpen = Options.animate !== false;
+            Render();
+        };
+
         const HandleFilterInput = (EventValue) =>
         {
             const Target = EventValue.target instanceof HTMLInputElement ? EventValue.target : null;
@@ -917,20 +1155,68 @@
             Render();
         };
 
-        const HandlePlayerContextMenu = (EventValue) =>
+        const OpenSelectionFromRow = (RowNode, Options = {}) =>
+        {
+            if (!(RowNode instanceof Element))
+            {
+                return;
+            }
+
+            if (RowNode.matches("[data-admin-player-row]"))
+            {
+                OpenPlayerPopout(RowNode.dataset.userId || "", Options);
+                return;
+            }
+
+            if (RowNode.matches("[data-admin-session-row]"))
+            {
+                OpenSessionPopout(RowNode.dataset.game || "", RowNode.dataset.sessionId || "", Options);
+            }
+        };
+
+        const HandlePanelClick = (EventValue) =>
         {
             const Target = EventValue.target instanceof Element ? EventValue.target : null;
-            const RowButton = Target?.closest("[data-admin-player-row]");
 
-            if (!RowButton || !PanelRoot.contains(RowButton))
+            if (!Target)
+            {
+                return;
+            }
+
+            const SettingsButton = Target.closest("[data-admin-row-settings]");
+
+            if (SettingsButton)
+            {
+                EventValue.preventDefault();
+                OpenSelectionFromRow(SettingsButton.closest("[data-admin-player-row], [data-admin-session-row]"));
+                return;
+            }
+
+            if (Target.closest("a, button, input, form"))
+            {
+                return;
+            }
+
+            const RowNode = Target.closest("[data-admin-player-row], [data-admin-session-row]");
+
+            if (RowNode && PanelRoot.contains(RowNode))
+            {
+                OpenSelectionFromRow(RowNode);
+            }
+        };
+
+        const HandleRowContextMenu = (EventValue) =>
+        {
+            const Target = EventValue.target instanceof Element ? EventValue.target : null;
+            const RowNode = Target?.closest("[data-admin-player-row], [data-admin-session-row]");
+
+            if (!RowNode || !PanelRoot.contains(RowNode))
             {
                 return;
             }
 
             EventValue.preventDefault();
-            SelectedUserId = RowButton.dataset.userId || "";
-            ShouldAnimatePopoutOpen = true;
-            Render();
+            OpenSelectionFromRow(RowNode);
         };
 
         const HandleDocumentPointerDown = (EventValue) =>
@@ -942,7 +1228,11 @@
                 return;
             }
 
-            if (Target.closest("[data-admin-player-popout]") || Target.closest("[data-admin-player-row]"))
+            if (
+                Target.closest("[data-admin-popout]") ||
+                Target.closest("[data-admin-player-row]") ||
+                Target.closest("[data-admin-session-row]")
+            )
             {
                 return;
             }
@@ -961,7 +1251,11 @@
                 return;
             }
 
-            if (Target.closest("[data-admin-player-row]") || Target.closest("[data-admin-player-popout]"))
+            if (
+                Target.closest("[data-admin-player-row]") ||
+                Target.closest("[data-admin-session-row]") ||
+                Target.closest("[data-admin-popout]")
+            )
             {
                 return;
             }
@@ -1008,11 +1302,15 @@
                 return;
             }
 
-            const LogoutLink = Target.closest("[data-admin-logout-href]");
+            const CancelButton = Target.closest("[data-admin-cancel-session]");
 
-            if (!LogoutLink)
+            if (CancelButton)
             {
-                return;
+                EventValue.preventDefault();
+                SubmitSessionCancel(CancelButton).catch((ErrorValue) =>
+                {
+                    console.error(ErrorValue);
+                });
             }
         };
 
@@ -1030,7 +1328,7 @@
 
         const HandleViewportChange = () =>
         {
-            if (!SelectedUserId)
+            if (!SelectedPopout)
             {
                 return;
             }
@@ -1039,7 +1337,8 @@
         };
 
         PlayerFilterInput?.addEventListener("input", HandleFilterInput);
-        PanelRoot.addEventListener("contextmenu", HandlePlayerContextMenu);
+        PanelRoot.addEventListener("click", HandlePanelClick);
+        PanelRoot.addEventListener("contextmenu", HandleRowContextMenu);
         PopoutNode.addEventListener("submit", HandlePopoutSubmit);
         PopoutNode.addEventListener("click", HandlePopoutClick);
         document.addEventListener("pointerdown", HandleDocumentPointerDown);
@@ -1063,7 +1362,8 @@
 
             HidePopoutNow();
             PlayerFilterInput?.removeEventListener("input", HandleFilterInput);
-            PanelRoot.removeEventListener("contextmenu", HandlePlayerContextMenu);
+            PanelRoot.removeEventListener("click", HandlePanelClick);
+            PanelRoot.removeEventListener("contextmenu", HandleRowContextMenu);
             PopoutNode.removeEventListener("submit", HandlePopoutSubmit);
             PopoutNode.removeEventListener("click", HandlePopoutClick);
             document.removeEventListener("pointerdown", HandleDocumentPointerDown);

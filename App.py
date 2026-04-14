@@ -72,6 +72,7 @@ BOT_PROFILE = {
 }
 ADMIN_PANEL_USER_ID = "1195144155790327898"
 ADMIN_PANEL_USERNAME = "lastdanceparty"
+CANCELED_SESSION_MARKER_TTL_SECONDS = 45
 
 USER_BALANCES = {}
 USER_PROFILES = {
@@ -79,6 +80,8 @@ USER_PROFILES = {
 }
 COINFLIP_SESSIONS = {}
 DICE_SESSIONS = {}
+CANCELED_COINFLIP_SESSIONS = {}
+CANCELED_DICE_SESSIONS = {}
 STATE_LOCK = Lock()
 STATE_LOCK = RLock()
 USER_STATS = {}
@@ -696,6 +699,106 @@ def claim_user_level_reward(user_id, now=None):
 def build_state_version(payload):
     payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True)
     return hashlib.sha1(payload_json.encode("utf-8")).hexdigest()[:16]
+
+
+def get_game_label(game):
+    if game == "coinflip":
+        return "Coinflip"
+
+    if game == "dice":
+        return "Dice"
+
+    raise ValueError("Choose a valid game.")
+
+
+def get_game_lobby_url(game):
+    if game == "coinflip":
+        return url_for("coinflip_game")
+
+    if game == "dice":
+        return url_for("dice_game")
+
+    raise ValueError("Choose a valid game.")
+
+
+def get_game_session_store(game):
+    if game == "coinflip":
+        return COINFLIP_SESSIONS
+
+    if game == "dice":
+        return DICE_SESSIONS
+
+    raise ValueError("Choose a valid game.")
+
+
+def get_canceled_session_store(game):
+    if game == "coinflip":
+        return CANCELED_COINFLIP_SESSIONS
+
+    if game == "dice":
+        return CANCELED_DICE_SESSIONS
+
+    raise ValueError("Choose a valid game.")
+
+
+def cleanup_canceled_session_markers(now=None):
+    current_time = now or time.time()
+    expiration_cutoff = current_time - CANCELED_SESSION_MARKER_TTL_SECONDS
+
+    for store in (CANCELED_COINFLIP_SESSIONS, CANCELED_DICE_SESSIONS):
+        stale_session_ids = [
+            session_id
+            for session_id, marker in store.items()
+            if marker.get("created_at", 0) <= expiration_cutoff
+        ]
+
+        for session_id in stale_session_ids:
+            store.pop(session_id, None)
+
+
+def register_canceled_session_marker(game, session_record, refunded_user_ids):
+    refunded_user_ids = [user_id for user_id in refunded_user_ids if user_id]
+    cleanup_canceled_session_markers()
+    get_canceled_session_store(game)[session_record["id"]] = {
+        "created_at": time.time(),
+        "participant_user_ids": refunded_user_ids,
+        "redirect_url": get_game_lobby_url(game),
+        "session_id": session_record["id"],
+        "title": "Session canceled",
+        "participant_message": "Session has been canceled by an admin. You've been refunded.",
+        "tone": "info",
+        "viewer_message": "Session has been canceled by an admin.",
+    }
+
+
+def build_canceled_session_payload(game, session_id, current_user_id):
+    cleanup_canceled_session_markers()
+    marker = get_canceled_session_store(game).get(session_id)
+
+    if not marker:
+        return None
+
+    participant_user_ids = set(marker.get("participant_user_ids") or [])
+    refunded_current_user = bool(current_user_id and current_user_id in participant_user_ids)
+    toast_message = (
+        marker.get("participant_message")
+        if refunded_current_user
+        else marker.get("viewer_message")
+    ) or "Session has been canceled by an admin."
+
+    return {
+        "game": game,
+        "id": session_id,
+        "is_canceled": True,
+        "redirect_url": marker["redirect_url"],
+        "status": "canceled",
+        "status_text": toast_message,
+        "toast": {
+            "message": toast_message,
+            "title": marker.get("title") or "Session canceled",
+            "tone": marker.get("tone") or "info",
+        },
+    }
 
 
 def get_latest_notification_id():
@@ -2285,6 +2388,44 @@ def sync_all_game_sessions():
     sync_all_dice_sessions()
 
 
+def sync_game_session_state(game, session_record):
+    if game == "coinflip":
+        sync_coinflip_session_state(session_record)
+        return
+
+    if game == "dice":
+        sync_dice_session_state(session_record)
+        return
+
+    raise ValueError("Choose a valid game.")
+
+
+def game_session_is_resolved(game, session_record):
+    if game == "coinflip":
+        return coinflip_session_is_resolved(session_record)
+
+    if game == "dice":
+        return dice_session_is_resolved(session_record)
+
+    raise ValueError("Choose a valid game.")
+
+
+def build_session_refund_participants(session_record):
+    participants = []
+    seen_user_ids = set()
+
+    for participant in (session_record.get("creator"), session_record.get("opponent")):
+        participant_id = participant.get("id") if participant else None
+
+        if not participant_id or participant_id == BOT_PROFILE["id"] or participant_id in seen_user_ids:
+            continue
+
+        seen_user_ids.add(participant_id)
+        participants.append(participant)
+
+    return participants
+
+
 def build_coinflip_session_state(coinflip_session, current_user_id):
     sync_coinflip_session_state(coinflip_session)
 
@@ -3038,18 +3179,27 @@ def build_admin_session_rows(current_user_id):
         session_rows.append(
             {
                 "bet_display": session_state["bet_display"],
+                "can_cancel": session_state["status"] != "resolved",
+                "cancel_url": url_for("admin_cancel_game_session", game="coinflip", session_id=session_state["id"]),
+                "countdown_remaining": session_state["countdown_remaining"],
                 "created_at": coinflip_session["created_at"],
+                "creator_choice": session_state["creator_choice"],
                 "creator_name": session_state["creator"]["display_name"],
+                "creator_user_id": session_state["creator"]["id"],
                 "game": "coinflip",
                 "game_label": "Coinflip",
                 "id": session_state["id"],
                 "mode_label": "Heads / Tails",
+                "opponent_choice": session_state["opponent_choice"],
                 "opponent_name": session_state["opponent"]["display_name"] if session_state["opponent"] else None,
+                "opponent_user_id": session_state["opponent"]["id"] if session_state["opponent"] else None,
                 "participants_display": (
                     f"{session_state['creator']['display_name']} vs "
                     f"{session_state['opponent']['display_name'] if session_state['opponent'] else 'Waiting'}"
                 ),
                 "pot_display": session_state["pot_display"],
+                "result_side": session_state["result_side"],
+                "reveal_pending": session_state["reveal_pending"],
                 "status": session_state["status"],
                 "status_text": session_state["display_status_text"],
                 "view_url": url_for("coinflip_session", session_id=session_state["id"]),
@@ -3064,20 +3214,32 @@ def build_admin_session_rows(current_user_id):
         session_rows.append(
             {
                 "bet_display": session_state["bet_display"],
+                "can_cancel": session_state["status"] != "resolved",
+                "cancel_url": url_for("admin_cancel_game_session", game="dice", session_id=session_state["id"]),
+                "countdown_remaining": session_state["countdown_remaining"],
                 "created_at": dice_session["created_at"],
+                "creator_label": session_state["creator_label"],
                 "creator_name": session_state["creator"]["display_name"],
+                "creator_score": session_state["creator_score"],
+                "creator_user_id": session_state["creator"]["id"],
                 "game": "dice",
                 "game_label": "Dice",
                 "id": session_state["id"],
                 "mode_label": get_dice_mode_label(dice_session),
+                "opponent_label": session_state["opponent_label"],
                 "opponent_name": session_state["opponent"]["display_name"] if session_state["opponent"] else None,
+                "opponent_score": session_state["opponent_score"],
+                "opponent_user_id": session_state["opponent"]["id"] if session_state["opponent"] else None,
                 "participants_display": (
                     f"{session_state['creator']['display_name']} vs "
                     f"{session_state['opponent']['display_name'] if session_state['opponent'] else 'Waiting'}"
                 ),
                 "pot_display": session_state["pot_display"],
+                "result_face": session_state["result_face"],
+                "reveal_pending": session_state["reveal_pending"],
                 "status": session_state["status"],
                 "status_text": session_state["display_status_text"],
+                "target_wins": session_state["target_wins"],
                 "view_url": url_for("dice_session", session_id=session_state["id"]),
                 "viewer_count": session_state["viewer_count"],
                 "winner_name": session_state["winner_name"],
@@ -3124,18 +3286,7 @@ def build_admin_panel_payload(current_user_id):
             }
             for row in player_rows
         ],
-        "sessions": [
-            {
-                "creator_name": row["creator_name"],
-                "game": row["game"],
-                "id": row["id"],
-                "opponent_name": row["opponent_name"],
-                "status": row["status"],
-                "viewer_count": row["viewer_count"],
-                "winner_name": row["winner_name"],
-            }
-            for row in session_rows
-        ],
+        "sessions": [dict(row) for row in session_rows],
         "summary": summary,
     }
 
@@ -3214,6 +3365,58 @@ def admin_force_logout(actor_user, target_user_id):
     return {
         "signed_out": True,
         "user_id": target_user_id,
+    }
+
+
+def admin_cancel_session(actor_user, game, session_id):
+    actor_snapshot = make_user_snapshot(actor_user)
+    session_store = get_game_session_store(game)
+    session_record = session_store.get(session_id)
+
+    if not session_record:
+        raise ValueError("That session could not be found.")
+
+    sync_game_session_state(game, session_record)
+
+    if game_session_is_resolved(game, session_record):
+        raise ValueError("Resolved sessions can no longer be canceled.")
+
+    refund_cents = session_record["bet_cents"]
+    refund_display = format_money(refund_cents)
+    refunded_user_ids = []
+
+    for participant in build_session_refund_participants(session_record):
+        participant_user_id = participant["id"]
+        set_user_balance(participant_user_id, get_user_balance(participant_user_id) + refund_cents)
+        refunded_user_ids.append(participant_user_id)
+        add_app_notification(
+            actor_user=actor_snapshot,
+            event_type="admin_session_canceled",
+            message=f"Session has been canceled by an admin. You've been refunded {refund_display}.",
+            recipient_user_id=participant_user_id,
+            title="Session canceled",
+            tone="info",
+        )
+
+    rematch_source_session_id = session_record.get("rematch_source_session_id")
+
+    if rematch_source_session_id:
+        source_session = session_store.get(rematch_source_session_id)
+
+        if source_session and source_session.get("redo_session_id") == session_record["id"]:
+            source_session["redo_session_id"] = None
+
+    session_store.pop(session_record["id"], None)
+    register_canceled_session_marker(game, session_record, refunded_user_ids)
+
+    return {
+        "canceled": True,
+        "game": game,
+        "game_label": get_game_label(game),
+        "redirect_url": get_game_lobby_url(game),
+        "refund_display": refund_display,
+        "refunded_count": len(refunded_user_ids),
+        "session_id": session_record["id"],
     }
 
 
@@ -3554,6 +3757,7 @@ def claim_level_reward():
 @admin_panel_required
 def admin_panel():
     with STATE_LOCK:
+        cleanup_canceled_session_markers()
         sync_all_game_sessions()
         admin_panel_state = build_admin_panel_payload(get_current_user_id())
 
@@ -3570,6 +3774,7 @@ def admin_panel_state():
     requested_version = request.args.get("version")
 
     with STATE_LOCK:
+        cleanup_canceled_session_markers()
         sync_all_game_sessions()
         payload = build_admin_panel_payload(get_current_user_id())
 
@@ -3608,6 +3813,22 @@ def admin_force_logout_user(user_id):
     try:
         with STATE_LOCK:
             result = admin_force_logout(get_current_user(), user_id)
+            panel_payload = build_admin_panel_payload(get_current_user_id())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        **result,
+        "panel": panel_payload,
+    })
+
+
+@app.route("/panel/sessions/<game>/<session_id>/cancel", methods=["POST"])
+@admin_panel_required
+def admin_cancel_game_session(game, session_id):
+    try:
+        with STATE_LOCK:
+            result = admin_cancel_session(get_current_user(), game, session_id)
             panel_payload = build_admin_panel_payload(get_current_user_id())
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -3702,7 +3923,17 @@ def create_coinflip_session():
 @login_required
 def coinflip_session(session_id):
     with STATE_LOCK:
-        coinflip_session_data = get_coinflip_session_or_404(session_id)
+        cleanup_canceled_session_markers()
+        coinflip_session_data = COINFLIP_SESSIONS.get(session_id)
+
+        if not coinflip_session_data:
+            canceled_payload = build_canceled_session_payload("coinflip", session_id, get_current_user_id())
+
+            if canceled_payload:
+                return redirect(canceled_payload["redirect_url"])
+
+            abort(404)
+
         session_state = build_coinflip_session_state(coinflip_session_data, get_current_user_id())
 
     return render_template(
@@ -3759,7 +3990,17 @@ def call_coinflip_bot(session_id):
 @login_required
 def coinflip_session_state(session_id):
     with STATE_LOCK:
-        coinflip_session_data = get_coinflip_session_or_404(session_id)
+        cleanup_canceled_session_markers()
+        coinflip_session_data = COINFLIP_SESSIONS.get(session_id)
+
+        if not coinflip_session_data:
+            canceled_payload = build_canceled_session_payload("coinflip", session_id, get_current_user_id())
+
+            if canceled_payload:
+                return jsonify(canceled_payload)
+
+            abort(404)
+
         session_state = build_coinflip_session_state(coinflip_session_data, get_current_user_id())
 
     return jsonify(session_state)
@@ -3972,7 +4213,17 @@ def create_dice_session():
 @login_required
 def dice_session(session_id):
     with STATE_LOCK:
-        dice_session_data = get_dice_session_or_404(session_id)
+        cleanup_canceled_session_markers()
+        dice_session_data = DICE_SESSIONS.get(session_id)
+
+        if not dice_session_data:
+            canceled_payload = build_canceled_session_payload("dice", session_id, get_current_user_id())
+
+            if canceled_payload:
+                return redirect(canceled_payload["redirect_url"])
+
+            abort(404)
+
         session_state = build_dice_session_state(dice_session_data, get_current_user_id())
 
     return render_template(
@@ -4029,7 +4280,17 @@ def call_dice_bot(session_id):
 @login_required
 def dice_session_state(session_id):
     with STATE_LOCK:
-        dice_session_data = get_dice_session_or_404(session_id)
+        cleanup_canceled_session_markers()
+        dice_session_data = DICE_SESSIONS.get(session_id)
+
+        if not dice_session_data:
+            canceled_payload = build_canceled_session_payload("dice", session_id, get_current_user_id())
+
+            if canceled_payload:
+                return jsonify(canceled_payload)
+
+            abort(404)
+
         session_state = build_dice_session_state(dice_session_data, get_current_user_id())
 
     return jsonify(session_state)

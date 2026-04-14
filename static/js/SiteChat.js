@@ -42,7 +42,7 @@
     const ChatReplyBanner = ChatShell.querySelector("[data-chat-reply]");
     const ChatReplyName = ChatShell.querySelector("[data-chat-reply-name]");
     const ChatReplyPreview = ChatShell.querySelector("[data-chat-reply-preview]");
-    const ChatResizeHandle = ChatShell.querySelector("[data-chat-resize-handle]");
+    const ChatResizeHandles = Array.from(ChatShell.querySelectorAll("[data-chat-resize-handle]"));
     const ChatCloseButton = ChatShell.querySelector("[data-chat-close]");
     const ChatSubtitle = ChatShell.querySelector("[data-chat-subtitle]");
     const ChatSendButton = ChatShell.querySelector("[data-chat-send]");
@@ -423,14 +423,30 @@
         };
     };
 
-    const ApplyChatDragPosition = (Position, { persist = false } = {}) =>
+    const ApplyChatLayout = (Size, Position, { persist = false } = {}) =>
     {
-        ChatDragPosition = NormalizeChatDragPosition(Position);
+        const PreviousPosition = ChatDragPosition;
+        const NextPosition = NormalizeChatDragPosition(Position);
+
+        ChatPanelSize = ClampChatSize(Size);
 
         if (!ChatPanel)
         {
+            ChatDragPosition = NextPosition;
             return;
         }
+
+        if (IsMobileViewport())
+        {
+            ChatPanel.style.width = "";
+            ChatPanel.style.height = "";
+            ChatPanel.style.transform = "";
+            return;
+        }
+
+        ChatPanel.style.width = `${ChatPanelSize.width}px`;
+        ChatPanel.style.height = `${ChatPanelSize.height}px`;
+        ChatDragPosition = ClampChatDragPosition(NextPosition, PreviousPosition);
 
         if (Math.abs(ChatDragPosition.x) < 0.5 && Math.abs(ChatDragPosition.y) < 0.5)
         {
@@ -443,6 +459,7 @@
 
         if (persist)
         {
+            PersistChatPanelSize(ChatPanelSize);
             PersistChatDragPosition(ChatDragPosition);
         }
 
@@ -450,6 +467,13 @@
         {
             PositionProfileCard();
         }
+    };
+
+    const ApplyChatDragPosition = (Position, { persist = false } = {}) =>
+    {
+        ApplyChatLayout(ChatPanelSize, Position, {
+            persist,
+        });
     };
 
     const SyncChatPositionWithinViewport = ({ persist = false } = {}) =>
@@ -476,22 +500,9 @@
             return;
         }
 
-        ChatPanel.style.width = `${ChatPanelSize.width}px`;
-        ChatPanel.style.height = `${ChatPanelSize.height}px`;
-
-        if (persist)
-        {
-            PersistChatPanelSize(ChatPanelSize);
-        }
-
-        SyncChatPositionWithinViewport({
+        ApplyChatLayout(ChatPanelSize, ChatDragPosition, {
             persist,
         });
-
-        if (ChatProfileCard?.dataset.open === "true")
-        {
-            PositionProfileCard();
-        }
     };
 
     const SyncChatPanelSize = ({ useStoredSize = false } = {}) =>
@@ -721,8 +732,12 @@
 
     const StartChatResize = (EventValue) =>
     {
+        const ResizeHandle = EventValue.currentTarget instanceof HTMLElement
+            ? EventValue.currentTarget
+            : null;
+
         if (
-            !ChatResizeHandle ||
+            !ResizeHandle ||
             EventValue.button !== 0 ||
             IsMobileViewport()
         )
@@ -734,15 +749,20 @@
         EventValue.stopPropagation();
         HideProfileCard();
         ChatResizeState = {
+            corner: ResizeHandle.dataset.chatResizeCorner || "bottom-left",
+            handle: ResizeHandle,
             pointerId: EventValue.pointerId,
             startClientX: EventValue.clientX,
             startClientY: EventValue.clientY,
+            startPosition: {
+                ...ChatDragPosition,
+            },
             startSize: {
                 ...ChatPanelSize,
             },
         };
         ChatShell.dataset.chatResizing = "true";
-        ChatResizeHandle.setPointerCapture?.(EventValue.pointerId);
+        ResizeHandle.setPointerCapture?.(EventValue.pointerId);
     };
 
     const UpdateChatDrag = (EventValue) =>
@@ -768,12 +788,33 @@
             return;
         }
 
+        const DeltaX = EventValue.clientX - ChatResizeState.startClientX;
+        const DeltaY = EventValue.clientY - ChatResizeState.startClientY;
+        const Corner = ChatResizeState.corner || "bottom-left";
         const DesiredSize = {
-            height: ChatResizeState.startSize.height + (ChatResizeState.startClientY - EventValue.clientY),
-            width: ChatResizeState.startSize.width + (ChatResizeState.startClientX - EventValue.clientX),
+            height: Corner.startsWith("top")
+                ? ChatResizeState.startSize.height - DeltaY
+                : ChatResizeState.startSize.height + DeltaY,
+            width: Corner.endsWith("left")
+                ? ChatResizeState.startSize.width - DeltaX
+                : ChatResizeState.startSize.width + DeltaX,
+        };
+        const NextSize = ClampChatSize(DesiredSize);
+        const NextPosition = {
+            ...ChatResizeState.startPosition,
         };
 
-        ApplyChatPanelSize(DesiredSize);
+        if (Corner.endsWith("right"))
+        {
+            NextPosition.x += NextSize.width - ChatResizeState.startSize.width;
+        }
+
+        if (Corner.startsWith("bottom"))
+        {
+            NextPosition.y += NextSize.height - ChatResizeState.startSize.height;
+        }
+
+        ApplyChatLayout(NextSize, NextPosition);
     };
 
     const EndChatDrag = (EventValue) =>
@@ -806,10 +847,11 @@
             return;
         }
 
-        ChatResizeHandle?.releasePointerCapture?.(ChatResizeState.pointerId);
+        ChatResizeState.handle?.releasePointerCapture?.(ChatResizeState.pointerId);
         ChatResizeState = null;
         ChatShell.dataset.chatResizing = "false";
         PersistChatPanelSize(ChatPanelSize);
+        PersistChatDragPosition(ChatDragPosition);
     };
 
     const BuildAvatarMarkup = (User) =>
@@ -2143,7 +2185,10 @@
 
     ChatShell.addEventListener("error", HandleAvatarError, true);
     ChatHeader?.addEventListener("pointerdown", StartChatDrag);
-    ChatResizeHandle?.addEventListener("pointerdown", StartChatResize);
+    ChatResizeHandles.forEach((Handle) =>
+    {
+        Handle.addEventListener("pointerdown", StartChatResize);
+    });
 
     ChatToggleButton?.addEventListener("click", () =>
     {

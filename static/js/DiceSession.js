@@ -2,6 +2,7 @@
 {
 const CountdownAutoplayStorageKey = "gambling.countdownAutoplayOnLoad";
 const FirstToPlaybackStorageKeyPrefix = "gambling.dice-session-playback:";
+const PendingToastStorageKey = "gambling.pendingToast";
 const RevealCompletionStorageKeyPrefix = "gambling.dice-reveal-complete:";
 
 const BuildRevealCompletionStorageKey = (SessionId) =>
@@ -729,6 +730,55 @@ const WaitFor = (DelayMs) =>
     });
 };
 
+const PersistPendingToast = (RedirectUrl, ToastValue) =>
+{
+    if (!RedirectUrl || !ToastValue)
+    {
+        return;
+    }
+
+    try
+    {
+        const TargetUrl = new URL(RedirectUrl, window.location.href);
+        window.sessionStorage.setItem(PendingToastStorageKey, JSON.stringify({
+            ...ToastValue,
+            match: {
+                pathname: TargetUrl.pathname,
+            },
+        }));
+    }
+    catch (ErrorValue)
+    {
+        console.error(ErrorValue);
+    }
+};
+
+const RedirectCanceledSession = async (State) =>
+{
+    if (!State?.redirect_url)
+    {
+        return;
+    }
+
+    const ToastValue = State.toast || {
+        message: State?.status_text || "Session has been canceled by an admin.",
+        title: "Session canceled",
+        tone: "info",
+    };
+
+    PersistPendingToast(State.redirect_url, ToastValue);
+    window.GamblingApp?.showToast?.(ToastValue);
+    await WaitFor(160);
+
+    if (window.GamblingApp?.navigateTo)
+    {
+        await window.GamblingApp.navigateTo(State.redirect_url);
+        return;
+    }
+
+    window.location.href = State.redirect_url;
+};
+
 const FirstToPlaybackDelays = {
     betweenPlayersMs: 520,
     betweenRoundsMs: 760,
@@ -944,7 +994,7 @@ const RenderUnresolvedState = (Main, State, OptionsValue = {}) =>
     });
 };
 
-const PollSessionState = async (StateUrl, OnState) =>
+const PollSessionState = async (StateUrl, OnState, OnCanceled) =>
 {
     try
     {
@@ -960,6 +1010,17 @@ const PollSessionState = async (StateUrl, OnState) =>
         }
 
         const State = await Response.json();
+
+        if (State?.is_canceled)
+        {
+            if (typeof OnCanceled === "function")
+            {
+                await OnCanceled(State);
+            }
+
+            return State;
+        }
+
         OnState(State);
         return State;
     }
@@ -1012,6 +1073,7 @@ const InitializeDiceSessionPage = ({ main }) =>
     let HasShownResult = InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState);
     let HasAppliedResolvedFace = false;
     let IsDisposed = false;
+    let IsRedirectingForCancel = false;
     let IsHoldingBalanceDisplay = false;
     let IdleViewerSignature = "";
     let PollTimeout = 0;
@@ -1032,6 +1094,18 @@ const InitializeDiceSessionPage = ({ main }) =>
         {
             IsHoldingBalanceDisplay = Value;
         },
+    };
+
+    const HandleCanceledSession = async (State) =>
+    {
+        if (IsDisposed || IsRedirectingForCancel)
+        {
+            return;
+        }
+
+        IsRedirectingForCancel = true;
+        ReleaseGlobalBalanceDisplay(BalanceContext);
+        await RedirectCanceledSession(State);
     };
 
     const ResetIdleViewerSignature = () =>
@@ -1926,7 +2000,7 @@ const InitializeDiceSessionPage = ({ main }) =>
             MaybePlayCountdownSound(State);
             LastState = State;
             RenderLatestState();
-        });
+        }, HandleCanceledSession);
 
         if (IsDisposed)
         {
@@ -1936,6 +2010,11 @@ const InitializeDiceSessionPage = ({ main }) =>
         if (!CurrentState)
         {
             ScheduleTick(1500);
+            return;
+        }
+
+        if (CurrentState.is_canceled)
+        {
             return;
         }
 
