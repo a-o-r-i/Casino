@@ -9,6 +9,7 @@
 
     const HiddenPollMultiplier = 2.4;
     const ChatDragStorageKey = "gambling.chat.drag-position";
+    const ChatOpenStorageKey = "gambling.chat.open";
     const ChatDragViewportMargin = 16;
     const ChatResizeStorageKey = "gambling.chat.panel-size";
     const ChatDefaultDesktopHeight = 500;
@@ -360,6 +361,48 @@
         }
     };
 
+    const ReadStoredChatOpen = () =>
+    {
+        try
+        {
+            const RawValue = window.localStorage.getItem(ChatOpenStorageKey);
+
+            if (RawValue === null)
+            {
+                return null;
+            }
+
+            if (RawValue === "true")
+            {
+                return true;
+            }
+
+            if (RawValue === "false")
+            {
+                return false;
+            }
+
+            return null;
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+            return null;
+        }
+    };
+
+    const PersistChatOpen = (ShouldOpen) =>
+    {
+        try
+        {
+            window.localStorage.setItem(ChatOpenStorageKey, ShouldOpen ? "true" : "false");
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+        }
+    };
+
     const ClampToViewportRange = (Value, Min, Max) =>
     {
         if (Min > Max)
@@ -423,7 +466,7 @@
         };
     };
 
-    const ApplyChatLayout = (Size, Position, { persist = false } = {}) =>
+    const ApplyChatLayout = (Size, Position, { clampPosition = true, persist = false } = {}) =>
     {
         const PreviousPosition = ChatDragPosition;
         const NextPosition = NormalizeChatDragPosition(Position);
@@ -446,7 +489,9 @@
 
         ChatPanel.style.width = `${ChatPanelSize.width}px`;
         ChatPanel.style.height = `${ChatPanelSize.height}px`;
-        ChatDragPosition = ClampChatDragPosition(NextPosition, PreviousPosition);
+        ChatDragPosition = clampPosition
+            ? ClampChatDragPosition(NextPosition, PreviousPosition)
+            : NextPosition;
 
         if (Math.abs(ChatDragPosition.x) < 0.5 && Math.abs(ChatDragPosition.y) < 0.5)
         {
@@ -469,9 +514,10 @@
         }
     };
 
-    const ApplyChatDragPosition = (Position, { persist = false } = {}) =>
+    const ApplyChatDragPosition = (Position, { clampPosition = true, persist = false } = {}) =>
     {
         ApplyChatLayout(ChatPanelSize, Position, {
+            clampPosition,
             persist,
         });
     };
@@ -551,14 +597,11 @@
 
         const DesiredPosition = useStoredPosition ? ReadStoredChatDragPosition() : ChatDragPosition;
         const AppliedPosition = useStoredPosition
-            ? {
-                x: 0,
-                y: 0,
-            }
-            : ChatDragPosition;
-        const ClampedPosition = ClampChatDragPosition(DesiredPosition, AppliedPosition);
+            ? DesiredPosition
+            : ClampChatDragPosition(DesiredPosition, ChatDragPosition);
 
-        ApplyChatDragPosition(ClampedPosition, {
+        ApplyChatDragPosition(AppliedPosition, {
+            clampPosition: !useStoredPosition,
             persist: true,
         });
     };
@@ -566,8 +609,14 @@
     const SetChatOpen = (ShouldOpen, Options = {}) =>
     {
         const FocusComposer = Options.FocusComposer ?? true;
+        const Persist = Options.Persist ?? true;
 
         ChatShell.dataset.chatOpen = ShouldOpen ? "true" : "false";
+
+        if (Persist)
+        {
+            PersistChatOpen(ShouldOpen);
+        }
 
         if (ChatPanel)
         {
@@ -2545,7 +2594,10 @@
 
     UpdateComposerState();
     SetTypingSummary([]);
-    SetChatOpen(!IsMobileViewport(), { FocusComposer: false });
+    SetChatOpen(ReadStoredChatOpen() ?? !IsMobileViewport(), {
+        FocusComposer: false,
+        Persist: false,
+    });
     SyncChatPanelSize({
         useStoredSize: true,
     });

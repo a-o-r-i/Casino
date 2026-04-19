@@ -9,6 +9,7 @@ import time
 from difflib import SequenceMatcher
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
+from pathlib import Path
 from threading import Lock, RLock
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
@@ -73,6 +74,58 @@ BOT_PROFILE = {
 ADMIN_PANEL_USER_ID = "1195144155790327898"
 ADMIN_PANEL_USERNAME = "lastdanceparty"
 CANCELED_SESSION_MARKER_TTL_SECONDS = 45
+BLACKJACK_SESSION_MAX_SEATS = 5
+BLACKJACK_SHOE_COUNT = 6
+BLACKJACK_RESHUFFLE_THRESHOLD = 20
+BLACKJACK_SETTLE_HOLD_SECONDS = 4.0
+BLACKJACK_CHIP_VALUES_CENTS = (100, 200, 500, 2500, 10000, 100000)
+BLACKJACK_ROUND_WAITING = "waiting"
+BLACKJACK_ROUND_BETTING = "betting"
+BLACKJACK_ROUND_DEALING = "dealing"
+BLACKJACK_ROUND_INSURANCE = "insurance"
+BLACKJACK_ROUND_PLAYER_TURN = "player_turn"
+BLACKJACK_ROUND_DEALER_TURN = "dealer_turn"
+BLACKJACK_ROUND_SETTLING = "settling"
+BLACKJACK_BET_TYPE_MAIN = "main"
+BLACKJACK_BET_TYPE_PERFECT_PAIRS = "perfect_pairs"
+BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE = "twenty_one_plus_three"
+BLACKJACK_BET_TYPE_INSURANCE = "insurance"
+BLACKJACK_PREDEAL_BET_TYPES = (
+    BLACKJACK_BET_TYPE_MAIN,
+    BLACKJACK_BET_TYPE_PERFECT_PAIRS,
+    BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE,
+)
+BLACKJACK_SIDE_BET_TYPES = (
+    BLACKJACK_BET_TYPE_PERFECT_PAIRS,
+    BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE,
+)
+BLACKJACK_BET_TYPE_LABELS = {
+    BLACKJACK_BET_TYPE_MAIN: "Main",
+    BLACKJACK_BET_TYPE_PERFECT_PAIRS: "Perfect Pairs",
+    BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE: "21+3",
+    BLACKJACK_BET_TYPE_INSURANCE: "Insurance",
+}
+BLACKJACK_CARD_VALUES = ("ACE", "2", "3", "4", "5", "6", "7", "8", "9", "10", "JACK", "QUEEN", "KING")
+BLACKJACK_CARD_SUITS = ("SPADES", "HEARTS", "DIAMONDS", "CLUBS")
+BLACKJACK_CARD_VALUE_CODES = {
+    "ACE": "A",
+    "10": "0",
+    "JACK": "J",
+    "QUEEN": "Q",
+    "KING": "K",
+}
+BLACKJACK_CARD_SUIT_CODES = {
+    "SPADES": "S",
+    "HEARTS": "H",
+    "DIAMONDS": "D",
+    "CLUBS": "C",
+}
+BLACKJACK_CARD_COLORS = {
+    "SPADES": "black",
+    "CLUBS": "black",
+    "HEARTS": "red",
+    "DIAMONDS": "red",
+}
 
 USER_BALANCES = {}
 USER_PROFILES = {
@@ -80,8 +133,10 @@ USER_PROFILES = {
 }
 COINFLIP_SESSIONS = {}
 DICE_SESSIONS = {}
+BLACKJACK_SESSIONS = {}
 CANCELED_COINFLIP_SESSIONS = {}
 CANCELED_DICE_SESSIONS = {}
+CANCELED_BLACKJACK_SESSIONS = {}
 STATE_LOCK = Lock()
 STATE_LOCK = RLock()
 USER_STATS = {}
@@ -170,6 +225,28 @@ REWARD_TIERS = [
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+BASE_DIR = Path(__file__).resolve().parent
+HAND_SLOT_LAYOUT_PATH = BASE_DIR / "data" / "hand-slot-layout.json"
+BLACKJACK_SIDE_BET_LAYOUT_PATH = BASE_DIR / "data" / "blackjack-side-bet-layout.json"
+HAND_SLOT_SEAT_IDS = tuple(f"seat-{index}" for index in range(1, BLACKJACK_SESSION_MAX_SEATS + 1))
+DEFAULT_STACK_OFFSET_X = 2.85
+DEFAULT_STACK_OFFSET_Y = 1.17
+BLACKJACK_SIDE_BET_LAYOUT_LABELS = {
+    BLACKJACK_BET_TYPE_PERFECT_PAIRS: "Pairs",
+    BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE: "21+3",
+}
+DEFAULT_BLACKJACK_SIDE_BET_LAYOUT = (
+    {"seatId": "seat-1", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 20.8, "y": 50.5},
+    {"seatId": "seat-1", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 27.6, "y": 51.4},
+    {"seatId": "seat-2", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 31.8, "y": 58.4},
+    {"seatId": "seat-2", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 38.2, "y": 59.6},
+    {"seatId": "seat-3", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 44.4, "y": 63.0},
+    {"seatId": "seat-3", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 55.6, "y": 63.0},
+    {"seatId": "seat-4", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 61.8, "y": 59.6},
+    {"seatId": "seat-4", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 68.2, "y": 58.4},
+    {"seatId": "seat-5", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 72.4, "y": 51.4},
+    {"seatId": "seat-5", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 79.2, "y": 50.5},
+)
 
 
 def format_money(amount_cents):
@@ -193,6 +270,152 @@ def format_duration(seconds):
         return f"{minutes}m"
 
     return f"{minutes}m {remaining_seconds}s"
+
+
+def read_hand_slot_layout():
+    if not HAND_SLOT_LAYOUT_PATH.exists():
+        return []
+
+    try:
+        with HAND_SLOT_LAYOUT_PATH.open("r", encoding="utf-8") as layout_file:
+            payload = json.load(layout_file)
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    slots = payload.get("slots", payload)
+    return slots if isinstance(slots, list) else []
+
+
+def validate_hand_slot_layout(raw_slots):
+    if not isinstance(raw_slots, list):
+        raise ValueError("Layout payload must be an array.")
+
+    normalized_slots = []
+    seen_seat_ids = set()
+
+    for raw_slot in raw_slots:
+        if not isinstance(raw_slot, dict):
+            raise ValueError("Each slot must be an object.")
+
+        seat_id = str(raw_slot.get("seatId", "")).strip()
+        if seat_id not in HAND_SLOT_SEAT_IDS:
+            raise ValueError(f"Unsupported seat id: {seat_id or 'missing'}.")
+        if seat_id in seen_seat_ids:
+            raise ValueError(f"Duplicate seat id: {seat_id}.")
+
+        normalized_slots.append(
+            {
+                "seatId": seat_id,
+                "label": str(raw_slot.get("label") or seat_id.split("-")[-1]).strip(),
+                "x": float(raw_slot.get("x")),
+                "y": float(raw_slot.get("y")),
+                "width": float(raw_slot.get("width")),
+                "height": float(raw_slot.get("height")),
+                "rotation": float(raw_slot.get("rotation")),
+                "stackOffsetX": float(raw_slot.get("stackOffsetX", DEFAULT_STACK_OFFSET_X)),
+                "stackOffsetY": float(raw_slot.get("stackOffsetY", DEFAULT_STACK_OFFSET_Y)),
+            }
+        )
+        seen_seat_ids.add(seat_id)
+
+    if seen_seat_ids != set(HAND_SLOT_SEAT_IDS):
+        raise ValueError("Layout must include all five seat slots.")
+
+    normalized_slots.sort(key=lambda slot: HAND_SLOT_SEAT_IDS.index(slot["seatId"]))
+    return normalized_slots
+
+
+def write_hand_slot_layout(slots):
+    HAND_SLOT_LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with HAND_SLOT_LAYOUT_PATH.open("w", encoding="utf-8") as layout_file:
+        json.dump({"slots": slots}, layout_file, indent=2)
+        layout_file.write("\n")
+
+
+def clone_default_blackjack_side_bet_layout():
+    return [dict(entry) for entry in DEFAULT_BLACKJACK_SIDE_BET_LAYOUT]
+
+
+def read_blackjack_side_bet_layout():
+    if not BLACKJACK_SIDE_BET_LAYOUT_PATH.exists():
+        return clone_default_blackjack_side_bet_layout()
+
+    try:
+        with BLACKJACK_SIDE_BET_LAYOUT_PATH.open("r", encoding="utf-8") as layout_file:
+            payload = json.load(layout_file)
+    except (OSError, json.JSONDecodeError):
+        return clone_default_blackjack_side_bet_layout()
+
+    layout = payload.get("spots", payload)
+
+    try:
+        return validate_blackjack_side_bet_layout(layout)
+    except (TypeError, ValueError):
+        return clone_default_blackjack_side_bet_layout()
+
+
+def validate_blackjack_side_bet_layout(raw_spots):
+    if not isinstance(raw_spots, list):
+        raise ValueError("Layout payload must be an array.")
+
+    normalized_spots = []
+    seen_keys = set()
+    expected_keys = {
+        (seat_id, bet_type)
+        for seat_id in HAND_SLOT_SEAT_IDS
+        for bet_type in BLACKJACK_SIDE_BET_TYPES
+    }
+
+    for raw_spot in raw_spots:
+        if not isinstance(raw_spot, dict):
+            raise ValueError("Each side-bet spot must be an object.")
+
+        seat_id = str(raw_spot.get("seatId", "")).strip()
+        bet_type = normalize_blackjack_bet_type(raw_spot.get("betType"))
+
+        if seat_id not in HAND_SLOT_SEAT_IDS:
+            raise ValueError(f"Unsupported seat id: {seat_id or 'missing'}.")
+        if bet_type not in BLACKJACK_SIDE_BET_TYPES:
+            raise ValueError(f"Unsupported bet type: {bet_type or 'missing'}.")
+
+        spot_key = (seat_id, bet_type)
+
+        if spot_key in seen_keys:
+            raise ValueError(f"Duplicate side-bet spot: {seat_id} {bet_type}.")
+
+        normalized_spots.append(
+            {
+                "seatId": seat_id,
+                "betType": bet_type,
+                "label": str(
+                    raw_spot.get("label")
+                    or BLACKJACK_SIDE_BET_LAYOUT_LABELS.get(bet_type)
+                    or BLACKJACK_BET_TYPE_LABELS.get(bet_type)
+                    or "Side Bet"
+                ).strip(),
+                "x": float(raw_spot.get("x")),
+                "y": float(raw_spot.get("y")),
+            }
+        )
+        seen_keys.add(spot_key)
+
+    if seen_keys != expected_keys:
+        raise ValueError("Layout must include both side-bet spots for all five seats.")
+
+    normalized_spots.sort(
+        key=lambda spot: (
+            HAND_SLOT_SEAT_IDS.index(spot["seatId"]),
+            BLACKJACK_SIDE_BET_TYPES.index(spot["betType"]),
+        )
+    )
+    return normalized_spots
+
+
+def write_blackjack_side_bet_layout(spots):
+    BLACKJACK_SIDE_BET_LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with BLACKJACK_SIDE_BET_LAYOUT_PATH.open("w", encoding="utf-8") as layout_file:
+        json.dump({"spots": spots}, layout_file, indent=2)
+        layout_file.write("\n")
 
 
 @app.template_filter("money")
@@ -708,6 +931,9 @@ def get_game_label(game):
     if game == "dice":
         return "Dice"
 
+    if game == "blackjack":
+        return "Blackjack"
+
     raise ValueError("Choose a valid game.")
 
 
@@ -717,6 +943,9 @@ def get_game_lobby_url(game):
 
     if game == "dice":
         return url_for("dice_game")
+
+    if game == "blackjack":
+        return url_for("blackjack_game")
 
     raise ValueError("Choose a valid game.")
 
@@ -728,6 +957,9 @@ def get_game_session_store(game):
     if game == "dice":
         return DICE_SESSIONS
 
+    if game == "blackjack":
+        return BLACKJACK_SESSIONS
+
     raise ValueError("Choose a valid game.")
 
 
@@ -738,6 +970,9 @@ def get_canceled_session_store(game):
     if game == "dice":
         return CANCELED_DICE_SESSIONS
 
+    if game == "blackjack":
+        return CANCELED_BLACKJACK_SESSIONS
+
     raise ValueError("Choose a valid game.")
 
 
@@ -745,7 +980,11 @@ def cleanup_canceled_session_markers(now=None):
     current_time = now or time.time()
     expiration_cutoff = current_time - CANCELED_SESSION_MARKER_TTL_SECONDS
 
-    for store in (CANCELED_COINFLIP_SESSIONS, CANCELED_DICE_SESSIONS):
+    for store in (
+        CANCELED_COINFLIP_SESSIONS,
+        CANCELED_DICE_SESSIONS,
+        CANCELED_BLACKJACK_SESSIONS,
+    ):
         stale_session_ids = [
             session_id
             for session_id, marker in store.items()
@@ -1353,8 +1592,25 @@ def build_session_viewers(session_path, current_user_id=None, creator_user_id=No
     return viewers
 
 
+def count_online_users_on_path(session_path):
+    normalized_session_path = normalize_presence_path(session_path)
+
+    if not normalized_session_path:
+        return 0
+
+    return sum(
+        1
+        for user_id, presence in USER_PRESENCE.items()
+        if (
+            user_id != BOT_PROFILE["id"]
+            and user_presence_is_online(presence)
+            and normalize_presence_path(presence.get("current_path")) == normalized_session_path
+        )
+    )
+
+
 def request_should_touch_presence():
-    if request.endpoint in {"presence_heartbeat", "presence_offline"}:
+    if request.endpoint in {"presence_heartbeat", "presence_offline", "blackjack_frame"}:
         return False
 
     if request.method != "GET":
@@ -1718,8 +1974,1501 @@ def build_dice_session_id():
     return secrets.token_hex(5)
 
 
+def build_blackjack_session_id():
+    return secrets.token_hex(5)
+
+
 def other_dice_side(side_name):
     return "High" if side_name == "Low" else "Low"
+
+
+def normalize_blackjack_table_name(raw_name, creator_name):
+    table_name = " ".join(str(raw_name or "").split())
+
+    if not table_name:
+        return f"{creator_name}'s table"
+
+    return table_name[:48]
+
+
+def build_blackjack_card(value, suit):
+    value_code = BLACKJACK_CARD_VALUE_CODES.get(value, value)
+    suit_code = BLACKJACK_CARD_SUIT_CODES[suit]
+    code = f"{value_code}{suit_code}"
+    image_url = f"https://deckofcardsapi.com/static/img/{code}.png"
+
+    return {
+        "code": code,
+        "image": image_url,
+        "images": {
+            "png": image_url,
+            "svg": f"https://deckofcardsapi.com/static/img/{code}.svg",
+        },
+        "suit": suit,
+        "value": value,
+    }
+
+
+def create_blackjack_shoe():
+    cards = [
+        build_blackjack_card(value, suit)
+        for _ in range(BLACKJACK_SHOE_COUNT)
+        for suit in BLACKJACK_CARD_SUITS
+        for value in BLACKJACK_CARD_VALUES
+    ]
+    secrets.SystemRandom().shuffle(cards)
+
+    return {
+        "cards": cards,
+        "deck_id": secrets.token_hex(8),
+        "is_ready": True,
+        "remaining": len(cards),
+    }
+
+
+def create_blackjack_dealer_state():
+    return {
+        "cards": [],
+        "hole_card": None,
+        "is_hole_revealed": False,
+    }
+
+
+def create_blackjack_table_state():
+    return {
+        "active_hand_index": 0,
+        "dealer": create_blackjack_dealer_state(),
+        "hands": [],
+        "last_bet_snapshots": {},
+        "last_results": [],
+        "last_side_bet_wins": {},
+        "message": "",
+        "pending_bet_action_history": [],
+        "pending_bet_chips": [],
+        "ready_user_ids": [],
+        "recorded_result_ids": [],
+        "round_id": None,
+        "round_state": BLACKJACK_ROUND_WAITING,
+        "seat_side_bets": {},
+        "settled_at": None,
+        "shoe": create_blackjack_shoe(),
+        "updated_at": time.time(),
+    }
+
+
+def ensure_blackjack_table_state(blackjack_session):
+    table_state = blackjack_session.get("table_state")
+
+    if not isinstance(table_state, dict):
+        table_state = create_blackjack_table_state()
+        blackjack_session["table_state"] = table_state
+
+    table_state.setdefault("active_hand_index", 0)
+    table_state.setdefault("dealer", create_blackjack_dealer_state())
+    table_state.setdefault("hands", [])
+    table_state.setdefault("last_bet_snapshots", {})
+    table_state.setdefault("last_results", [])
+    table_state.setdefault("last_side_bet_wins", {})
+    table_state.setdefault("message", "")
+    table_state.setdefault("pending_bet_action_history", [])
+    table_state.setdefault("pending_bet_chips", [])
+    table_state.setdefault("ready_user_ids", [])
+    table_state.setdefault("recorded_result_ids", [])
+    table_state.setdefault("round_id", None)
+    table_state.setdefault("round_state", BLACKJACK_ROUND_WAITING)
+    table_state.setdefault("seat_side_bets", {})
+    table_state.setdefault("settled_at", None)
+
+    shoe = table_state.get("shoe")
+
+    if not isinstance(shoe, dict):
+        shoe = create_blackjack_shoe()
+        table_state["shoe"] = shoe
+
+    shoe.setdefault("cards", [])
+    shoe.setdefault("deck_id", secrets.token_hex(8))
+    shoe.setdefault("is_ready", True)
+    shoe.setdefault("remaining", len(shoe.get("cards") or []))
+
+    return table_state
+
+
+def get_blackjack_last_bet_snapshots(table_state):
+    last_bet_snapshots = table_state.setdefault("last_bet_snapshots", {})
+
+    if not isinstance(last_bet_snapshots, dict):
+        last_bet_snapshots = {}
+        table_state["last_bet_snapshots"] = last_bet_snapshots
+
+    return last_bet_snapshots
+
+
+def get_blackjack_last_bet_snapshot_for_user(table_state, user_id):
+    if not user_id:
+        return []
+
+    snapshot = get_blackjack_last_bet_snapshots(table_state).get(user_id)
+
+    if not isinstance(snapshot, list):
+        return []
+
+    normalized_snapshot = []
+
+    for chip in snapshot:
+        if not isinstance(chip, dict):
+            continue
+
+        bet_type = normalize_blackjack_bet_type(chip.get("bet_type"))
+        seat_id = str(chip.get("seat_id") or "").strip()
+        value_cents = int(chip.get("value_cents") or 0)
+
+        if not bet_type or seat_id not in HAND_SLOT_SEAT_IDS or value_cents <= 0:
+            continue
+
+        normalized_snapshot.append(
+            {
+                "bet_type": bet_type,
+                "seat_id": seat_id,
+                "user_id": user_id,
+                "value_cents": value_cents,
+            }
+        )
+
+    return normalized_snapshot
+
+
+def get_blackjack_last_bet_total_for_user(table_state, user_id):
+    return sum(
+        int(chip.get("value_cents") or 0)
+        for chip in get_blackjack_last_bet_snapshot_for_user(table_state, user_id)
+    )
+
+
+def capture_blackjack_last_bet_snapshots(table_state):
+    snapshots = {}
+
+    for chip in table_state.get("pending_bet_chips") or []:
+        if not isinstance(chip, dict):
+            continue
+
+        user_id = str(chip.get("user_id") or "").strip()
+        seat_id = str(chip.get("seat_id") or "").strip()
+        bet_type = normalize_blackjack_bet_type(chip.get("bet_type"))
+        value_cents = int(chip.get("value_cents") or 0)
+
+        if not user_id or seat_id not in HAND_SLOT_SEAT_IDS or not bet_type or value_cents <= 0:
+            continue
+
+        snapshots.setdefault(user_id, []).append(
+            {
+                "bet_type": bet_type,
+                "seat_id": seat_id,
+                "user_id": user_id,
+                "value_cents": value_cents,
+            }
+        )
+
+    table_state["last_bet_snapshots"] = snapshots
+
+
+def normalize_blackjack_card(card):
+    if not isinstance(card, dict):
+        return None
+
+    code = str(card.get("code") or "")
+    value = str(card.get("value") or "")
+    suit = str(card.get("suit") or "")
+    image = card.get("image")
+
+    if not code or not value or not suit:
+        return None
+
+    return {
+        "code": code,
+        "image": image,
+        "images": card.get("images") or {"png": image, "svg": image},
+        "suit": suit,
+        "value": value,
+    }
+
+
+def draw_blackjack_card(table_state):
+    shoe = table_state.get("shoe")
+
+    if not isinstance(shoe, dict):
+        shoe = create_blackjack_shoe()
+        table_state["shoe"] = shoe
+
+    if len(shoe.get("cards") or []) < BLACKJACK_RESHUFFLE_THRESHOLD:
+        shoe = create_blackjack_shoe()
+        table_state["shoe"] = shoe
+
+    cards = shoe.get("cards") or []
+
+    if not cards:
+        shoe = create_blackjack_shoe()
+        table_state["shoe"] = shoe
+        cards = shoe["cards"]
+
+    card = cards.pop()
+    shoe["remaining"] = len(cards)
+    shoe["is_ready"] = True
+    return dict(card)
+
+
+def get_blackjack_card_base_value(card):
+    if not card:
+        return 0
+
+    value = card.get("value")
+
+    if value == "ACE":
+        return 11
+
+    if value in {"KING", "QUEEN", "JACK"}:
+        return 10
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def get_blackjack_hand_value(cards):
+    total = 0
+    aces = 0
+
+    for card in cards or []:
+        total += get_blackjack_card_base_value(card)
+        if card.get("value") == "ACE":
+            aces += 1
+
+    soft_aces = aces
+    while total > 21 and soft_aces > 0:
+        total -= 10
+        soft_aces -= 1
+
+    return {
+        "is_bust": total > 21,
+        "is_soft": soft_aces > 0,
+        "total": total,
+    }
+
+
+def get_blackjack_card_color(card):
+    return BLACKJACK_CARD_COLORS.get(str((card or {}).get("suit") or "").upper(), "")
+
+
+def get_blackjack_card_rank(card):
+    value = str((card or {}).get("value") or "").upper()
+
+    if value == "ACE":
+        return 14
+
+    if value == "KING":
+        return 13
+
+    if value == "QUEEN":
+        return 12
+
+    if value == "JACK":
+        return 11
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def blackjack_cards_form_straight(cards):
+    ranks = sorted({get_blackjack_card_rank(card) for card in cards or []})
+
+    if len(ranks) != 3:
+        return False
+
+    if ranks[0] + 1 == ranks[1] and ranks[1] + 1 == ranks[2]:
+        return True
+
+    return ranks in ([2, 3, 14], [12, 13, 14])
+
+
+def settle_blackjack_perfect_pairs_bet(cards, bet_cents):
+    first_cards = list(cards or [])[:2]
+
+    if len(first_cards) != 2 or first_cards[0].get("value") != first_cards[1].get("value"):
+        return "loss", "No Pair", 0
+
+    if first_cards[0].get("suit") == first_cards[1].get("suit"):
+        return "perfect_pair", "Perfect Pair", bet_cents * 26
+
+    if get_blackjack_card_color(first_cards[0]) == get_blackjack_card_color(first_cards[1]):
+        return "colored_pair", "Colored Pair", bet_cents * 11
+
+    return "mixed_pair", "Mixed Pair", bet_cents * 6
+
+
+def settle_blackjack_twenty_one_plus_three_bet(player_cards, dealer_upcard, bet_cents):
+    cards = [*(player_cards or [])[:2]]
+
+    if dealer_upcard:
+        cards.append(dealer_upcard)
+
+    if len(cards) != 3:
+        return "loss", "No 21+3", 0
+
+    is_flush = len({card.get("suit") for card in cards}) == 1
+    is_three_of_a_kind = len({card.get("value") for card in cards}) == 1
+    is_straight = blackjack_cards_form_straight(cards)
+    is_suited_three_of_a_kind = is_flush and is_three_of_a_kind
+
+    if is_suited_three_of_a_kind:
+        return "suited_three_of_a_kind", "Suited Trips", bet_cents * 101
+
+    if is_straight and is_flush:
+        return "straight_flush", "Straight Flush", bet_cents * 41
+
+    if is_three_of_a_kind:
+        return "three_of_a_kind", "Three of a Kind", bet_cents * 31
+
+    if is_straight:
+        return "straight", "Straight", bet_cents * 11
+
+    if is_flush:
+        return "flush", "Flush", bet_cents * 6
+
+    return "loss", "No 21+3", 0
+
+
+def is_blackjack_hand(cards, split_from_pair=False):
+    return not split_from_pair and len(cards or []) == 2 and get_blackjack_hand_value(cards)["total"] == 21
+
+
+def refresh_blackjack_hand_flags(hand):
+    hand_value = get_blackjack_hand_value(hand.get("cards") or [])
+    hand["bust"] = hand_value["is_bust"]
+    hand["blackjack"] = is_blackjack_hand(hand.get("cards") or [], hand.get("split_from_pair", False))
+
+
+def create_blackjack_hand(seat_id, user_id, bet_cents, cards=None, split_from_pair=False, seat_layout_index=0):
+    hand = {
+        "bet_cents": bet_cents,
+        "blackjack": False,
+        "bust": False,
+        "cards": list(cards or []),
+        "doubled": False,
+        "id": f"hand-{secrets.token_hex(8)}",
+        "payout_cents": 0,
+        "result": "",
+        "seat_id": seat_id,
+        "seat_layout_index": seat_layout_index,
+        "split_from_pair": split_from_pair,
+        "stood": False,
+        "user_id": user_id,
+    }
+    refresh_blackjack_hand_flags(hand)
+    return hand
+
+
+def normalize_blackjack_bet_type(raw_bet_type, allow_insurance=False):
+    bet_type = str(raw_bet_type or BLACKJACK_BET_TYPE_MAIN).strip().lower()
+    valid_bet_types = set(BLACKJACK_PREDEAL_BET_TYPES)
+
+    if allow_insurance:
+        valid_bet_types.add(BLACKJACK_BET_TYPE_INSURANCE)
+
+    return bet_type if bet_type in valid_bet_types else None
+
+
+def create_blackjack_side_bet_state(
+    bet_type,
+    bet_cents=0,
+    *,
+    max_bet_cents=0,
+    payout_cents=0,
+    result="",
+    result_label="",
+    status="none",
+):
+    return {
+        "bet_cents": int(bet_cents or 0),
+        "bet_type": normalize_blackjack_bet_type(bet_type, allow_insurance=True),
+        "max_bet_cents": int(max_bet_cents or 0),
+        "payout_credited": False,
+        "payout_cents": int(payout_cents or 0),
+        "result": result or "",
+        "result_label": result_label or "",
+        "status": status or "none",
+    }
+
+
+def ensure_blackjack_seat_side_bets(table_state):
+    seat_side_bets = table_state.setdefault("seat_side_bets", {})
+
+    if not isinstance(seat_side_bets, dict):
+        seat_side_bets = {}
+        table_state["seat_side_bets"] = seat_side_bets
+
+    return seat_side_bets
+
+
+def get_blackjack_live_bets_by_seat(table_state):
+    bets_by_seat = {}
+
+    for hand in table_state.get("hands") or []:
+        seat_id = hand.get("seat_id")
+        if not seat_id:
+            continue
+
+        bets_by_seat[seat_id] = bets_by_seat.get(seat_id, 0) + int(hand.get("bet_cents") or 0)
+
+    return bets_by_seat
+
+
+def get_blackjack_pending_bets_by_seat(table_state, bet_type=BLACKJACK_BET_TYPE_MAIN):
+    bets_by_seat = {}
+    normalized_bet_type = normalize_blackjack_bet_type(bet_type)
+
+    if not normalized_bet_type:
+        return bets_by_seat
+
+    for chip in table_state.get("pending_bet_chips") or []:
+        seat_id = chip.get("seat_id")
+        if not seat_id or normalize_blackjack_bet_type(chip.get("bet_type")) != normalized_bet_type:
+            continue
+
+        bets_by_seat[seat_id] = bets_by_seat.get(seat_id, 0) + int(chip.get("value_cents") or 0)
+
+    return bets_by_seat
+
+
+def get_blackjack_pending_side_bets_by_seat(table_state):
+    side_bets_by_seat = {}
+
+    for chip in table_state.get("pending_bet_chips") or []:
+        seat_id = chip.get("seat_id")
+        bet_type = normalize_blackjack_bet_type(chip.get("bet_type"))
+
+        if not seat_id or bet_type not in BLACKJACK_SIDE_BET_TYPES:
+            continue
+
+        seat_side_bets = side_bets_by_seat.setdefault(seat_id, {})
+        seat_side_bets[bet_type] = seat_side_bets.get(bet_type, 0) + int(chip.get("value_cents") or 0)
+
+    return side_bets_by_seat
+
+
+def get_blackjack_pending_total_for_user(table_state, user_id, bet_types=None):
+    normalized_bet_types = None
+
+    if bet_types is not None:
+        normalized_bet_types = {
+            normalize_blackjack_bet_type(bet_type)
+            for bet_type in bet_types
+        }
+        normalized_bet_types.discard(None)
+
+    return sum(
+        int(chip.get("value_cents") or 0)
+        for chip in table_state.get("pending_bet_chips") or []
+        if (
+            chip.get("user_id") == user_id
+            and (
+                normalized_bet_types is None
+                or normalize_blackjack_bet_type(chip.get("bet_type")) in normalized_bet_types
+            )
+        )
+    )
+
+
+def ensure_blackjack_pending_bet_action_history(table_state):
+    action_history = table_state.setdefault("pending_bet_action_history", [])
+
+    if not isinstance(action_history, list):
+        action_history = []
+        table_state["pending_bet_action_history"] = action_history
+
+    return action_history
+
+
+def clear_blackjack_pending_bet_action_history(table_state):
+    table_state["pending_bet_action_history"] = []
+
+
+def record_blackjack_pending_bet_action(table_state, user_id, action_type, chip_count):
+    normalized_user_id = str(user_id or "").strip()
+    normalized_action_type = str(action_type or "").strip().lower()
+    normalized_chip_count = int(chip_count or 0)
+
+    if not normalized_user_id or not normalized_action_type or normalized_chip_count <= 0:
+        return
+
+    ensure_blackjack_pending_bet_action_history(table_state).append(
+        {
+            "action_type": normalized_action_type,
+            "chip_count": normalized_chip_count,
+            "user_id": normalized_user_id,
+        }
+    )
+
+
+def get_blackjack_ready_user_ids(table_state):
+    return set(table_state.get("ready_user_ids") or [])
+
+
+def set_blackjack_ready_user_ids(table_state, user_ids):
+    table_state["ready_user_ids"] = sorted({user_id for user_id in user_ids if user_id})
+
+
+def remove_blackjack_ready_user(table_state, user_id):
+    if not user_id:
+        return
+
+    ready_user_ids = get_blackjack_ready_user_ids(table_state)
+    ready_user_ids.discard(user_id)
+    set_blackjack_ready_user_ids(table_state, ready_user_ids)
+
+
+def get_blackjack_claimed_user_ids(seat_claims):
+    return {user_id for user_id in (seat_claims or {}).values() if user_id and user_id != BOT_PROFILE["id"]}
+
+
+def blackjack_user_claimed_seat_ids(seat_claims, user_id):
+    return [
+        seat_id
+        for seat_id, owner_user_id in (seat_claims or {}).items()
+        if owner_user_id == user_id
+    ]
+
+
+def blackjack_user_has_bets_on_claimed_seats(table_state, seat_claims, user_id):
+    user_seat_ids = blackjack_user_claimed_seat_ids(seat_claims, user_id)
+
+    if not user_seat_ids:
+        return False
+
+    pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state)
+    return all(pending_bets_by_seat.get(seat_id, 0) > 0 for seat_id in user_seat_ids)
+
+
+def blackjack_table_ready_to_start(table_state, seat_claims):
+    if not seat_claims:
+        return False
+
+    pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state)
+
+    if any(pending_bets_by_seat.get(seat_id, 0) <= 0 for seat_id in seat_claims):
+        return False
+
+    ready_user_ids = get_blackjack_ready_user_ids(table_state)
+    return get_blackjack_claimed_user_ids(seat_claims).issubset(ready_user_ids)
+
+
+def blackjack_table_has_active_hand_for_seat(table_state, seat_id):
+    return any(
+        hand.get("seat_id") == seat_id and not hand.get("result")
+        for hand in table_state.get("hands") or []
+    )
+
+
+def remove_blackjack_pending_bets_for_seat(table_state, seat_id):
+    table_state["pending_bet_chips"] = [
+        chip
+        for chip in table_state.get("pending_bet_chips") or []
+        if chip.get("seat_id") != seat_id
+    ]
+    clear_blackjack_pending_bet_action_history(table_state)
+
+
+def cleanup_blackjack_pending_bets_for_claims(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+    existing_pending_chips = list(table_state.get("pending_bet_chips") or [])
+    filtered_pending_chips = [
+        chip
+        for chip in existing_pending_chips
+        if seat_claims.get(chip.get("seat_id")) == chip.get("user_id")
+    ]
+    table_state["pending_bet_chips"] = filtered_pending_chips
+
+    if filtered_pending_chips != existing_pending_chips:
+        clear_blackjack_pending_bet_action_history(table_state)
+
+    claimed_user_ids = get_blackjack_claimed_user_ids(seat_claims)
+    set_blackjack_ready_user_ids(
+        table_state,
+        get_blackjack_ready_user_ids(table_state) & claimed_user_ids,
+    )
+
+    if (
+        table_state.get("round_state") == BLACKJACK_ROUND_BETTING
+        and not table_state.get("pending_bet_chips")
+        and not seat_claims
+    ):
+        table_state["round_state"] = BLACKJACK_ROUND_WAITING
+        table_state["message"] = ""
+
+
+def get_blackjack_seat_hand_indexes(table_state, seat_id):
+    seat_hands = [
+        (index, hand)
+        for index, hand in enumerate(table_state.get("hands") or [])
+        if hand.get("seat_id") == seat_id
+    ]
+    seat_hands.sort(key=lambda entry: int(entry[1].get("seat_layout_index") or 0))
+    return seat_hands
+
+
+def find_next_blackjack_playable_hand_index(table_state, start_index=0):
+    for index in range(start_index, len(table_state.get("hands") or [])):
+        hand = table_state["hands"][index]
+        hand_value = get_blackjack_hand_value(hand.get("cards") or [])
+
+        if hand.get("stood") or hand.get("bust") or hand.get("blackjack") or hand_value["total"] >= 21:
+            continue
+
+        return index
+
+    return -1
+
+
+def blackjack_should_dealer_hit(cards):
+    hand_value = get_blackjack_hand_value(cards)
+
+    if hand_value["total"] < 17:
+        return True
+
+    return False
+
+
+def settle_blackjack_hand(hand, dealer_cards):
+    player_value = get_blackjack_hand_value(hand.get("cards") or [])
+    dealer_value = get_blackjack_hand_value(dealer_cards)
+    dealer_blackjack = is_blackjack_hand(dealer_cards, False)
+
+    if player_value["is_bust"]:
+        return "loss", 0
+
+    if hand.get("blackjack"):
+        if dealer_blackjack:
+            return "push", hand["bet_cents"]
+
+        return "blackjack", (hand["bet_cents"] * 5) // 2
+
+    if dealer_value["is_bust"]:
+        return "win", hand["bet_cents"] * 2
+
+    if dealer_blackjack and not hand.get("blackjack"):
+        return "loss", 0
+
+    if player_value["total"] > dealer_value["total"]:
+        return "win", hand["bet_cents"] * 2
+
+    if player_value["total"] < dealer_value["total"]:
+        return "loss", 0
+
+    return "push", hand["bet_cents"]
+
+
+def increment_blackjack_stats(user_id, bet_cents, result):
+    with STATE_LOCK:
+        previous_level = get_user_reward_level(user_id)
+        stats = USER_STATS.setdefault(user_id, {
+            "total_deposited_cents": 0,
+            "total_wagered_cents": 0,
+            "bets_won": 0,
+            "bets_lost": 0,
+            "total_bets": 0,
+        })
+        stats["total_wagered_cents"] += bet_cents
+
+        if result in {"win", "blackjack", "loss", "push"}:
+            stats["total_bets"] += 1
+
+        if result in {"win", "blackjack"}:
+            stats["bets_won"] += 1
+        elif result == "loss":
+            stats["bets_lost"] += 1
+
+        current_level = get_user_reward_level(user_id)
+        apply_reward_level_up_rewards(user_id, previous_level, current_level)
+
+
+def increment_blackjack_side_bet_wagered(user_id, bet_cents):
+    if not user_id or user_id == BOT_PROFILE["id"] or bet_cents <= 0:
+        return
+
+    with STATE_LOCK:
+        previous_level = get_user_reward_level(user_id)
+        stats = USER_STATS.setdefault(user_id, {
+            "total_deposited_cents": 0,
+            "total_wagered_cents": 0,
+            "bets_won": 0,
+            "bets_lost": 0,
+            "total_bets": 0,
+        })
+        stats["total_wagered_cents"] += bet_cents
+        current_level = get_user_reward_level(user_id)
+        apply_reward_level_up_rewards(user_id, previous_level, current_level)
+
+
+def record_blackjack_hand_result(blackjack_session, hand):
+    user_id = hand.get("user_id")
+    result = hand.get("result")
+
+    if not user_id or user_id == BOT_PROFILE["id"] or not result:
+        return
+
+    record_key = f"{blackjack_session['id']}:{blackjack_session.get('table_state', {}).get('round_id')}:{hand.get('id')}"
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    recorded_result_ids = set(table_state.get("recorded_result_ids") or [])
+
+    if record_key in recorded_result_ids:
+        return
+
+    bet_cents = int(hand.get("bet_cents") or 0)
+    payout_cents = int(hand.get("payout_cents") or 0)
+    increment_blackjack_stats(user_id, bet_cents, result)
+    add_bet_record(
+        user_id,
+        "Blackjack",
+        bet_cents,
+        f"{hand.get('seat_id', 'seat')}{' double' if hand.get('doubled') else ''}",
+        result,
+        payout_cents,
+        result in {"win", "blackjack"},
+        blackjack_session["id"],
+    )
+    recorded_result_ids.add(record_key)
+    table_state["recorded_result_ids"] = sorted(recorded_result_ids)
+
+
+def build_blackjack_side_bet_record_key(blackjack_session, seat_id, bet_type):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    return f"{blackjack_session['id']}:{table_state.get('round_id')}:{seat_id}:{bet_type}"
+
+
+def record_blackjack_side_bet_result(
+    blackjack_session,
+    *,
+    bet_cents,
+    bet_type,
+    payout_cents,
+    result,
+    result_label,
+    seat_id,
+    user_id,
+):
+    if not user_id or user_id == BOT_PROFILE["id"] or bet_cents <= 0:
+        return
+
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    record_key = build_blackjack_side_bet_record_key(blackjack_session, seat_id, bet_type)
+    recorded_result_ids = set(table_state.get("recorded_result_ids") or [])
+
+    if record_key in recorded_result_ids:
+        return
+
+    increment_blackjack_side_bet_wagered(user_id, bet_cents)
+    add_bet_record(
+        user_id,
+        "Blackjack",
+        bet_cents,
+        f"{BLACKJACK_BET_TYPE_LABELS.get(bet_type, 'Side Bet')} {seat_id}",
+        result_label or result,
+        payout_cents,
+        payout_cents > 0,
+        blackjack_session["id"],
+    )
+    recorded_result_ids.add(record_key)
+    table_state["recorded_result_ids"] = sorted(recorded_result_ids)
+
+
+def credit_and_record_blackjack_side_bet_results(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+    recorded_result_ids = set(table_state.get("recorded_result_ids") or [])
+    last_side_bet_wins = {}
+
+    for seat_id, seat_bets in seat_side_bets.items():
+        hand = next(
+            (
+                candidate
+                for candidate in table_state.get("hands") or []
+                if candidate.get("seat_id") == seat_id
+            ),
+            None,
+        )
+        user_id = hand.get("user_id") if hand else None
+
+        for bet_type, side_bet in (seat_bets or {}).items():
+            if not isinstance(side_bet, dict):
+                continue
+
+            bet_cents = int(side_bet.get("bet_cents") or 0)
+            payout_cents = int(side_bet.get("payout_cents") or 0)
+            status = side_bet.get("status") or "none"
+            record_key = build_blackjack_side_bet_record_key(blackjack_session, seat_id, bet_type)
+
+            if bet_cents <= 0 or status not in {"win", "loss"}:
+                continue
+
+            if record_key in recorded_result_ids and not side_bet.get("payout_credited"):
+                side_bet["payout_credited"] = True
+
+            if (
+                user_id
+                and user_id != BOT_PROFILE["id"]
+                and payout_cents > 0
+                and not side_bet.get("payout_credited")
+            ):
+                set_user_balance(user_id, get_user_balance(user_id) + payout_cents)
+                side_bet["payout_credited"] = True
+
+            if payout_cents > 0:
+                last_side_bet_wins.setdefault(seat_id, {})[bet_type] = dict(side_bet)
+
+            record_blackjack_side_bet_result(
+                blackjack_session,
+                bet_cents=bet_cents,
+                bet_type=bet_type,
+                payout_cents=payout_cents,
+                result=side_bet.get("result") or status,
+                result_label=side_bet.get("result_label") or status,
+                seat_id=seat_id,
+                user_id=user_id,
+            )
+
+    table_state["last_side_bet_wins"] = last_side_bet_wins
+
+
+def settle_blackjack_initial_side_bets(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    dealer_upcard = (table_state.get("dealer") or {}).get("cards", [None])[0]
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+    result_labels = []
+
+    for hand in table_state.get("hands") or []:
+        seat_id = hand.get("seat_id")
+        user_id = hand.get("user_id")
+        seat_bets = seat_side_bets.get(seat_id) or {}
+
+        for bet_type in BLACKJACK_SIDE_BET_TYPES:
+            side_bet = seat_bets.get(bet_type)
+
+            if not side_bet or int(side_bet.get("bet_cents") or 0) <= 0:
+                continue
+
+            bet_cents = int(side_bet.get("bet_cents") or 0)
+
+            if bet_type == BLACKJACK_BET_TYPE_PERFECT_PAIRS:
+                result, result_label, payout_cents = settle_blackjack_perfect_pairs_bet(hand.get("cards") or [], bet_cents)
+            else:
+                result, result_label, payout_cents = settle_blackjack_twenty_one_plus_three_bet(
+                    hand.get("cards") or [],
+                    dealer_upcard,
+                    bet_cents,
+                )
+
+            side_bet["payout_cents"] = payout_cents
+            side_bet["result"] = result
+            side_bet["result_label"] = result_label
+            side_bet["status"] = "win" if payout_cents > 0 else "loss"
+
+            if user_id and user_id != BOT_PROFILE["id"] and payout_cents > 0:
+                result_labels.append(f"{seat_id} {BLACKJACK_BET_TYPE_LABELS[bet_type]}: {result_label}")
+
+    return result_labels
+
+
+def get_blackjack_insurance_offer_seat_ids(table_state):
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+
+    return [
+        seat_id
+        for seat_id, seat_bets in seat_side_bets.items()
+        if (seat_bets.get(BLACKJACK_BET_TYPE_INSURANCE) or {}).get("status") == "offered"
+    ]
+
+
+def maybe_offer_blackjack_insurance(table_state):
+    dealer_upcard = (table_state.get("dealer") or {}).get("cards", [None])[0]
+
+    if not dealer_upcard or dealer_upcard.get("value") != "ACE":
+        return False
+
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+    offered_any = False
+
+    for hand in table_state.get("hands") or []:
+        seat_id = hand.get("seat_id")
+        max_bet_cents = max(0, int(hand.get("bet_cents") or 0) // 2)
+
+        if not seat_id or max_bet_cents <= 0:
+            continue
+
+        seat_bets = seat_side_bets.setdefault(seat_id, {})
+        seat_bets[BLACKJACK_BET_TYPE_INSURANCE] = create_blackjack_side_bet_state(
+            BLACKJACK_BET_TYPE_INSURANCE,
+            max_bet_cents=max_bet_cents,
+            result_label="Insurance Offered",
+            status="offered",
+        )
+        offered_any = True
+
+    if offered_any:
+        table_state["round_state"] = BLACKJACK_ROUND_INSURANCE
+        table_state["message"] = "Dealer shows an Ace. Insurance?"
+        table_state["updated_at"] = time.time()
+
+    return offered_any
+
+
+def settle_blackjack_insurance_bets(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    dealer_cards = [
+        *((table_state.get("dealer") or {}).get("cards") or []),
+    ]
+    hole_card = (table_state.get("dealer") or {}).get("hole_card")
+
+    if hole_card:
+        dealer_cards.append(hole_card)
+
+    dealer_has_blackjack = is_blackjack_hand(dealer_cards, False)
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+    result_labels = []
+
+    for seat_id, seat_bets in seat_side_bets.items():
+        insurance_bet = seat_bets.get(BLACKJACK_BET_TYPE_INSURANCE)
+
+        if not insurance_bet:
+            continue
+
+        insurance_status = insurance_bet.get("status")
+
+        if insurance_status == "declined":
+            insurance_bet["result"] = "declined"
+            insurance_bet["result_label"] = "Declined"
+            continue
+
+        if insurance_status != "accepted":
+            continue
+
+        bet_cents = int(insurance_bet.get("bet_cents") or 0)
+        payout_cents = bet_cents * 3 if dealer_has_blackjack else 0
+        insurance_bet["payout_cents"] = payout_cents
+        insurance_bet["result"] = "dealer_blackjack" if dealer_has_blackjack else "no_dealer_blackjack"
+        insurance_bet["result_label"] = "Dealer Blackjack" if dealer_has_blackjack else "No Dealer Blackjack"
+        insurance_bet["status"] = "win" if dealer_has_blackjack else "loss"
+
+        hand = next(
+            (
+                candidate
+                for candidate in table_state.get("hands") or []
+                if candidate.get("seat_id") == seat_id
+            ),
+            None,
+        )
+        user_id = hand.get("user_id") if hand else None
+
+        if user_id and user_id != BOT_PROFILE["id"] and payout_cents > 0:
+            result_labels.append(f"{seat_id} Insurance: {insurance_bet['result_label']}")
+
+    table_state["updated_at"] = time.time()
+    return dealer_has_blackjack, result_labels
+
+
+def continue_blackjack_round_after_initial_deal(blackjack_session, allow_insurance_offer=True):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    if allow_insurance_offer and maybe_offer_blackjack_insurance(table_state):
+        return
+
+    next_index = find_next_blackjack_playable_hand_index(table_state, 0)
+
+    if next_index < 0:
+        finish_blackjack_dealer_turn(blackjack_session)
+        return
+
+    table_state["active_hand_index"] = next_index
+    table_state["round_state"] = BLACKJACK_ROUND_PLAYER_TURN
+    table_state["updated_at"] = time.time()
+
+
+def reveal_blackjack_dealer_hole_card(table_state):
+    dealer_state = table_state.setdefault("dealer", create_blackjack_dealer_state())
+    hole_card = dealer_state.get("hole_card")
+
+    if hole_card:
+        dealer_state.setdefault("cards", []).append(hole_card)
+        dealer_state["hole_card"] = None
+        dealer_state["is_hole_revealed"] = True
+
+
+def finish_blackjack_dealer_turn(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    table_state["round_state"] = BLACKJACK_ROUND_DEALER_TURN
+    reveal_blackjack_dealer_hole_card(table_state)
+
+    dealer_cards = table_state["dealer"].setdefault("cards", [])
+
+    while blackjack_should_dealer_hit(dealer_cards):
+        dealer_cards.append(draw_blackjack_card(table_state))
+
+    table_state["round_state"] = BLACKJACK_ROUND_SETTLING
+    table_state["settled_at"] = time.time()
+    result_labels = []
+
+    for hand in table_state.get("hands") or []:
+        result, payout_cents = settle_blackjack_hand(hand, dealer_cards)
+        hand["result"] = result
+        hand["payout_cents"] = payout_cents
+
+        hand_user_id = hand.get("user_id")
+
+        if hand_user_id and hand_user_id != BOT_PROFILE["id"] and payout_cents:
+            set_user_balance(hand_user_id, get_user_balance(hand_user_id) + payout_cents)
+
+        record_blackjack_hand_result(blackjack_session, hand)
+        result_labels.append(f"{hand.get('seat_id', 'Seat')}: {result}")
+
+    credit_and_record_blackjack_side_bet_results(blackjack_session)
+    table_state["last_results"] = result_labels
+    table_state["message"] = " | ".join(result_labels)
+    table_state["updated_at"] = time.time()
+
+
+def advance_blackjack_after_hand(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    next_index = find_next_blackjack_playable_hand_index(table_state, int(table_state.get("active_hand_index") or 0) + 1)
+
+    if next_index >= 0:
+        table_state["active_hand_index"] = next_index
+        table_state["round_state"] = BLACKJACK_ROUND_PLAYER_TURN
+        table_state["message"] = ""
+        table_state["updated_at"] = time.time()
+        return
+
+    finish_blackjack_dealer_turn(blackjack_session)
+
+
+def reset_blackjack_table_for_next_round(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+    table_state["active_hand_index"] = 0
+    table_state["dealer"] = create_blackjack_dealer_state()
+    table_state["hands"] = []
+    table_state["last_results"] = []
+    table_state["message"] = ""
+    table_state["pending_bet_action_history"] = []
+    table_state["pending_bet_chips"] = []
+    table_state["ready_user_ids"] = []
+    table_state["round_id"] = None
+    table_state["round_state"] = BLACKJACK_ROUND_BETTING if seat_claims else BLACKJACK_ROUND_WAITING
+    table_state["seat_side_bets"] = {}
+    table_state["settled_at"] = None
+    table_state["updated_at"] = time.time()
+
+
+def sync_blackjack_table_lifecycle(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+    cleanup_blackjack_pending_bets_for_claims(blackjack_session)
+
+    if (
+        table_state.get("round_state") == BLACKJACK_ROUND_SETTLING
+        and table_state.get("settled_at")
+        and time.time() >= table_state["settled_at"] + BLACKJACK_SETTLE_HOLD_SECONDS
+    ):
+        reset_blackjack_table_for_next_round(blackjack_session)
+
+    return table_state
+
+
+def get_blackjack_active_hand(table_state):
+    hands = table_state.get("hands") or []
+    active_index = int(table_state.get("active_hand_index") or 0)
+
+    if active_index < 0 or active_index >= len(hands):
+        return None
+
+    return hands[active_index]
+
+
+def get_blackjack_available_actions(table_state, current_user_id):
+    active_hand = get_blackjack_active_hand(table_state)
+
+    if table_state.get("round_state") != BLACKJACK_ROUND_PLAYER_TURN or not active_hand:
+        return {}
+
+    if active_hand.get("user_id") != current_user_id:
+        return {}
+
+    hand_value = get_blackjack_hand_value(active_hand.get("cards") or [])
+
+    if active_hand.get("bust") or active_hand.get("stood") or hand_value["total"] >= 21:
+        return {}
+
+    balance_cents = get_user_balance(current_user_id)
+    seat_hands = [
+        hand
+        for hand in table_state.get("hands") or []
+        if hand.get("seat_id") == active_hand.get("seat_id")
+    ]
+    can_double = len(active_hand.get("cards") or []) == 2 and balance_cents >= int(active_hand.get("bet_cents") or 0)
+    can_split = (
+        len(seat_hands) == 1
+        and len(active_hand.get("cards") or []) == 2
+        and active_hand["cards"][0].get("value") == active_hand["cards"][1].get("value")
+        and balance_cents >= int(active_hand.get("bet_cents") or 0)
+    )
+
+    return {
+        "double": can_double,
+        "hit": True,
+        "split": can_split,
+        "stand": True,
+    }
+
+
+def begin_blackjack_round(blackjack_session, current_user_id):
+    table_state = sync_blackjack_table_lifecycle(blackjack_session)
+
+    if table_state.get("round_state") not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
+        raise ValueError("A round is already in progress.")
+
+    seat_claims = blackjack_session.get("seat_claims") or {}
+
+    if current_user_id not in set(seat_claims.values()):
+        raise ValueError("Take a seat before starting the round.")
+
+    pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state, BLACKJACK_BET_TYPE_MAIN)
+    pending_side_bets_by_seat = get_blackjack_pending_side_bets_by_seat(table_state)
+    participating_seat_ids = [
+        seat_id
+        for seat_id in reversed(HAND_SLOT_SEAT_IDS)
+        if pending_bets_by_seat.get(seat_id, 0) > 0 and seat_claims.get(seat_id)
+    ]
+
+    if not participating_seat_ids:
+        raise ValueError("Place a bet before starting the round.")
+
+    user_bet_totals = {}
+
+    for seat_id in participating_seat_ids:
+        user_id = seat_claims[seat_id]
+        seat_total_cents = pending_bets_by_seat.get(seat_id, 0) + sum(
+            int(amount_cents or 0)
+            for amount_cents in (pending_side_bets_by_seat.get(seat_id) or {}).values()
+        )
+        user_bet_totals[user_id] = user_bet_totals.get(user_id, 0) + seat_total_cents
+
+    for user_id, bet_cents in user_bet_totals.items():
+        if get_user_balance(user_id) < bet_cents:
+            user_profile = USER_PROFILES.get(user_id) or {}
+            display_name = user_profile.get("display_name") or user_profile.get("username") or "A player"
+            raise ValueError(f"{display_name} no longer has enough balance for that bet.")
+
+    for user_id, bet_cents in user_bet_totals.items():
+        set_user_balance(user_id, get_user_balance(user_id) - bet_cents)
+
+    if len(table_state.get("shoe", {}).get("cards") or []) < BLACKJACK_RESHUFFLE_THRESHOLD:
+        table_state["shoe"] = create_blackjack_shoe()
+
+    capture_blackjack_last_bet_snapshots(table_state)
+    table_state["round_id"] = secrets.token_hex(8)
+    table_state["round_state"] = BLACKJACK_ROUND_DEALING
+    table_state["active_hand_index"] = 0
+    table_state["dealer"] = create_blackjack_dealer_state()
+    table_state["hands"] = [
+        create_blackjack_hand(seat_id, seat_claims[seat_id], pending_bets_by_seat[seat_id])
+        for seat_id in participating_seat_ids
+    ]
+    table_state["last_results"] = []
+    table_state["last_side_bet_wins"] = {}
+    table_state["message"] = ""
+    table_state["pending_bet_action_history"] = []
+    table_state["pending_bet_chips"] = []
+    table_state["ready_user_ids"] = []
+    table_state["settled_at"] = None
+    table_state["seat_side_bets"] = {
+        seat_id: {
+            bet_type: create_blackjack_side_bet_state(bet_type, bet_cents)
+            for bet_type, bet_cents in (pending_side_bets_by_seat.get(seat_id) or {}).items()
+            if bet_cents > 0
+        }
+        for seat_id in participating_seat_ids
+        if pending_side_bets_by_seat.get(seat_id)
+    }
+
+    for hand in table_state["hands"]:
+        hand["cards"].append(draw_blackjack_card(table_state))
+        refresh_blackjack_hand_flags(hand)
+
+    table_state["dealer"]["cards"].append(draw_blackjack_card(table_state))
+
+    for hand in table_state["hands"]:
+        hand["cards"].append(draw_blackjack_card(table_state))
+        refresh_blackjack_hand_flags(hand)
+
+    table_state["dealer"]["hole_card"] = draw_blackjack_card(table_state)
+    table_state["dealer"]["is_hole_revealed"] = False
+
+    for hand in table_state["hands"]:
+        if hand.get("blackjack"):
+            hand["stood"] = True
+
+    side_bet_labels = settle_blackjack_initial_side_bets(blackjack_session)
+
+    if side_bet_labels:
+        table_state["message"] = " | ".join(side_bet_labels)
+
+    continue_blackjack_round_after_initial_deal(blackjack_session, allow_insurance_offer=True)
+
+
+def rebet_blackjack_user(blackjack_session, current_user_id):
+    table_state = sync_blackjack_table_lifecycle(blackjack_session)
+
+    if table_state.get("round_state") not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
+        raise ValueError("Wait for the next betting round.")
+
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+    snapshot = get_blackjack_last_bet_snapshot_for_user(table_state, current_user_id)
+
+    if not snapshot:
+        raise ValueError("There is no previous bet to rebet.")
+
+    unavailable_seat_ids = sorted(
+        {
+            chip["seat_id"]
+            for chip in snapshot
+            if seat_claims.get(chip["seat_id"]) not in {None, current_user_id}
+        }
+    )
+
+    if unavailable_seat_ids:
+        raise ValueError("One of your previous seats is no longer available.")
+
+    snapshot_total_cents = sum(int(chip.get("value_cents") or 0) for chip in snapshot)
+
+    if snapshot_total_cents <= 0:
+        raise ValueError("There is no previous bet to rebet.")
+
+    if snapshot_total_cents > get_user_balance(current_user_id):
+        raise ValueError("You do not have enough balance to rebet that wager.")
+
+    for chip in snapshot:
+        seat_claims[chip["seat_id"]] = current_user_id
+
+    existing_pending_chips = [
+        chip
+        for chip in table_state.get("pending_bet_chips") or []
+        if chip.get("user_id") != current_user_id
+    ]
+
+    existing_pending_chips.extend(
+        {
+            "bet_type": chip["bet_type"],
+            "seat_id": chip["seat_id"],
+            "user_id": current_user_id,
+            "value_cents": int(chip["value_cents"]),
+        }
+        for chip in snapshot
+    )
+
+    table_state["pending_bet_chips"] = existing_pending_chips
+    record_blackjack_pending_bet_action(table_state, current_user_id, "rebet", len(snapshot))
+    remove_blackjack_ready_user(table_state, current_user_id)
+    table_state["round_state"] = BLACKJACK_ROUND_BETTING
+    table_state["message"] = ""
+    table_state["updated_at"] = time.time()
+
+
+def ready_blackjack_user(blackjack_session, current_user_id):
+    table_state = sync_blackjack_table_lifecycle(blackjack_session)
+
+    if table_state.get("round_state") not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
+        raise ValueError("A round is already in progress.")
+
+    seat_claims = blackjack_session.get("seat_claims") or {}
+
+    if current_user_id not in set(seat_claims.values()):
+        raise ValueError("Take a seat before readying up.")
+
+    if not blackjack_user_has_bets_on_claimed_seats(table_state, seat_claims, current_user_id):
+        raise ValueError("Place a bet on every seat you took before readying up.")
+
+    pending_total_cents = get_blackjack_pending_total_for_user(table_state, current_user_id)
+
+    if pending_total_cents <= 0:
+        raise ValueError("Place a bet before readying up.")
+
+    if pending_total_cents > get_user_balance(current_user_id):
+        raise ValueError("You do not have enough balance for that bet.")
+
+    ready_user_ids = get_blackjack_ready_user_ids(table_state)
+    ready_user_ids.add(current_user_id)
+    set_blackjack_ready_user_ids(table_state, ready_user_ids)
+    table_state["round_state"] = BLACKJACK_ROUND_BETTING
+    table_state["message"] = ""
+    table_state["updated_at"] = time.time()
+
+    if blackjack_table_ready_to_start(table_state, seat_claims):
+        begin_blackjack_round(blackjack_session, current_user_id)
+
+
+def handle_blackjack_insurance_decision(blackjack_session, current_user_id, seat_id, accept_insurance):
+    table_state = sync_blackjack_table_lifecycle(blackjack_session)
+
+    if table_state.get("round_state") != BLACKJACK_ROUND_INSURANCE:
+        raise ValueError("Insurance is not available right now.")
+
+    seat_claims = blackjack_session.get("seat_claims") or {}
+
+    if seat_id not in HAND_SLOT_SEAT_IDS or seat_claims.get(seat_id) != current_user_id:
+        raise ValueError("Choose one of your seats for insurance.")
+
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+    insurance_bet = (seat_side_bets.get(seat_id) or {}).get(BLACKJACK_BET_TYPE_INSURANCE)
+
+    if not insurance_bet or insurance_bet.get("status") != "offered":
+        raise ValueError("Insurance was already decided for that seat.")
+
+    max_bet_cents = int(insurance_bet.get("max_bet_cents") or 0)
+
+    if accept_insurance:
+        if max_bet_cents <= 0:
+            raise ValueError("Insurance is not available for that seat.")
+
+        if get_user_balance(current_user_id) < max_bet_cents:
+            raise ValueError("You do not have enough balance for insurance.")
+
+        set_user_balance(current_user_id, get_user_balance(current_user_id) - max_bet_cents)
+        insurance_bet["bet_cents"] = max_bet_cents
+        insurance_bet["result"] = "accepted"
+        insurance_bet["result_label"] = "Insurance Taken"
+        insurance_bet["status"] = "accepted"
+    else:
+        insurance_bet["bet_cents"] = 0
+        insurance_bet["result"] = "declined"
+        insurance_bet["result_label"] = "Declined"
+        insurance_bet["status"] = "declined"
+
+    table_state["updated_at"] = time.time()
+
+    if get_blackjack_insurance_offer_seat_ids(table_state):
+        table_state["message"] = "Dealer shows an Ace. Insurance?"
+        return
+
+    dealer_has_blackjack, insurance_result_labels = settle_blackjack_insurance_bets(blackjack_session)
+
+    if insurance_result_labels:
+        table_state["message"] = " | ".join(insurance_result_labels)
+
+    if dealer_has_blackjack:
+        finish_blackjack_dealer_turn(blackjack_session)
+        return
+
+    continue_blackjack_round_after_initial_deal(blackjack_session, allow_insurance_offer=False)
+
+
+def perform_blackjack_player_action(blackjack_session, current_user_id, action):
+    table_state = sync_blackjack_table_lifecycle(blackjack_session)
+    active_hand = get_blackjack_active_hand(table_state)
+
+    if table_state.get("round_state") != BLACKJACK_ROUND_PLAYER_TURN or not active_hand:
+        raise ValueError("No player decision is available right now.")
+
+    if active_hand.get("user_id") != current_user_id:
+        raise ValueError("It is another player's turn.")
+
+    hand_value = get_blackjack_hand_value(active_hand.get("cards") or [])
+
+    if active_hand.get("bust") or active_hand.get("stood") or hand_value["total"] >= 21:
+        advance_blackjack_after_hand(blackjack_session)
+        return
+
+    if action == "hit":
+        active_hand["cards"].append(draw_blackjack_card(table_state))
+        refresh_blackjack_hand_flags(active_hand)
+
+        if active_hand.get("bust") or get_blackjack_hand_value(active_hand.get("cards") or [])["total"] >= 21:
+            active_hand["stood"] = True
+            advance_blackjack_after_hand(blackjack_session)
+        else:
+            table_state["updated_at"] = time.time()
+        return
+
+    if action == "stand":
+        active_hand["stood"] = True
+        advance_blackjack_after_hand(blackjack_session)
+        return
+
+    if action == "double":
+        bet_cents = int(active_hand.get("bet_cents") or 0)
+
+        if len(active_hand.get("cards") or []) != 2 or get_user_balance(current_user_id) < bet_cents:
+            raise ValueError("You cannot double this hand.")
+
+        set_user_balance(current_user_id, get_user_balance(current_user_id) - bet_cents)
+        active_hand["bet_cents"] += bet_cents
+        active_hand["doubled"] = True
+        active_hand["cards"].append(draw_blackjack_card(table_state))
+        refresh_blackjack_hand_flags(active_hand)
+        active_hand["stood"] = True
+        advance_blackjack_after_hand(blackjack_session)
+        return
+
+    if action == "split":
+        cards = active_hand.get("cards") or []
+        bet_cents = int(active_hand.get("bet_cents") or 0)
+        seat_hands = [
+            hand
+            for hand in table_state.get("hands") or []
+            if hand.get("seat_id") == active_hand.get("seat_id")
+        ]
+
+        if (
+            len(seat_hands) != 1
+            or len(cards) != 2
+            or cards[0].get("value") != cards[1].get("value")
+            or get_user_balance(current_user_id) < bet_cents
+        ):
+            raise ValueError("You cannot split this hand.")
+
+        set_user_balance(current_user_id, get_user_balance(current_user_id) - bet_cents)
+        active_index = int(table_state.get("active_hand_index") or 0)
+        first_hand = create_blackjack_hand(
+            active_hand["seat_id"],
+            current_user_id,
+            bet_cents,
+            cards=[cards[0]],
+            split_from_pair=True,
+            seat_layout_index=0,
+        )
+        second_hand = create_blackjack_hand(
+            active_hand["seat_id"],
+            current_user_id,
+            bet_cents,
+            cards=[cards[1]],
+            split_from_pair=True,
+            seat_layout_index=1,
+        )
+        table_state["hands"][active_index:active_index + 1] = [second_hand, first_hand]
+
+        for hand in [second_hand, first_hand]:
+            hand["cards"].append(draw_blackjack_card(table_state))
+            refresh_blackjack_hand_flags(hand)
+
+        table_state["active_hand_index"] = active_index
+        table_state["updated_at"] = time.time()
+
+        next_index = find_next_blackjack_playable_hand_index(table_state, active_index)
+
+        if next_index < 0:
+            finish_blackjack_dealer_turn(blackjack_session)
+        else:
+            table_state["active_hand_index"] = next_index
+        return
+
+    raise ValueError("Choose a valid blackjack action.")
 
 
 def create_coinflip_session_record(creator_user, choice, bet_cents, *, opponent=None, countdown_started_at=None):
@@ -2528,6 +4277,26 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
     return session_state
 
 
+def create_blackjack_session_record(creator_user, table_name):
+    creator_snapshot = remember_user_profile(creator_user)
+    session_id = build_blackjack_session_id()
+    normalized_table_name = normalize_blackjack_table_name(
+        table_name,
+        creator_snapshot["display_name"],
+    )
+
+    return {
+        "created_at": time.time(),
+        "creator": creator_snapshot,
+        "description": "Live blackjack room with shared seats and dealer cards.",
+        "id": session_id,
+        "seat_count": BLACKJACK_SESSION_MAX_SEATS,
+        "seat_claims": {},
+        "table_state": create_blackjack_table_state(),
+        "table_name": normalized_table_name,
+    }
+
+
 def build_coinflip_lobby_sessions(current_user_id):
     sessions = []
     session_summary = {
@@ -2836,6 +4605,424 @@ def build_dice_lobby_payload(current_user_id):
         "poll_interval_ms": 1400 if session_summary["live"] else 2600,
         "session_summary": session_summary,
         "sessions": dice_sessions,
+        "version": build_state_version(version_payload),
+    }
+
+
+def build_blackjack_session_state(blackjack_session, current_user_id):
+    sync_blackjack_session_seat_claims(blackjack_session)
+    creator = make_user_snapshot(blackjack_session["creator"])
+    session_path = f"/games/blackjack/sessions/{blackjack_session['id']}"
+    viewers = build_session_viewers(
+        session_path,
+        current_user_id=current_user_id,
+        creator_user_id=creator["id"],
+    )
+    occupancy_count = len(blackjack_session.get("seat_claims") or {})
+    is_live = occupancy_count > 0
+    status = "live" if is_live else "open"
+    occupancy_text = (
+        "Nobody is seated right now."
+        if occupancy_count <= 0
+        else f"{occupancy_count} player{'s' if occupancy_count != 1 else ''} at the table."
+    )
+    status_text = "Table is live now." if is_live else "Open table."
+    session_state = {
+        "created_at": blackjack_session["created_at"],
+        "creator": creator,
+        "description": blackjack_session["description"],
+        "frame_url": (
+            url_for("blackjack_frame", session_id=blackjack_session["id"])
+            if has_request_context()
+            else None
+        ),
+        "id": blackjack_session["id"],
+        "is_creator": current_user_id == creator["id"],
+        "occupancy_count": occupancy_count,
+        "occupancy_text": occupancy_text,
+        "seat_count": blackjack_session.get("seat_count", BLACKJACK_SESSION_MAX_SEATS),
+        "status": status,
+        "status_text": status_text,
+        "table_name": blackjack_session["table_name"],
+        "viewer_count": len(viewers),
+        "viewers": viewers,
+    }
+    session_state["version"] = build_state_version(
+        {
+            "created_at": session_state["created_at"],
+            "creator_name": session_state["creator"]["display_name"],
+            "id": session_state["id"],
+            "occupancy_count": session_state["occupancy_count"],
+            "status": session_state["status"],
+            "table_name": session_state["table_name"],
+            "viewer_ids": [viewer["id"] for viewer in viewers],
+        }
+    )
+    return session_state
+
+
+def get_blackjack_session_path(session_id):
+    return f"/games/blackjack/sessions/{session_id}"
+
+
+def touch_blackjack_session_presence(session_id, user_profile=None):
+    profile = user_profile or g.get("discord_user") or get_current_user()
+
+    if not profile:
+        return
+
+    touch_user_presence(profile, get_blackjack_session_path(session_id))
+
+
+def sync_blackjack_session_seat_claims(blackjack_session):
+    session_path = normalize_presence_path(get_blackjack_session_path(blackjack_session["id"]))
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+    stale_seat_ids = []
+
+    for seat_id, user_id in list(seat_claims.items()):
+        if seat_id not in HAND_SLOT_SEAT_IDS or not user_id or user_id == BOT_PROFILE["id"]:
+            stale_seat_ids.append(seat_id)
+            continue
+
+        presence = USER_PRESENCE.get(user_id)
+        if (
+            not user_presence_is_online(presence)
+            or normalize_presence_path(presence.get("current_path")) != session_path
+        ):
+            stale_seat_ids.append(seat_id)
+            continue
+
+        if user_id not in USER_PROFILES:
+            stale_seat_ids.append(seat_id)
+
+    for seat_id in stale_seat_ids:
+        seat_claims.pop(seat_id, None)
+
+    cleanup_blackjack_pending_bets_for_claims(blackjack_session)
+    return seat_claims
+
+
+def build_public_blackjack_dealer_state(table_state):
+    dealer_state = table_state.get("dealer") or create_blackjack_dealer_state()
+    hole_card = dealer_state.get("hole_card")
+    is_hole_revealed = bool(dealer_state.get("is_hole_revealed"))
+
+    return {
+        "cards": [
+            normalize_blackjack_card(card)
+            for card in dealer_state.get("cards") or []
+            if normalize_blackjack_card(card)
+        ],
+        "holeCard": normalize_blackjack_card(hole_card) if hole_card and is_hole_revealed else ({"isFaceDown": True} if hole_card else None),
+        "isHoleRevealed": is_hole_revealed,
+    }
+
+
+def build_public_blackjack_hand(hand, current_user_id):
+    user_profile = USER_PROFILES.get(hand.get("user_id")) or {}
+    owner_name = user_profile.get("display_name") or user_profile.get("username") or "Player"
+
+    return {
+        "bet": int(hand.get("bet_cents") or 0) / 100,
+        "betCents": int(hand.get("bet_cents") or 0),
+        "blackjack": bool(hand.get("blackjack")),
+        "bust": bool(hand.get("bust")),
+        "cards": [
+            normalize_blackjack_card(card)
+            for card in hand.get("cards") or []
+            if normalize_blackjack_card(card)
+        ],
+        "doubled": bool(hand.get("doubled")),
+        "id": hand.get("id"),
+        "isSelf": hand.get("user_id") == current_user_id,
+        "ownerName": owner_name,
+        "payout": int(hand.get("payout_cents") or 0) / 100,
+        "payoutCents": int(hand.get("payout_cents") or 0),
+        "result": hand.get("result") or "",
+        "seatId": hand.get("seat_id"),
+        "seatLayoutIndex": int(hand.get("seat_layout_index") or 0),
+        "splitFromPair": bool(hand.get("split_from_pair")),
+        "stood": bool(hand.get("stood")),
+        "userId": hand.get("user_id"),
+    }
+
+
+def build_public_blackjack_pending_chip(chip, current_user_id):
+    user_profile = USER_PROFILES.get(chip.get("user_id")) or {}
+    bet_type = normalize_blackjack_bet_type(chip.get("bet_type"))
+
+    return {
+        "betType": bet_type,
+        "isSelf": chip.get("user_id") == current_user_id,
+        "ownerName": user_profile.get("display_name") or user_profile.get("username") or "Player",
+        "seatId": chip.get("seat_id"),
+        "userId": chip.get("user_id"),
+        "value": int(chip.get("value_cents") or 0) / 100,
+        "valueCents": int(chip.get("value_cents") or 0),
+    }
+
+
+def build_public_blackjack_side_bet(side_bet):
+    if not isinstance(side_bet, dict):
+        return None
+
+    bet_type = normalize_blackjack_bet_type(side_bet.get("bet_type"), allow_insurance=True)
+
+    if not bet_type:
+        return None
+
+    return {
+        "bet": int(side_bet.get("bet_cents") or 0) / 100,
+        "betCents": int(side_bet.get("bet_cents") or 0),
+        "betType": bet_type,
+        "label": BLACKJACK_BET_TYPE_LABELS.get(bet_type, "Side Bet"),
+        "maxBet": int(side_bet.get("max_bet_cents") or 0) / 100,
+        "maxBetCents": int(side_bet.get("max_bet_cents") or 0),
+        "payoutCredited": bool(side_bet.get("payout_credited")),
+        "payout": int(side_bet.get("payout_cents") or 0) / 100,
+        "payoutCents": int(side_bet.get("payout_cents") or 0),
+        "result": side_bet.get("result") or "",
+        "resultLabel": side_bet.get("result_label") or "",
+        "status": side_bet.get("status") or "none",
+    }
+
+
+def build_public_blackjack_table_state(blackjack_session, current_user_id):
+    table_state = sync_blackjack_table_lifecycle(blackjack_session)
+    seat_claims = blackjack_session.get("seat_claims") or {}
+    live_bets_by_seat = get_blackjack_live_bets_by_seat(table_state)
+    pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state, BLACKJACK_BET_TYPE_MAIN)
+    pending_side_bets_by_seat = get_blackjack_pending_side_bets_by_seat(table_state)
+    seat_bet_amounts = {}
+
+    for seat_id in HAND_SLOT_SEAT_IDS:
+        amount_cents = live_bets_by_seat.get(seat_id, 0) or pending_bets_by_seat.get(seat_id, 0)
+        if amount_cents:
+            seat_bet_amounts[seat_id] = amount_cents / 100
+
+    active_hand = get_blackjack_active_hand(table_state)
+    self_pending_bet_cents = get_blackjack_pending_total_for_user(table_state, current_user_id)
+    self_last_bet_cents = get_blackjack_last_bet_total_for_user(table_state, current_user_id)
+    self_last_bet_snapshot = get_blackjack_last_bet_snapshot_for_user(table_state, current_user_id)
+    self_last_bet_seat_ids = {
+        chip.get("seat_id")
+        for chip in self_last_bet_snapshot
+        if chip.get("seat_id")
+    }
+    self_last_bet_seats_available = bool(self_last_bet_seat_ids) and all(
+        seat_claims.get(seat_id) in {None, current_user_id}
+        for seat_id in self_last_bet_seat_ids
+    )
+    ready_user_ids = get_blackjack_ready_user_ids(table_state) & get_blackjack_claimed_user_ids(seat_claims)
+    self_has_required_bets = blackjack_user_has_bets_on_claimed_seats(table_state, seat_claims, current_user_id)
+    required_ready_count = len(get_blackjack_claimed_user_ids(seat_claims))
+    ready_count = len(ready_user_ids)
+    public_seat_side_bets = {}
+    self_has_pending_chips = any(
+        chip.get("user_id") == current_user_id
+        for chip in table_state.get("pending_bet_chips") or []
+    )
+
+    for seat_id, seat_side_bets in (ensure_blackjack_seat_side_bets(table_state) or {}).items():
+        public_bets = {}
+
+        for bet_type, side_bet in (seat_side_bets or {}).items():
+            public_side_bet = build_public_blackjack_side_bet(side_bet)
+
+            if public_side_bet:
+                public_bets[bet_type] = public_side_bet
+
+        if public_bets:
+            public_seat_side_bets[seat_id] = public_bets
+
+    return {
+        "active_hand_id": active_hand.get("id") if active_hand else None,
+        "active_hand_index": int(table_state.get("active_hand_index") or 0),
+        "active_seat_id": active_hand.get("seat_id") if active_hand else None,
+        "active_user_id": active_hand.get("user_id") if active_hand else None,
+        "available_actions": get_blackjack_available_actions(table_state, current_user_id),
+        "dealer": build_public_blackjack_dealer_state(table_state),
+        "hands": [
+            build_public_blackjack_hand(hand, current_user_id)
+            for hand in table_state.get("hands") or []
+        ],
+        "insurance_offer_seat_ids": get_blackjack_insurance_offer_seat_ids(table_state),
+        "last_results": list(table_state.get("last_results") or []),
+        "message": table_state.get("message") or "",
+        "pending_bet_chips": [
+            build_public_blackjack_pending_chip(chip, current_user_id)
+            for chip in table_state.get("pending_bet_chips") or []
+        ],
+        "pending_bets": {
+            seat_id: amount_cents / 100
+            for seat_id, amount_cents in pending_bets_by_seat.items()
+        },
+        "pending_side_bets": {
+            seat_id: {
+                bet_type: int(amount_cents or 0) / 100
+                for bet_type, amount_cents in seat_side_bets.items()
+            }
+            for seat_id, seat_side_bets in pending_side_bets_by_seat.items()
+        },
+        "round_id": table_state.get("round_id"),
+        "round_state": table_state.get("round_state") or BLACKJACK_ROUND_WAITING,
+        "ready_count": ready_count,
+        "ready_seat_ids": [
+            seat_id
+            for seat_id, owner_user_id in seat_claims.items()
+            if owner_user_id in ready_user_ids
+        ],
+        "ready_user_ids": sorted(ready_user_ids),
+        "required_ready_count": required_ready_count,
+        "seat_bet_amounts": seat_bet_amounts,
+        "seat_side_bets": public_seat_side_bets,
+        "self_can_ready": bool(
+            current_user_id
+            and current_user_id in get_blackjack_claimed_user_ids(seat_claims)
+            and self_has_required_bets
+            and table_state.get("round_state") in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}
+        ),
+        "self_can_rebet": bool(
+            current_user_id
+            and self_last_bet_cents > 0
+            and not self_has_pending_chips
+            and self_last_bet_seats_available
+            and self_last_bet_cents <= get_user_balance(current_user_id)
+            and table_state.get("round_state") in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}
+        ),
+        "self_last_bet_amount": self_last_bet_cents / 100,
+        "self_last_bet_cents": self_last_bet_cents,
+        "self_pending_bet_amount": self_pending_bet_cents / 100,
+        "self_pending_bet_cents": self_pending_bet_cents,
+        "self_ready": current_user_id in ready_user_ids,
+        "settled_at": table_state.get("settled_at"),
+        "shoe": {
+            "deckId": table_state.get("shoe", {}).get("deck_id") or "",
+            "isReady": bool(table_state.get("shoe", {}).get("is_ready", True)),
+            "remaining": int(table_state.get("shoe", {}).get("remaining") or 0),
+        },
+        "updated_at": table_state.get("updated_at"),
+    }
+
+
+def build_blackjack_table_payload(blackjack_session, current_user_id):
+    seat_claims = sync_blackjack_session_seat_claims(blackjack_session)
+    public_table_state = build_public_blackjack_table_state(blackjack_session, current_user_id)
+    claims = []
+    self_seat_ids = []
+
+    for seat_id in HAND_SLOT_SEAT_IDS:
+        owner_user_id = seat_claims.get(seat_id)
+
+        if not owner_user_id:
+            continue
+
+        owner_profile = USER_PROFILES.get(owner_user_id)
+        if not owner_profile:
+            continue
+
+        owner_snapshot = make_user_snapshot(owner_profile)
+        is_self = owner_user_id == current_user_id
+
+        if is_self:
+            self_seat_ids.append(seat_id)
+
+        claims.append(
+            {
+                "is_self": is_self,
+                "seat_id": seat_id,
+                "user": owner_snapshot,
+            }
+        )
+
+    current_balance_cents = get_user_balance(current_user_id) if current_user_id else 0
+    version_payload = {
+        "balance_cents": current_balance_cents,
+        "claims": [
+            {
+                "seat_id": claim["seat_id"],
+                "user_id": claim["user"]["id"],
+            }
+            for claim in claims
+        ],
+        "session_id": blackjack_session["id"],
+        "table": public_table_state,
+    }
+
+    return {
+        "current_balance_amount": current_balance_cents / 100,
+        "current_balance_cents": current_balance_cents,
+        "current_balance_display": format_money(current_balance_cents),
+        "poll_interval_ms": 900 if public_table_state["round_state"] not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING} else (1200 if claims else 2600),
+        "seat_claims": claims,
+        "self_seat_ids": self_seat_ids,
+        "session_id": blackjack_session["id"],
+        "table_state": public_table_state,
+        "table_name": blackjack_session["table_name"],
+        "version": build_state_version(version_payload),
+    }
+
+
+def build_blackjack_lobby_sessions(current_user_id):
+    sessions = []
+    session_summary = {
+        "live": 0,
+        "open": 0,
+        "resolved": 0,
+    }
+    status_priority = {
+        "live": 0,
+        "open": 1,
+    }
+
+    for blackjack_session in BLACKJACK_SESSIONS.values():
+        session_state = build_blackjack_session_state(blackjack_session, current_user_id)
+        session_summary[session_state["status"]] += 1
+        sessions.append(
+            {
+                "created_at": session_state["created_at"],
+                "creator_name": session_state["creator"]["display_name"],
+                "id": session_state["id"],
+                "occupancy_count": session_state["occupancy_count"],
+                "occupancy_text": session_state["occupancy_text"],
+                "seat_count": session_state["seat_count"],
+                "status": session_state["status"],
+                "status_text": session_state["status_text"],
+                "table_name": session_state["table_name"],
+                "view_url": url_for("blackjack_session", session_id=session_state["id"]),
+                "viewer_count": session_state["viewer_count"],
+            }
+        )
+
+    sessions.sort(key=lambda item: (status_priority.get(item["status"], 9), -item["created_at"]))
+    return sessions, session_summary
+
+
+def build_blackjack_lobby_payload(current_user_id):
+    blackjack_sessions, session_summary = build_blackjack_lobby_sessions(current_user_id)
+    current_balance_cents = get_user_balance(current_user_id) if current_user_id else None
+    version_payload = {
+        "current_balance_cents": current_balance_cents,
+        "session_summary": session_summary,
+        "sessions": [
+            {
+                "created_at": blackjack_session["created_at"],
+                "id": blackjack_session["id"],
+                "occupancy_count": blackjack_session["occupancy_count"],
+                "status": blackjack_session["status"],
+                "table_name": blackjack_session["table_name"],
+                "viewer_count": blackjack_session["viewer_count"],
+            }
+            for blackjack_session in blackjack_sessions
+        ],
+    }
+
+    return {
+        "current_balance_cents": current_balance_cents,
+        "current_balance_display": format_money(current_balance_cents) if current_balance_cents is not None else None,
+        "poll_interval_ms": 1800 if session_summary["live"] else 3200,
+        "session_summary": session_summary,
+        "sessions": blackjack_sessions,
         "version": build_state_version(version_payload),
     }
 
@@ -3437,6 +5624,15 @@ def get_dice_session_or_404(session_id):
     return dice_session
 
 
+def get_blackjack_session_or_404(session_id):
+    blackjack_session = BLACKJACK_SESSIONS.get(session_id)
+
+    if not blackjack_session:
+        abort(404)
+
+    return blackjack_session
+
+
 @app.before_request
 def load_current_user():
     g.discord_user = get_current_user()
@@ -3836,6 +6032,393 @@ def admin_cancel_game_session(game, session_id):
         **result,
         "panel": panel_payload,
     })
+
+
+@app.get("/api/hand-slot-layout")
+def hand_slot_layout_state():
+    return jsonify({"slots": read_hand_slot_layout()})
+
+
+@app.post("/api/hand-slot-layout")
+@admin_panel_required
+def save_hand_slot_layout_state():
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        slots = validate_hand_slot_layout(payload.get("slots"))
+        write_hand_slot_layout(slots)
+    except (TypeError, ValueError) as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+    except OSError:
+        return jsonify({"ok": False, "error": "Could not write hand-slot layout."}), 500
+
+    return jsonify({"ok": True, "slots": slots})
+
+
+@app.get("/api/blackjack-side-bet-layout")
+def blackjack_side_bet_layout_state():
+    return jsonify({"spots": read_blackjack_side_bet_layout()})
+
+
+@app.post("/api/blackjack-side-bet-layout")
+@admin_panel_required
+def save_blackjack_side_bet_layout_state():
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        spots = validate_blackjack_side_bet_layout(payload.get("spots"))
+        write_blackjack_side_bet_layout(spots)
+    except (TypeError, ValueError) as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
+    except OSError:
+        return jsonify({"ok": False, "error": "Could not write side-bet layout."}), 500
+
+    return jsonify({"ok": True, "spots": spots})
+
+
+@app.route("/games/blackjack")
+@login_required
+def blackjack_game():
+    with STATE_LOCK:
+        blackjack_lobby_state = build_blackjack_lobby_payload(get_current_user_id())
+
+    return render_template(
+        "Games/Blackjack.html",
+        active_page="play",
+        blackjack_lobby_state=blackjack_lobby_state,
+        blackjack_sessions=blackjack_lobby_state["sessions"],
+        session_summary=blackjack_lobby_state["session_summary"],
+    )
+
+
+@app.route("/games/blackjack/state")
+@login_required
+def blackjack_lobby_state():
+    requested_version = request.args.get("version")
+
+    with STATE_LOCK:
+        payload = build_blackjack_lobby_payload(get_current_user_id())
+
+    if requested_version and requested_version == payload["version"]:
+        return ("", 204)
+
+    return jsonify(payload)
+
+
+@app.route("/games/blackjack/sessions", methods=["POST"])
+@login_required
+def create_blackjack_session():
+    current_user = make_user_snapshot(get_current_user())
+    table_name = request.form.get("table_name")
+
+    with STATE_LOCK:
+        blackjack_session = create_blackjack_session_record(current_user, table_name)
+        BLACKJACK_SESSIONS[blackjack_session["id"]] = blackjack_session
+
+    return redirect(url_for("blackjack_session", session_id=blackjack_session["id"]))
+
+
+@app.route("/games/blackjack/sessions/<session_id>")
+@login_required
+def blackjack_session(session_id):
+    with STATE_LOCK:
+        blackjack_session_data = get_blackjack_session_or_404(session_id)
+        current_user = get_current_user()
+        current_user_id = get_current_user_id()
+        touch_blackjack_session_presence(session_id, current_user)
+        session_state = build_blackjack_session_state(blackjack_session_data, current_user_id)
+        blackjack_table_config = {
+            "action_url": url_for("blackjack_table_actions", session_id=blackjack_session_data["id"]),
+            "balance_sync_url": url_for("blackjack_table_balance", session_id=blackjack_session_data["id"]),
+            "can_edit_side_bet_layout": bool(is_admin_user(current_user)),
+            "initial_state": build_blackjack_table_payload(blackjack_session_data, current_user_id),
+            "seat_action_url": url_for("blackjack_table_seats", session_id=blackjack_session_data["id"]),
+            "state_url": url_for("blackjack_table_state", session_id=blackjack_session_data["id"]),
+        }
+
+    return render_template(
+        "Games/BlackjackSession.html",
+        active_page="play",
+        blackjack_table_config=blackjack_table_config,
+        session_state=session_state,
+    )
+
+
+@app.route("/games/blackjack/sessions/<session_id>/state")
+@login_required
+def blackjack_session_state(session_id):
+    requested_version = request.args.get("version")
+
+    with STATE_LOCK:
+        blackjack_session_data = get_blackjack_session_or_404(session_id)
+        touch_blackjack_session_presence(session_id)
+        payload = build_blackjack_session_state(blackjack_session_data, get_current_user_id())
+
+    if requested_version and requested_version == payload["version"]:
+        return ("", 204)
+
+    return jsonify(payload)
+
+
+@app.route("/games/blackjack/sessions/<session_id>/table/state")
+@login_required
+def blackjack_table_state(session_id):
+    requested_version = request.args.get("version")
+
+    with STATE_LOCK:
+        blackjack_session_data = get_blackjack_session_or_404(session_id)
+        touch_blackjack_session_presence(session_id)
+        payload = build_blackjack_table_payload(blackjack_session_data, get_current_user_id())
+
+    if requested_version and requested_version == payload["version"]:
+        return ("", 204)
+
+    return jsonify(payload)
+
+
+@app.route("/games/blackjack/sessions/<session_id>/table/seats", methods=["POST"])
+@login_required
+def blackjack_table_seats(session_id):
+    payload = request.get_json(silent=True) or {}
+    seat_action = str(payload.get("action") or "").strip().lower()
+    seat_id = str(payload.get("seat_id") or "").strip()
+    current_user_id = get_current_user_id()
+
+    if seat_action not in {"claim", "release"}:
+        return jsonify({"error": "Choose a valid seat action."}), 400
+
+    if seat_id not in HAND_SLOT_SEAT_IDS:
+        return jsonify({"error": "Choose a valid seat."}), 400
+
+    with STATE_LOCK:
+        blackjack_session_data = get_blackjack_session_or_404(session_id)
+        touch_blackjack_session_presence(session_id)
+        seat_claims = sync_blackjack_session_seat_claims(blackjack_session_data)
+        table_state = ensure_blackjack_table_state(blackjack_session_data)
+        current_owner_id = seat_claims.get(seat_id)
+
+        if seat_action == "claim":
+            if current_owner_id and current_owner_id != current_user_id:
+                owner_profile = USER_PROFILES.get(current_owner_id) or {}
+                owner_name = owner_profile.get("display_name") or owner_profile.get("username") or "Another player"
+                return jsonify({"error": f"{owner_name} already took that seat."}), 409
+
+            seat_claims[seat_id] = current_user_id
+            remove_blackjack_ready_user(table_state, current_user_id)
+            if table_state.get("round_state") == BLACKJACK_ROUND_WAITING:
+                table_state["round_state"] = BLACKJACK_ROUND_BETTING
+                table_state["updated_at"] = time.time()
+        elif current_owner_id == current_user_id:
+            if blackjack_table_has_active_hand_for_seat(table_state, seat_id):
+                return jsonify({"error": "Finish the current hand before leaving that seat."}), 409
+
+            remove_blackjack_pending_bets_for_seat(table_state, seat_id)
+            remove_blackjack_ready_user(table_state, current_user_id)
+            seat_claims.pop(seat_id, None)
+            if table_state.get("round_state") == BLACKJACK_ROUND_BETTING and not seat_claims:
+                table_state["round_state"] = BLACKJACK_ROUND_WAITING
+                table_state["message"] = ""
+                table_state["updated_at"] = time.time()
+
+        table_payload = build_blackjack_table_payload(blackjack_session_data, current_user_id)
+
+    return jsonify(table_payload)
+
+
+@app.route("/games/blackjack/sessions/<session_id>/table/actions", methods=["POST"])
+@login_required
+def blackjack_table_actions(session_id):
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip().lower()
+    current_user_id = get_current_user_id()
+
+    try:
+        with STATE_LOCK:
+            blackjack_session_data = get_blackjack_session_or_404(session_id)
+            touch_blackjack_session_presence(session_id)
+            seat_claims = sync_blackjack_session_seat_claims(blackjack_session_data)
+            table_state = sync_blackjack_table_lifecycle(blackjack_session_data)
+
+            if action == "add_chip":
+                seat_id = str(payload.get("seat_id") or "").strip()
+                bet_type = normalize_blackjack_bet_type(payload.get("bet_type"))
+
+                try:
+                    chip_value_cents = int(payload.get("chip_value_cents") or payload.get("value_cents") or 0)
+                except (TypeError, ValueError):
+                    chip_value_cents = 0
+
+                if seat_id not in HAND_SLOT_SEAT_IDS:
+                    raise ValueError("Choose a valid seat.")
+
+                if seat_claims.get(seat_id) != current_user_id:
+                    raise ValueError("Take that seat before placing chips.")
+
+                if table_state.get("round_state") not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
+                    raise ValueError("Wait for the next betting round.")
+
+                if chip_value_cents not in BLACKJACK_CHIP_VALUES_CENTS:
+                    raise ValueError("Choose a valid chip.")
+
+                if not bet_type:
+                    raise ValueError("Choose a valid bet type.")
+
+                next_pending_total = get_blackjack_pending_total_for_user(table_state, current_user_id) + chip_value_cents
+
+                if next_pending_total > get_user_balance(current_user_id):
+                    raise ValueError("You do not have enough balance for that chip.")
+
+                table_state.setdefault("pending_bet_chips", []).append({
+                    "bet_type": bet_type,
+                    "seat_id": seat_id,
+                    "user_id": current_user_id,
+                    "value_cents": chip_value_cents,
+                })
+                record_blackjack_pending_bet_action(table_state, current_user_id, "add_chip", 1)
+                remove_blackjack_ready_user(table_state, current_user_id)
+                table_state["round_state"] = BLACKJACK_ROUND_BETTING
+                table_state["message"] = ""
+                table_state["updated_at"] = time.time()
+            elif action == "undo_chip":
+                if table_state.get("round_state") not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
+                    raise ValueError("Wait for the next betting round.")
+
+                pending_chips = table_state.get("pending_bet_chips") or []
+                pending_bet_action_history = ensure_blackjack_pending_bet_action_history(table_state)
+                removed_chip_count = 0
+                action_record_index = -1
+
+                for history_index in range(len(pending_bet_action_history) - 1, -1, -1):
+                    action_record = pending_bet_action_history[history_index]
+                    if action_record.get("user_id") != current_user_id:
+                        continue
+
+                    chip_count = int(action_record.get("chip_count") or 0)
+                    if chip_count <= 0:
+                        continue
+
+                    action_record_index = history_index
+                    break
+
+                if action_record_index >= 0:
+                    chip_count = int(pending_bet_action_history[action_record_index].get("chip_count") or 0)
+                    del pending_bet_action_history[action_record_index]
+
+                    for chip_index in range(len(pending_chips) - 1, -1, -1):
+                        if pending_chips[chip_index].get("user_id") != current_user_id:
+                            continue
+
+                        pending_chips.pop(chip_index)
+                        removed_chip_count += 1
+
+                        if removed_chip_count >= chip_count:
+                            break
+
+                if not removed_chip_count:
+                    for chip_index in range(len(pending_chips) - 1, -1, -1):
+                        if pending_chips[chip_index].get("user_id") == current_user_id:
+                            pending_chips.pop(chip_index)
+                            removed_chip_count = 1
+                            break
+
+                table_state["pending_bet_chips"] = pending_chips
+                table_state["pending_bet_action_history"] = pending_bet_action_history
+                remove_blackjack_ready_user(table_state, current_user_id)
+                table_state["updated_at"] = time.time()
+            elif action == "double_pending":
+                if table_state.get("round_state") not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
+                    raise ValueError("Wait for the next betting round.")
+
+                own_chips = [
+                    dict(chip)
+                    for chip in table_state.get("pending_bet_chips") or []
+                    if chip.get("user_id") == current_user_id
+                ]
+
+                if not own_chips:
+                    raise ValueError("Place chips before doubling your bet.")
+
+                current_pending_total = sum(int(chip.get("value_cents") or 0) for chip in own_chips)
+
+                if current_pending_total * 2 > get_user_balance(current_user_id):
+                    raise ValueError("You do not have enough balance to double that bet.")
+
+                table_state.setdefault("pending_bet_chips", []).extend(own_chips)
+                record_blackjack_pending_bet_action(table_state, current_user_id, "double_pending", len(own_chips))
+                remove_blackjack_ready_user(table_state, current_user_id)
+                table_state["updated_at"] = time.time()
+            elif action == "rebet":
+                rebet_blackjack_user(blackjack_session_data, current_user_id)
+            elif action == "insurance_accept":
+                seat_id = str(payload.get("seat_id") or "").strip()
+                handle_blackjack_insurance_decision(blackjack_session_data, current_user_id, seat_id, True)
+            elif action == "insurance_decline":
+                seat_id = str(payload.get("seat_id") or "").strip()
+                handle_blackjack_insurance_decision(blackjack_session_data, current_user_id, seat_id, False)
+            elif action in {"ready", "deal"}:
+                ready_blackjack_user(blackjack_session_data, current_user_id)
+            elif action in {"hit", "stand", "double", "split"}:
+                perform_blackjack_player_action(blackjack_session_data, current_user_id, action)
+            else:
+                raise ValueError("Choose a valid blackjack action.")
+
+            table_payload = build_blackjack_table_payload(blackjack_session_data, current_user_id)
+    except ValueError as exc:
+        with STATE_LOCK:
+            blackjack_session_data = get_blackjack_session_or_404(session_id)
+            touch_blackjack_session_presence(session_id)
+            table_payload = build_blackjack_table_payload(blackjack_session_data, current_user_id)
+
+        return jsonify({
+            **table_payload,
+            "error": str(exc),
+        }), 400
+
+    return jsonify(table_payload)
+
+
+@app.route("/games/blackjack/sessions/<session_id>/table/balance", methods=["POST"])
+@login_required
+def blackjack_table_balance(session_id):
+    current_user_id = get_current_user_id()
+
+    with STATE_LOCK:
+        get_blackjack_session_or_404(session_id)
+        current_balance_cents = get_user_balance(current_user_id)
+
+    return jsonify(
+        {
+            "current_balance_amount": current_balance_cents / 100,
+            "current_balance_cents": current_balance_cents,
+            "current_balance_display": format_money(current_balance_cents),
+        }
+    )
+
+
+@app.route("/games/blackjack/sessions/<session_id>/table")
+@login_required
+def blackjack_frame(session_id):
+    with STATE_LOCK:
+        blackjack_session_data = get_blackjack_session_or_404(session_id)
+        touch_blackjack_session_presence(session_id)
+        current_user_id = get_current_user_id()
+        blackjack_table_state = build_blackjack_table_payload(
+            blackjack_session_data,
+            current_user_id,
+        )
+
+    return render_template(
+        "Games/BlackjackFrame.html",
+        blackjack_table_config={
+            "action_url": url_for("blackjack_table_actions", session_id=blackjack_session_data["id"]),
+            "balance_sync_url": url_for("blackjack_table_balance", session_id=blackjack_session_data["id"]),
+            "initial_state": blackjack_table_state,
+            "seat_action_url": url_for("blackjack_table_seats", session_id=blackjack_session_data["id"]),
+            "state_url": url_for("blackjack_table_state", session_id=blackjack_session_data["id"]),
+        },
+        session_id=blackjack_session_data["id"],
+        table_name=blackjack_session_data["table_name"],
+    )
 
 
 @app.route("/games/coinflip")

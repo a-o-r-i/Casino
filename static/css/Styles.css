@@ -1,0 +1,1497 @@
+.BlackjackTableRoot {
+  color-scheme: dark;
+  --CardBackImage: none;
+  --CardImageScale: 1.00;
+  --SeatHitSize: clamp(56px, 5vw, 74px);
+  --SeatVisualInset: clamp(8px, 0.72vw, 10px);
+  --SideBetHitSize: clamp(42px, 3.8vw, 56px);
+  --SideBetVisualInset: clamp(6px, 0.55vw, 8px);
+  --PageTop: #173d37;
+  --PageBottom: #071411;
+  --PanelFill: rgba(5, 18, 16, 0.82);
+  --PanelStroke: rgba(236, 221, 173, 0.16);
+  --PanelShadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  --TextPrimary: #f7f3e6;
+  --TextSecondary: rgba(247, 243, 230, 0.72);
+  --SeatFill: rgba(9, 29, 24, 0.9);
+  --SeatStroke: rgba(242, 224, 171, 0.86);
+  --SeatClaimed: rgba(32, 86, 71, 0.96);
+  --ChipShadow: 0 10px 18px rgba(0, 0, 0, 0.22);
+  --CardShadow: 0 18px 34px rgba(0, 0, 0, 0.28);
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  width: 100%;
+  min-height: 100%;
+  padding: 0;
+  background: transparent;
+  color: var(--TextPrimary);
+  font-family: "Geist", "Segoe UI", sans-serif;
+}
+
+.BlackjackTableRoot,
+.BlackjackTableRoot * {
+  box-sizing: border-box;
+}
+
+.BlackjackFramePage {
+  min-height: 100dvh;
+  margin: 0;
+  background: transparent;
+}
+
+.BlackjackFramePage .BlackjackTableRoot {
+  min-height: 100dvh;
+}
+
+.TableStage {
+  position: relative;
+  width: min(76vw, 150dvh, 1040px);
+  margin-top: clamp(-92px, -9dvh, -48px);
+  aspect-ratio: 3 / 2;
+  overflow: visible;
+  background: transparent;
+}
+
+.TableStageImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+
+.TableStageOverlay {
+  position: absolute;
+  inset: 0;
+}
+
+.TableStageDebug {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  max-width: min(280px, calc(100% - 24px));
+  pointer-events: none;
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
+}
+
+.TableDebugLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.TableDebugLabel {
+  color: var(--TextSecondary);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.TableDebugValue {
+  color: var(--TextPrimary);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.TableStageHud {
+  position: absolute;
+  left: clamp(10px, 1vw, 14px);
+  bottom: clamp(10px, 1vw, 14px);
+  z-index: 12;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.TableReadout {
+  display: grid;
+  gap: 3px;
+  min-width: clamp(72px, 7vw, 96px);
+  padding: 0.42rem 0.54rem;
+  border: 1px solid rgba(243, 225, 172, 0.16);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(10, 28, 23, 0.94) 0%, rgba(4, 16, 13, 0.74) 100%);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
+}
+
+.TableReadoutBalance {
+  min-width: clamp(84px, 8vw, 112px);
+  padding: 0.5rem 0.66rem;
+}
+
+.TableReadoutStack {
+  display: grid;
+  gap: 6px;
+}
+
+.TableReadoutLabel {
+  color: rgba(247, 243, 230, 0.72);
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.TableReadoutValue {
+  font-size: clamp(0.7rem, 0.84vw, 0.82rem);
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.TableReadoutBalance .TableReadoutValue {
+  font-size: clamp(0.96rem, 1.34vw, 1.18rem);
+  line-height: 1;
+}
+
+.Packet {
+  position: absolute;
+  width: clamp(56px, 5vw, 82px);
+  aspect-ratio: 5 / 7;
+  pointer-events: none;
+}
+
+.PacketLeft {
+  left: 14%;
+  top: 22%;
+  opacity: 0.3;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.PacketLeft.IsReady {
+  opacity: 1;
+}
+
+.PacketRight {
+  right: 12%;
+  top: 11%;
+}
+
+.PacketStack {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.PacketLayer {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 42%),
+    var(--CardBackImage) center / cover no-repeat,
+    linear-gradient(180deg, #f3ebd2 0%, #dfcf9f 100%);
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.2);
+}
+
+.PacketLayer:nth-child(1) {
+  transform: translate(-8%, 7%) rotate(-6deg);
+}
+
+.PacketLayer:nth-child(2) {
+  transform: translate(-2%, 3%) rotate(-2deg);
+}
+
+.PacketLayer:nth-child(3) {
+  transform: translate(4%, 0) rotate(4deg);
+}
+
+.DealerHandLayer,
+.PlayerHandsLayer,
+.SideBetSpotLayer,
+.SeatBetLayer,
+.AnimationLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.HandSlotLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.SeatLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.Seat {
+  position: absolute;
+  left: var(--SeatX);
+  top: var(--SeatY);
+  display: grid;
+  place-items: center;
+  width: var(--SeatHitSize);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: #f5e5b3;
+  cursor: pointer;
+  isolation: isolate;
+  overflow: visible;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 180ms ease,
+    color 180ms ease;
+}
+
+.Seat::before {
+  content: "";
+  position: absolute;
+  inset: var(--SeatVisualInset);
+  border: 2px solid var(--SeatStroke);
+  border-radius: 50%;
+  background: var(--SeatFill);
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.24);
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.Seat:hover::before,
+.Seat:focus-visible::before {
+  border-color: #fff0bf;
+  background: rgba(16, 42, 35, 0.96);
+  box-shadow: 0 0 0 8px rgba(245, 225, 172, 0.12), 0 16px 28px rgba(0, 0, 0, 0.28);
+}
+
+.Seat:hover,
+.Seat:focus-visible {
+  outline: none;
+}
+
+.Seat:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.Seat.IsClaimed::before {
+  background: var(--SeatClaimed);
+  border-color: #fff0bf;
+  box-shadow: 0 0 0 8px rgba(245, 225, 172, 0.12), 0 16px 28px rgba(0, 0, 0, 0.28);
+}
+
+.Seat.IsOccupied::before {
+  background: rgba(22, 44, 58, 0.96);
+  border-color: rgba(143, 215, 244, 0.9);
+  box-shadow: 0 0 0 8px rgba(143, 215, 244, 0.1), 0 16px 28px rgba(0, 0, 0, 0.26);
+}
+
+.Seat.IsOccupied {
+  color: #d7f4ff;
+}
+
+.Seat.IsActive::before {
+  box-shadow: 0 0 0 12px rgba(245, 225, 172, 0.15), 0 16px 28px rgba(0, 0, 0, 0.3);
+}
+
+.Seat.IsReady::before {
+  border-color: rgba(132, 236, 170, 0.94);
+  box-shadow: 0 0 0 10px rgba(132, 236, 170, 0.12), 0 16px 28px rgba(0, 0, 0, 0.28);
+}
+
+.SeatNumber {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(0.78rem, 0.9vw, 0.96rem);
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.SeatYou {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  padding: 0.18rem 0.48rem;
+  border: 1px solid rgba(245, 225, 172, 0.76);
+  border-radius: 999px;
+  background: rgba(4, 16, 13, 0.95);
+  color: #fff0bf;
+  font-size: clamp(0.68rem, 0.8vw, 0.82rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0;
+  text-transform: uppercase;
+  transform: translate(-50%, 6px);
+  transition: opacity 180ms ease, transform 180ms ease;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.SeatOwner {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  max-width: 88px;
+  padding: 0.18rem 0.48rem;
+  border: 1px solid rgba(143, 215, 244, 0.76);
+  border-radius: 999px;
+  background: rgba(4, 16, 23, 0.95);
+  color: #d7f4ff;
+  font-size: clamp(0.62rem, 0.72vw, 0.74rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translate(-50%, 0);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.SeatReady {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 34px);
+  padding: 0.18rem 0.52rem;
+  border: 1px solid rgba(132, 236, 170, 0.74);
+  border-radius: 999px;
+  background: rgba(3, 30, 18, 0.95);
+  color: #bff8cc;
+  font-size: clamp(0.64rem, 0.76vw, 0.78rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: translate(-50%, 0);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.Seat.IsClaimed .SeatYou {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.SeatBetSpot {
+  position: absolute;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 1px;
+  width: var(--SideBetHitSize);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: rgba(247, 243, 230, 0.84);
+  cursor: pointer;
+  isolation: isolate;
+  opacity: 0;
+  overflow: visible;
+  pointer-events: none;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 220ms ease,
+    color 180ms ease;
+}
+
+.SeatBetSpot::before {
+  content: "";
+  position: absolute;
+  inset: var(--SideBetVisualInset);
+  border: 2px solid rgba(243, 225, 172, 0.22);
+  border-radius: 50%;
+  background: rgba(8, 22, 18, 0.94);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.22);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.SeatBetSpot.IsVisible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.SeatBetSpot:hover::before,
+.SeatBetSpot:focus-visible::before {
+  border-color: rgba(255, 240, 191, 0.88);
+  background: rgba(16, 42, 35, 0.96);
+  box-shadow: 0 0 0 7px rgba(245, 225, 172, 0.1), 0 14px 24px rgba(0, 0, 0, 0.24);
+}
+
+.SeatBetSpot:hover,
+.SeatBetSpot:focus-visible {
+  color: #fff0bf;
+  outline: none;
+}
+
+.SeatBetSpot:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.SeatBetSpot.IsClaimed::before {
+  border-color: rgba(243, 225, 172, 0.4);
+}
+
+.SeatBetSpot.IsActive::before {
+  box-shadow: 0 0 0 8px rgba(245, 225, 172, 0.12), 0 14px 24px rgba(0, 0, 0, 0.24);
+}
+
+.SeatBetSpot.IsEditor {
+  cursor: grab;
+}
+
+.SeatBetSpot.IsEditor:active {
+  cursor: grabbing;
+}
+
+.SeatBetSpot.IsEditorSelected::before {
+  border-color: rgba(255, 240, 191, 0.96);
+  box-shadow: 0 0 0 10px rgba(245, 225, 172, 0.16), 0 16px 28px rgba(0, 0, 0, 0.26);
+}
+
+.SeatBetSpot.IsOccupied::before {
+  border-color: rgba(143, 215, 244, 0.74);
+  background: rgba(22, 44, 58, 0.96);
+}
+
+.SeatBetSpot.IsOccupied {
+  color: #d7f4ff;
+}
+
+.SeatBetSpot[data-status="pending"]::before {
+  border-color: rgba(243, 225, 172, 0.44);
+}
+
+.SeatBetSpot[data-status="pending"] {
+  color: #fff0bf;
+}
+
+.SeatBetSpot[data-status="win"]::before {
+  border-color: rgba(132, 236, 170, 0.7);
+  background: rgba(3, 30, 18, 0.95);
+}
+
+.SeatBetSpot[data-status="win"] {
+  color: #bff8cc;
+}
+
+.SeatBetSpot[data-status="loss"]::before {
+  border-color: rgba(255, 159, 155, 0.58);
+  background: rgba(32, 10, 10, 0.94);
+}
+
+.SeatBetSpot[data-status="loss"] {
+  color: #ffb7b1;
+}
+
+.SeatBetSpotLabel {
+  position: relative;
+  z-index: 1;
+  max-width: 90%;
+  overflow: hidden;
+  font-size: clamp(0.42rem, 0.46vw, 0.54rem);
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.SeatBetSpotPayout {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 7px);
+  padding: 0.12rem 0.4rem;
+  border: 1px solid rgba(132, 236, 170, 0.56);
+  border-radius: 999px;
+  background: rgba(3, 30, 18, 0.95);
+  color: #bff8cc;
+  font-size: clamp(0.52rem, 0.58vw, 0.62rem);
+  font-weight: 900;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.SeatBetSpotValue {
+  position: relative;
+  z-index: 1;
+  max-width: 90%;
+  overflow: hidden;
+  font-size: clamp(0.42rem, 0.44vw, 0.5rem);
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.SeatSideBets {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 72px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.SeatSideBet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 0.16rem 0.38rem;
+  border: 1px solid rgba(243, 225, 172, 0.26);
+  border-radius: 999px;
+  background: rgba(4, 16, 14, 0.9);
+  color: rgba(247, 243, 230, 0.86);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.SeatSideBet[data-status="win"] {
+  border-color: rgba(132, 236, 170, 0.5);
+  background: rgba(3, 30, 18, 0.95);
+  color: #bff8cc;
+}
+
+.SeatSideBet[data-status="loss"] {
+  border-color: rgba(255, 159, 155, 0.4);
+  background: rgba(32, 10, 10, 0.94);
+  color: #ffb7b1;
+}
+
+.SeatSideBet[data-status="offered"],
+.SeatSideBet[data-status="accepted"] {
+  border-color: rgba(143, 215, 244, 0.42);
+  background: rgba(4, 16, 23, 0.95);
+  color: #d7f4ff;
+}
+
+.SeatSideBet[data-status="declined"] {
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(247, 243, 230, 0.56);
+}
+
+.SeatBet {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.SeatBetSide .SeatBetChip {
+  width: 34px;
+}
+
+.SeatBetSide .SeatBetLabel {
+  font-size: 0.56rem;
+}
+
+.SeatBetSide .SeatBetCount {
+  right: -5px;
+  bottom: -4px;
+  font-size: 0.48rem;
+}
+
+.SeatBetChip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  aspect-ratio: 1;
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: var(--ChipColor, #b64242);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.24);
+  color: white;
+  transform:
+    translate(-50%, -50%)
+    translateX(var(--ChipShift, 0px))
+    translateY(calc(var(--ChipIndex, 0) * -3px));
+}
+
+.SeatBetChip::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 50%;
+}
+
+.SeatBetLabel {
+  position: relative;
+  z-index: 1;
+  font-size: 0.64rem;
+  font-weight: 900;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.46);
+}
+
+.SeatBetCount {
+  position: absolute;
+  right: -6px;
+  bottom: -5px;
+  z-index: 1;
+  padding: 0.08rem 0.18rem;
+  border-radius: 999px;
+  background: rgba(4, 16, 13, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 0.52rem;
+  font-weight: 800;
+}
+
+.HandGroup {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.HandGroupIndicators {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  z-index: 3;
+}
+
+.HandGroupSplit .HandGroupIndicators {
+  bottom: calc(100% + 12px);
+}
+
+.HandGroupTotal,
+.HandGroupDealerResult,
+.HandGroupTurn,
+.HandGroupResult {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.22rem 0.62rem;
+  border-radius: 999px;
+  background: rgba(4, 16, 14, 0.88);
+  border: 1px solid rgba(243, 225, 172, 0.18);
+  white-space: nowrap;
+}
+
+.HandGroupTotal {
+  min-width: 56px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.HandGroupDealerResult {
+  min-width: 96px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.HandGroupTurn {
+  min-width: 108px;
+  color: #fff0bf;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.HandGroupResult {
+  min-width: 92px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.HandGroupResult[data-result="win"],
+.HandGroupResult[data-result="blackjack"] {
+  color: #b9f1cb;
+}
+
+.HandGroupResult[data-result="push"] {
+  color: #f3dd98;
+}
+
+.HandGroupResult[data-result="loss"] {
+  color: #ffaea5;
+}
+
+.HandGroupCards {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.PlayingCard {
+  position: absolute;
+  left: var(--CardLeft);
+  top: var(--CardTop);
+  width: var(--CardWidth);
+  height: var(--CardHeight);
+  z-index: var(--CardZIndex, 1);
+  transform: translate(-50%, -50%) rotate(var(--CardRotation));
+  transform-style: preserve-3d;
+}
+
+.PlayingCardFace {
+  position: absolute;
+  inset: 0;
+  border-radius: 1px;
+  backface-visibility: hidden;
+  overflow: hidden;
+  box-shadow: var(--CardShadow);
+}
+
+.PlayingCardFaceFront {
+  background: #ffffff;
+}
+
+.PlayingCardFaceBack {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 42%),
+    var(--CardBackImage) center / cover no-repeat,
+    linear-gradient(180deg, #f3ebd2 0%, #dfcf9f 100%);
+}
+
+.PlayingCardBackOnly .PlayingCardFaceFront {
+  display: none;
+}
+
+.PlayingCardImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  max-width: none;
+  object-fit: cover;
+  transform: scale(var(--CardImageScale));
+  transform-origin: center center;
+}
+
+.AnimationLayer .PlayingCard {
+  z-index: 60;
+}
+
+.AnimatedCard {
+  position: absolute;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.AnimatedCardFace {
+  width: 100%;
+  height: 100%;
+  border-radius: 1px;
+  box-shadow: var(--CardShadow);
+  overflow: hidden;
+  transform-origin: center center;
+}
+
+.AnimatedCardFaceFront {
+  background: white;
+}
+
+.AnimatedCardFaceBack {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 42%),
+    var(--CardBackImage) center / cover no-repeat,
+    linear-gradient(180deg, #f3ebd2 0%, #dfcf9f 100%);
+}
+
+.AnimatedCardImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  max-width: none;
+  object-fit: cover;
+  transform: scale(var(--CardImageScale));
+  transform-origin: center center;
+}
+
+.TableToolbar {
+  display: none;
+}
+
+.TableToolbarMessage {
+  margin: 0;
+  min-height: 1.4em;
+  max-width: 100%;
+  color: var(--TextSecondary);
+  font-size: 0.96rem;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.BetCluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.TableStageBettingDock {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 18;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(440px, calc(100% - 170px));
+  transform: translateX(-50%);
+}
+
+.TableStageLayoutTools {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.TableToolButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0.42rem 0.8rem;
+  border: 1px solid rgba(243, 225, 172, 0.22);
+  border-radius: 999px;
+  background: rgba(4, 16, 13, 0.84);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.2);
+  color: rgba(247, 243, 230, 0.88);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.TableToolButton:hover,
+.TableToolButton:focus-visible {
+  border-color: rgba(255, 240, 191, 0.64);
+  background: rgba(16, 42, 35, 0.94);
+  color: #fff0bf;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.TableToolButton.IsActive {
+  border-color: rgba(143, 215, 244, 0.74);
+  background: rgba(4, 16, 23, 0.95);
+  color: #d7f4ff;
+}
+
+.TableToolButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.BetTargets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.BetTarget {
+  position: relative;
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid rgba(243, 225, 172, 0.18);
+  border-radius: 8px;
+  background: rgba(8, 20, 18, 0.88);
+  color: rgba(247, 243, 230, 0.68);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.BetTarget:hover,
+.BetTarget:focus-visible {
+  border-color: rgba(243, 225, 172, 0.32);
+  color: #fff5dc;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.BetTarget.IsSelected {
+  border-color: rgba(243, 225, 172, 0.52);
+  background: rgba(31, 52, 46, 0.94);
+  color: #fff5dc;
+}
+
+.BetTarget:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ChipTrayStage {
+  justify-content: center;
+  width: 100%;
+}
+
+.BetOrb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 2px solid rgba(237, 198, 106, 0.94);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, #4d3a24 0%, #23170f 100%);
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.12),
+    0 12px 24px rgba(0, 0, 0, 0.28);
+  color: #fbf2da;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
+  text-transform: uppercase;
+  transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease;
+}
+
+.BetOrb::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 2px solid rgba(255, 229, 156, 0.64);
+  border-radius: 50%;
+}
+
+.BetOrb:hover,
+.BetOrb:focus-visible {
+  filter: brightness(1.06);
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.BetOrb:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  filter: saturate(0.55);
+  transform: none;
+}
+
+.BetOrbPrimary {
+  width: 82px;
+  font-size: 0.94rem;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 36%),
+    linear-gradient(180deg, #efd892 0%, #b38a3c 100%);
+  color: #fff5dc;
+}
+
+.BetOrbPrimary::before {
+  inset: 7px;
+  border-color: rgba(255, 247, 214, 0.72);
+}
+
+.BetOrbPrimary[data-tone="rebet"] {
+  border-color: rgba(128, 224, 255, 0.9);
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, #2fc4ff 0%, #0967ad 100%);
+}
+
+.BetOrbPrimary[data-tone="rebet"]::before {
+  border-color: rgba(213, 248, 255, 0.76);
+}
+
+.DecisionPanel {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: min(400px, calc(100% - 28px));
+  margin: 0;
+  padding: 12px 14px 14px;
+  border: 1px solid rgba(243, 225, 172, 0.14);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(72, 72, 72, 0.92) 0%, rgba(35, 35, 35, 0.96) 100%);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.26);
+  overflow: hidden;
+}
+
+.TableStageDecision {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 18;
+  transform: translateX(-50%);
+}
+
+.DecisionPanel::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 0;
+  height: 22px;
+  border-radius: 0 0 999px 999px;
+  background: radial-gradient(circle at center top, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 72%);
+  opacity: 0.62;
+}
+
+.DecisionPanelTitle {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: rgba(255, 246, 220, 0.96);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.DecisionPanelRow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.InsurancePanel {
+  gap: 10px;
+}
+
+.InsurancePanelCopy {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: rgba(247, 243, 230, 0.72);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.ChipTray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ChipTrayRail {
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.Chip {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 3px dashed rgba(255, 255, 255, 0.38);
+  border-radius: 50%;
+  background: var(--ChipColor, #b64242);
+  box-shadow: var(--ChipShadow);
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 900;
+  transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease;
+}
+
+.Chip::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+}
+
+.Chip:hover,
+.Chip:focus-visible {
+  outline: none;
+  transform: translateY(-3px);
+}
+
+.Chip.IsSelected {
+  border-color: rgba(255, 245, 201, 0.92);
+  box-shadow: var(--ChipShadow);
+  transform: translateY(-3px) scale(1.04);
+}
+
+.Chip.IsSelected:disabled {
+  opacity: 0.64;
+}
+
+.Chip:disabled {
+  opacity: 0.34;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ChipLabel {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.DecisionButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  min-height: 56px;
+  padding: 0.7rem 0.8rem;
+  border: 3px solid rgba(255, 236, 176, 0.72);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.18),
+    0 14px 24px rgba(0, 0, 0, 0.24);
+  color: #fff9ef;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
+  text-transform: uppercase;
+  transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease;
+}
+
+.DecisionButton::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(255, 246, 214, 0.34);
+  border-radius: 14px;
+}
+
+.DecisionButton:hover,
+.DecisionButton:focus-visible {
+  filter: brightness(1.06);
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.DecisionButton:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  filter: saturate(0.52);
+  transform: none;
+}
+
+.DecisionButtonDouble {
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, #ffb46c 0%, #d85924 100%);
+}
+
+.DecisionButtonHit {
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, #8df6be 0%, #1ba77b 100%);
+}
+
+.DecisionButtonStand {
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, #ff9f9b 0%, #e03a4e 100%);
+}
+
+.DecisionButtonSplit {
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 34%),
+    linear-gradient(180deg, #7a7a7a 0%, #3e3e3e 100%);
+}
+
+.DecisionButton.IsHidden {
+  display: none;
+}
+
+.IsHidden {
+  display: none !important;
+}
+
+.TableStage.IsBusy .PacketRight {
+  animation: shoe-rock 0.75s ease-in-out infinite;
+}
+
+.TableStage.IsBusy .PacketLeft {
+  transform: translateY(-2px);
+}
+
+.VisuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes shoe-rock {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .TableStageHud {
+    left: 12px;
+    bottom: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.88fr);
+    align-items: stretch;
+    gap: 6px;
+    width: min(186px, calc(100% - 24px));
+  }
+
+  .TableReadout,
+  .TableReadoutBalance {
+    min-width: 0;
+    padding: 0.36rem 0.46rem;
+    border-radius: 12px;
+  }
+
+  .TableReadoutBalance {
+    grid-row: auto;
+    padding: 0.4rem 0.54rem;
+  }
+
+  .TableReadoutStack {
+    gap: 6px;
+  }
+
+  .TableReadoutLabel {
+    font-size: 0.42rem;
+  }
+
+  .TableReadoutValue {
+    font-size: 0.62rem;
+  }
+
+  .TableReadoutBalance .TableReadoutValue {
+    font-size: 0.88rem;
+  }
+
+  .TableStageBettingDock,
+  .TableStageDecision {
+    bottom: 4px;
+    width: calc(100% - 18px);
+  }
+
+  .TableStageDebug {
+    top: 12px;
+    left: 12px;
+    gap: 1px;
+    max-width: min(240px, calc(100% - 24px));
+  }
+
+  .BetCluster {
+    gap: 10px;
+  }
+
+  .BetTarget {
+    min-height: 32px;
+    font-size: 0.58rem;
+  }
+
+  .ChipTray {
+    gap: 6px;
+  }
+
+  .Chip {
+    width: 34px;
+    font-size: 0.52rem;
+  }
+
+  .BetOrb {
+    width: 48px;
+    font-size: 0.62rem;
+  }
+
+  .BetOrbPrimary {
+    width: 60px;
+    font-size: 0.72rem;
+  }
+
+  .DecisionPanel {
+    padding: 10px 10px 12px;
+    border-radius: 20px;
+  }
+
+  .DecisionPanelRow {
+    gap: 6px;
+  }
+
+  .DecisionButton {
+    min-width: 66px;
+    min-height: 48px;
+    padding: 0.62rem 0.58rem;
+    font-size: 0.68rem;
+  }
+
+  .BlackjackTableRoot {
+    --SeatHitSize: clamp(54px, 7.8vw, 68px);
+    --SeatVisualInset: 8px;
+    --SideBetHitSize: clamp(38px, 5vw, 46px);
+    --SideBetVisualInset: 6px;
+  }
+
+  .SeatBetChip {
+    width: 34px;
+  }
+
+  .SeatBetSpotLabel,
+  .SeatBetSpotValue {
+    font-size: 0.42rem;
+  }
+
+  .SeatBetSpotPayout {
+    font-size: 0.46rem;
+  }
+
+  .SeatBetSide .SeatBetChip {
+    width: 30px;
+  }
+
+  .SeatBetLabel {
+    font-size: 0.54rem;
+  }
+
+  .SeatSideBets {
+    gap: 3px;
+    min-width: 62px;
+  }
+
+  .SeatSideBet {
+    min-width: 46px;
+    padding: 0.14rem 0.28rem;
+    font-size: 0.48rem;
+  }
+
+  .PacketLeft {
+    left: 10%;
+    top: 24%;
+  }
+
+  .PacketRight {
+    right: 9%;
+    top: 12%;
+  }
+
+  .TableDebugLabel {
+    font-size: 0.56rem;
+  }
+
+  .TableDebugValue {
+    font-size: 0.76rem;
+  }
+
+  .TableStageLayoutTools {
+    top: 12px;
+    right: 12px;
+    gap: 6px;
+  }
+
+  .TableToolButton {
+    min-height: 32px;
+    padding: 0.34rem 0.62rem;
+    font-size: 0.58rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .TableStageDebug {
+    top: 10px;
+    left: 10px;
+    max-width: min(220px, calc(100% - 20px));
+  }
+
+  .TableStageHud {
+    width: min(170px, calc(100% - 24px));
+  }
+
+  .BetOrb {
+    width: 50px;
+  }
+
+  .BetOrbPrimary {
+    width: 64px;
+  }
+
+  .TableDebugLine {
+    gap: 6px;
+  }
+}

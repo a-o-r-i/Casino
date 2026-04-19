@@ -1,0 +1,62 @@
+{% extends "Base.html" %}
+
+{% block title %}Blackjack Session | Gambling{% endblock %}
+{% block page_key %}blackjack-session{% endblock %}
+
+{% block content %}
+  <style>
+    .BlackjackSessionPage
+    {
+      width: 100%;
+    }
+
+    .BlackjackSessionPage .BlackjackTableRoot
+    {
+      min-height: calc(100dvh - 108px);
+    }
+
+    .BlackjackSessionPage .TableStage
+    {
+      width: min(96vw, calc(150dvh - 198px), 1380px);
+      margin-top: clamp(-26px, -2.8dvh, -8px);
+    }
+
+    @media (max-width: 760px)
+    {
+      .BlackjackSessionPage .BlackjackTableRoot
+      {
+        min-height: calc(100dvh - 96px);
+      }
+
+      .BlackjackSessionPage .TableStage
+      {
+        width: min(100vw, calc(150dvh - 210px), 1120px);
+        margin-top: 0;
+      }
+    }
+  </style>
+
+  <section class="BlackjackSessionPage" data-route-card>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mx-auto mb-4 w-full max-w-[1100px] px-4 pt-4 md:px-6">
+          {% for category, message in messages %}
+            <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% include "Games/_BlackjackTableStage.html" %}
+    <script data-blackjack-table-config type="application/json">{{ blackjack_table_config | tojson }}</script>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script
+    data-blackjack-module-url="{{ asset_url('js/BlackjackTable.js') }}"
+    src="{{ asset_url('js/BlackjackSession.js') }}"
+  ></script>
+{% endblock %}

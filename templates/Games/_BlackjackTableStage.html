@@ -1,0 +1,75 @@
+<div class="BlackjackTableRoot" data-blackjack-table-root>
+  <section class="TableStage" id="TableStage" aria-label="Blackjack table">
+    <img
+      class="TableStageImage"
+      src="{{ asset_url('img/table.png') }}"
+      alt="Blackjack table illustration"
+    >
+
+    <div class="TableStageOverlay">
+      <div class="HandSlotLayer" id="HandSlotLayer" aria-hidden="true"></div>
+      <div class="Packet PacketLeft" id="LeftPacket" aria-hidden="true">
+        <span class="PacketStack">
+          <span class="PacketLayer"></span>
+          <span class="PacketLayer"></span>
+          <span class="PacketLayer"></span>
+        </span>
+      </div>
+
+      <div class="Packet PacketRight" id="ShoePacket" aria-hidden="true">
+        <span class="PacketStack">
+          <span class="PacketLayer"></span>
+          <span class="PacketLayer"></span>
+          <span class="PacketLayer"></span>
+        </span>
+      </div>
+
+      <div class="DealerHandLayer" id="DealerHandLayer"></div>
+      <div class="PlayerHandsLayer" id="PlayerHandsLayer"></div>
+      <div class="SeatLayer" id="SeatLayer" aria-label="Seats on table"></div>
+      <div class="SideBetSpotLayer" id="SideBetSpotLayer" aria-label="Side bets on table"></div>
+      <div class="SeatBetLayer" id="SeatBetLayer" aria-hidden="true"></div>
+      <div class="AnimationLayer" id="AnimationLayer" aria-hidden="true"></div>
+      <section class="TableStageHud" aria-label="Bankroll and bet summary">
+        <article class="TableReadout TableReadoutBalance">
+          <span class="TableReadoutLabel">Balance</span>
+          <strong class="TableReadoutValue" id="BalanceValue">$1000</strong>
+        </article>
+
+        <div class="TableReadoutStack">
+          <article class="TableReadout">
+            <span class="TableReadoutLabel">Total Bet</span>
+            <strong class="TableReadoutValue" id="PendingBetValue">$0</strong>
+          </article>
+        </div>
+      </section>
+      <section class="TableStageBettingDock" id="BettingControls" aria-label="Betting controls">
+        <div class="ChipTray ChipTrayStage" id="ChipTray" aria-label="Betting chips"></div>
+        <div class="BetCluster" aria-label="Bet controls">
+          <button class="BetOrb BetOrbSide" id="UndoChipButton" type="button">Undo</button>
+          <button class="BetOrb BetOrbPrimary" id="PlaceBetButton" type="button">Ready</button>
+          <button class="BetOrb BetOrbSide" id="DoubleBetButton" type="button">x2</button>
+        </div>
+      </section>
+      <section class="DecisionPanel InsurancePanel TableStageDecision" id="InsurancePanel" aria-label="Insurance decision">
+        <p class="DecisionPanelTitle">Insurance</p>
+        <p class="InsurancePanelCopy" id="InsuranceCopy"></p>
+        <div class="DecisionPanelRow">
+          <button class="DecisionButton DecisionButtonStand" id="InsuranceDecline" type="button">No Thanks</button>
+          <button class="DecisionButton DecisionButtonDouble" id="InsuranceAccept" type="button">Insure</button>
+        </div>
+      </section>
+      <section class="DecisionPanel TableStageDecision" id="DecisionPanel" aria-label="Player actions">
+        <p class="DecisionPanelTitle">Make Your Decision</p>
+        <div class="DecisionPanelRow">
+          <button class="DecisionButton DecisionButtonDouble" id="ActionDouble" type="button">Double</button>
+          <button class="DecisionButton DecisionButtonHit" id="ActionHit" type="button">Hit</button>
+          <button class="DecisionButton DecisionButtonStand" id="ActionStand" type="button">Stand</button>
+          <button class="DecisionButton DecisionButtonSplit" id="ActionSplit" type="button">Split</button>
+        </div>
+      </section>
+
+      <p class="VisuallyHidden" id="TableStatus" aria-live="polite"></p>
+    </div>
+  </section>
+</div>

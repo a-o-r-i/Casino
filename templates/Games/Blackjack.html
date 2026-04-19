@@ -1,0 +1,144 @@
+{% extends "Base.html" %}
+
+{% block title %}Blackjack | Gambling{% endblock %}
+{% block page_key %}blackjack-lobby{% endblock %}
+
+{% block content %}
+  <section class="mx-auto w-full max-w-[900px] px-4 py-8 md:px-6">
+    <div class="mb-8 flex items-center gap-4">
+      <a
+        class="inline-flex items-center gap-1.5 text-sm font-medium text-white/38 transition hover:text-white"
+        href="{{ url_for('play') }}"
+      >
+        <svg viewBox="0 0 20 20" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+          <path d="m11.5 5.5-4.5 4.5 4.5 4.5"></path>
+        </svg>
+        <span>Home</span>
+      </a>
+      <h1 class="text-4xl font-semibold tracking-[-0.05em] text-white">Sessions</h1>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <section
+      class="rounded-3xl border border-white/8 bg-black/35 p-6"
+      data-blackjack-lobby
+      data-route-card
+      data-state-url="{{ url_for('blackjack_lobby_state') }}"
+    >
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-sm text-white/45" data-session-summary>
+          {{ session_summary.open }} open
+          {% if session_summary.live %}&middot; {{ session_summary.live }} live{% endif %}
+        </p>
+        <button
+          class="inline-flex items-center justify-center text-[2rem] leading-none font-light text-white/75 transition hover:text-white"
+          data-open-modal="blackjack-create"
+          type="button"
+        >
+          +
+        </button>
+      </div>
+
+      <div class="mt-6 space-y-3" data-session-list>
+        {% if blackjack_sessions %}
+          {% for blackjack_session in blackjack_sessions %}
+            <a
+              class="flex flex-col gap-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.05] md:flex-row md:items-center md:justify-between"
+              data-route-card
+              href="{{ blackjack_session.view_url }}"
+            >
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="truncate text-lg font-semibold text-white">{{ blackjack_session.table_name }}</p>
+                  <span class="inline-flex rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.12em] {% if blackjack_session.status == 'live' %}bg-emerald-400/12 text-emerald-200{% else %}bg-white/[0.04] text-white/55{% endif %}">
+                    {{ blackjack_session.status }}
+                  </span>
+                </div>
+                <p class="mt-1 text-sm text-white/55">
+                  {{ blackjack_session.creator_name }} &middot; {{ blackjack_session.seat_count }} seats
+                </p>
+                <p class="mt-1 text-sm text-white/40">
+                  {{ blackjack_session.occupancy_text }}
+                  {% if blackjack_session.viewer_count %}&middot; {{ blackjack_session.viewer_count }} watching{% endif %}
+                </p>
+              </div>
+
+              <span class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10">
+                Open session
+              </span>
+            </a>
+          {% endfor %}
+        {% else %}
+          <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
+            No sessions yet. Create the first one.
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  </section>
+
+  <script data-blackjack-lobby-state type="application/json">{{ blackjack_lobby_state | tojson }}</script>
+{% endblock %}
+
+{% block overlays %}
+  <div
+    class="pointer-events-none fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pb-8 pt-28 opacity-0 md:pt-42"
+    data-modal="blackjack-create"
+  >
+    <div
+      class="absolute inset-0 bg-black/0"
+      data-close-modal
+      data-modal-overlay
+    ></div>
+
+    <section
+      class="relative z-10 w-full max-w-[420px] translate-y-6 scale-[0.96] rounded-3xl border border-white/8 bg-[#0b0c10] p-6 opacity-0 shadow-[0_28px_80px_rgba(0,0,0,0.48)]"
+      data-modal-panel
+    >
+      <div>
+        <h2 class="mt-2 text-2xl font-semibold tracking-[-0.05em] text-white">New blackjack session</h2>
+      </div>
+
+      <form class="mt-6 space-y-5" method="post" action="{{ url_for('create_blackjack_session') }}">
+        <div class="space-y-2">
+          <label class="block text-sm font-medium text-white/80" for="table_name">
+            Table name
+          </label>
+          <input
+            class="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+            id="table_name"
+            maxlength="48"
+            name="table_name"
+            placeholder="{{ discord_user.display_name }}'s table"
+            type="text"
+          >
+          <p class="text-xs leading-6 text-white/38">
+            Leave it empty to use the default table name.
+          </p>
+        </div>
+
+          <button
+          class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+          type="submit"
+        >
+          Create session
+        </button>
+      </form>
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ asset_url('js/BlackjackLobby.js') }}"></script>
+{% endblock %}
