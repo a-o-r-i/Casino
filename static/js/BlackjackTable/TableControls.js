@@ -18,6 +18,8 @@ export function BindControls({
   if (!SeatLayer || !SideBetSpotLayer || !ChipTray || !UndoChipButton || !PlaceBetButton || !DoubleBetButton || !InsuranceAcceptButton || !InsuranceDeclineButton || !HitButton || !StandButton || !DoubleButton || !SplitButton) {
     return () => {};
   }
+  const IsSideBetEditorActive = Handlers.isSideBetEditorActive || Handlers.IsSideBetEditorActive;
+  const OnAction = Handlers.onAction || Handlers.OnAction;
   const HandleSeatClick = Event => {
     const SeatButton = Event.target.closest("[data-seat-id]");
     if (!SeatButton) {
@@ -30,7 +32,7 @@ export function BindControls({
     if (!SideBetSpot) {
       return;
     }
-    if (Handlers.IsSideBetEditorActive?.()) {
+    if (IsSideBetEditorActive?.()) {
       Handlers.onSideBetEditorSpot?.(SideBetSpot.dataset.betSpotSeatId, SideBetSpot.dataset.betType || "main");
       return;
     }
@@ -59,16 +61,16 @@ export function BindControls({
     Handlers.onInsuranceDecision?.(false);
   };
   const HandleHitClick = () => {
-    Handlers.OnAction?.("hit");
+    OnAction?.("hit");
   };
   const HandleStandClick = () => {
-    Handlers.OnAction?.("stand");
+    OnAction?.("stand");
   };
   const HandleDoubleClick = () => {
-    Handlers.OnAction?.("double");
+    OnAction?.("double");
   };
   const HandleSplitClick = () => {
-    Handlers.OnAction?.("split");
+    OnAction?.("split");
   };
   SeatLayer.addEventListener("click", HandleSeatClick);
   SideBetSpotLayer.addEventListener("click", HandleSideBetSpotClick);

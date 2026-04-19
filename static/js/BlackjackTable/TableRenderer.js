@@ -775,6 +775,7 @@ export function CreateTableRenderer({
   BuildStaticControls();
   return {
     elements: Elements,
+    Render,
     render: Render,
     GetHandSlotLayout() {
       return CloneHandSlots(CurrentHandSlotLayout);
