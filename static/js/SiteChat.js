@@ -922,6 +922,32 @@
         return EscapeHtml((User?.display_name || User?.username || "?").slice(0, 1));
     };
 
+    const BuildAuthorBadgeMarkup = (User) =>
+    {
+        const RewardLevel = Number.parseInt(User?.reward_level || "0", 10);
+        const RewardBadge = String(User?.reward_badge || "").trim();
+
+        if (!RewardBadge || RewardLevel <= 0 || RewardBadge.toLowerCase() === "unranked")
+        {
+            return "";
+        }
+
+        const BadgeTone = RewardLevel >= 10
+            ? "whale"
+            : (RewardLevel >= 6 ? "high" : "low");
+
+        return `
+            <span
+              data-chat-author-badge
+              data-tone="${BadgeTone}"
+              aria-label="${EscapeHtml(`Level ${RewardLevel} - ${RewardBadge}`)}"
+              title="${EscapeHtml(`Level ${RewardLevel} - ${RewardBadge}`)}"
+            >
+              ${EscapeHtml(RewardBadge)}
+            </span>
+        `;
+    };
+
     const HandleAvatarError = (EventValue) =>
     {
         const Image = EventValue.target;
@@ -1071,21 +1097,35 @@
             PreviousMessage.author?.id &&
             PreviousMessage.author.id === Message.author?.id,
         );
+        const IsFollowedBySameAuthor = Boolean(
+            Message.__nextAuthorId &&
+            Message.__nextAuthorId === Message.author?.id,
+        );
         const IsReplyToCurrentUser = Message.reply_to?.author?.id === CurrentUserId;
         const BubbleContentMarkup = `${BuildReplyContextMarkup(Message.reply_to)}${BuildHighlightedBodyMarkup(Message)}`;
+        const AuthorBadgeMarkup = BuildAuthorBadgeMarkup(Message.author);
         const AuthorMarkup = IsGrouped
             ? ""
             : `
                 <div data-chat-author data-user-id="${EscapeHtml(Message.author.id)}">
                   <span data-chat-avatar>${BuildAvatarMarkup(Message.author)}</span>
-                  <span>
-                    <span data-chat-author-name>${EscapeHtml(Message.author.display_name)}</span>
-                    <span data-chat-author-time data-chat-message-time data-timestamp="${EscapeHtml(Message.timestamp)}">
-                      ${EscapeHtml(FormatRelativeTime(Message.timestamp))}
+                  <span data-chat-author-copy>
+                    <span data-chat-author-heading>
+                      <span data-chat-author-name>${EscapeHtml(Message.author.display_name)}</span>
+                      ${AuthorBadgeMarkup}
                     </span>
                   </span>
                 </div>
             `;
+        const TimestampMarkup = IsFollowedBySameAuthor
+            ? ""
+            : `
+            <div data-chat-message-meta>
+              <span data-chat-author-time data-chat-message-time data-timestamp="${EscapeHtml(Message.timestamp)}">
+                ${EscapeHtml(FormatRelativeTime(Message.timestamp))}
+              </span>
+            </div>
+        `;
 
         return `
             <div data-chat-row data-grouped="${IsGrouped ? "true" : "false"}" data-self="${Message.is_self ? "true" : "false"}">
@@ -1112,6 +1152,7 @@
                 ${AuthorMarkup}
                 <div data-chat-bubble>${BubbleContentMarkup}</div>
                 ${RenderSessionShareMarkup(Message.session_share)}
+                ${TimestampMarkup}
               </article>
             </div>
         `;
@@ -1283,6 +1324,10 @@
         });
 
         NextMessages.sort((Left, Right) => Left.id - Right.id);
+        NextMessages.forEach((Message, Index) =>
+        {
+            Message.__nextAuthorId = NextMessages[Index + 1]?.author?.id || "";
+        });
         CurrentMessages = NextMessages.slice(-80);
         return DidChange;
     };

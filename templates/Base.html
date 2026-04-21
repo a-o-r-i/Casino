@@ -419,20 +419,30 @@
 
       [data-chat-subtitle]
       {
-        min-height: 1rem;
-        margin-top: 0.22rem;
+        min-height: 0;
+        max-height: 0;
+        padding: 0 1rem;
         color: rgba(255, 255, 255, 0.46);
         font-size: 0.72rem;
         line-height: 1.35;
         opacity: 0;
+        overflow: hidden;
         transform: translateY(-2px);
-        transition: opacity 160ms ease, transform 160ms ease;
+        transition:
+          opacity 160ms ease,
+          transform 160ms ease,
+          max-height 160ms ease,
+          padding-top 160ms ease,
+          padding-bottom 160ms ease;
       }
 
       [data-chat-subtitle][data-active="true"]
       {
+        max-height: 2.2rem;
+        padding-top: 0;
+        padding-bottom: 1.08rem;
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(-4px);
       }
 
       [data-chat-status-pill]
@@ -671,10 +681,20 @@
         user-select: none;
       }
 
-      [data-chat-row][data-self="true"] [data-chat-author]
+      [data-chat-author-copy]
       {
-        justify-content: flex-end;
-        width: 100%;
+        display: flex;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      [data-chat-author-heading]
+      {
+        display: inline-flex;
+        min-width: 0;
+        align-items: center;
+        gap: 0.38rem;
+        flex-wrap: wrap;
       }
 
       [data-chat-avatar]
@@ -713,10 +733,61 @@
         font-weight: 600;
       }
 
+      [data-chat-author-badge]
+      {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        padding: 0.18rem 0.42rem;
+        border: 1px solid rgba(110, 231, 183, 0.2);
+        border-radius: 9999px;
+        background: rgba(52, 211, 153, 0.1);
+        color: #d1fae5;
+        font-size: 0.62rem;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      [data-chat-author-badge][data-tone="low"]
+      {
+        border-color: rgba(255, 255, 255, 0.11);
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      [data-chat-author-badge][data-tone="high"]
+      {
+        border-color: rgba(96, 165, 250, 0.24);
+        background: rgba(59, 130, 246, 0.12);
+        color: #dbeafe;
+      }
+
+      [data-chat-author-badge][data-tone="whale"]
+      {
+        border-color: rgba(248, 113, 113, 0.24);
+        background: rgba(239, 68, 68, 0.12);
+        color: #fecaca;
+      }
+
       [data-chat-author-time]
       {
         color: rgba(255, 255, 255, 0.38);
         font-size: 0.72rem;
+      }
+
+      [data-chat-message-meta]
+      {
+        display: flex;
+        width: fit-content;
+        max-width: 100%;
+        margin-top: 0.36rem;
+        padding: 0 0.18rem;
+      }
+
+      [data-chat-row][data-self="true"] [data-chat-message-meta]
+      {
+        margin-left: auto;
       }
 
       [data-chat-bubble]
@@ -1919,7 +1990,6 @@
           <header data-chat-header>
             <div data-chat-header-copy>
               <strong data-chat-title>Chat</strong>
-              <div aria-atomic="true" aria-live="polite" data-active="false" data-chat-subtitle></div>
             </div>
             <div data-chat-header-actions>
               <div data-chat-status-pill>
@@ -1938,6 +2008,8 @@
           <div data-chat-messages>
             <div data-chat-empty>No messages yet.</div>
           </div>
+
+          <div aria-atomic="true" aria-live="polite" data-active="false" data-chat-subtitle></div>
 
           <div data-chat-error></div>
 
