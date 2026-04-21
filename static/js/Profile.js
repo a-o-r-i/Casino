@@ -251,7 +251,10 @@
             return;
         }
 
+        const HasMessage = Boolean(Message);
+
         MessageNode.textContent = Message || "";
+        MessageNode.classList.toggle("hidden", !HasMessage);
         MessageNode.classList.toggle("text-red-300", Tone === "error");
         MessageNode.classList.toggle("text-emerald-300", Tone === "success");
         MessageNode.classList.toggle("text-white/46", Tone === "neutral");
