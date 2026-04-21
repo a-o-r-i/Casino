@@ -497,17 +497,23 @@
         let PopoutAnimationToken = 0;
         let SelectedPopout = null;
         let ShouldAnimatePopoutOpen = false;
+        let IsResetSubmitting = false;
         let RenderedCoinflipSignature = "";
         let RenderedDiceSignature = "";
         let RenderedPlayersSignature = "";
         const PlayerCountNode = PanelRoot.querySelector("[data-admin-player-count]");
         const PlayerFilterInput = PanelRoot.querySelector("[data-admin-player-filter]");
+        const ResetStateButton = PanelRoot.querySelector("[data-admin-reset-state]");
         const PlayersNode = PanelRoot.querySelector("[data-admin-players]");
         const SessionTotalCountNode = PanelRoot.querySelector("[data-admin-session-total-count]");
         const CoinflipCountNode = PanelRoot.querySelector("[data-admin-session-count=\"coinflip\"]");
         const DiceCountNode = PanelRoot.querySelector("[data-admin-session-count=\"dice\"]");
         const CoinflipSessionsNode = PanelRoot.querySelector("[data-admin-coinflip-sessions]");
         const DiceSessionsNode = PanelRoot.querySelector("[data-admin-dice-sessions]");
+        const ResetModalNode = document.querySelector("[data-modal=\"admin-reset-state\"]");
+        const ResetModalForm = ResetModalNode?.querySelector("[data-admin-reset-form]");
+        const ResetModalInput = ResetModalNode?.querySelector("[data-admin-reset-input]");
+        const ResetModalConfirmButton = ResetModalNode?.querySelector("[data-admin-reset-confirm]");
         const StateUrl = PanelRoot.dataset.stateUrl || "";
 
         try
@@ -619,6 +625,65 @@
         const GetSessions = () =>
         {
             return Array.isArray(LastState?.sessions) ? LastState.sessions : [];
+        };
+
+        const GetResetModalController = () =>
+        {
+            return window.GamblingApp?.getModalController?.("admin-reset-state") || null;
+        };
+
+        const GetResetRequestUrl = () =>
+        {
+            if (ResetModalForm instanceof HTMLFormElement && ResetModalForm.dataset.url)
+            {
+                return ResetModalForm.dataset.url;
+            }
+
+            if (ResetStateButton instanceof HTMLElement && ResetStateButton.dataset.url)
+            {
+                return ResetStateButton.dataset.url;
+            }
+
+            return "";
+        };
+
+        const IsResetModalOpen = () =>
+        {
+            if (ResetModalNode instanceof HTMLElement)
+            {
+                const ModalState = ResetModalNode.dataset.modalState || "";
+
+                if (ModalState === "open" || ModalState === "opening" || ModalState === "closing")
+                {
+                    return true;
+                }
+            }
+
+            return Boolean(GetResetModalController()?.isOpen());
+        };
+
+        const GetResetConfirmationValue = () =>
+        {
+            if (!(ResetModalInput instanceof HTMLInputElement))
+            {
+                return "";
+            }
+
+            return ResetModalInput.value.trim().toUpperCase();
+        };
+
+        const SyncResetModalState = () =>
+        {
+            if (ResetModalInput instanceof HTMLInputElement)
+            {
+                ResetModalInput.disabled = IsResetSubmitting;
+            }
+
+            if (ResetModalConfirmButton instanceof HTMLButtonElement)
+            {
+                ResetModalConfirmButton.disabled = IsResetSubmitting || GetResetConfirmationValue() !== "RESET";
+                ResetModalConfirmButton.textContent = IsResetSubmitting ? "Resetting..." : "Confirm";
+            }
         };
 
         const GetFilteredPlayers = () =>
@@ -1248,6 +1313,77 @@
             }
         };
 
+        const SubmitStateReset = async () =>
+        {
+            const RequestUrl = GetResetRequestUrl();
+
+            if (!RequestUrl || IsResetSubmitting)
+            {
+                return;
+            }
+
+            if (GetResetConfirmationValue() !== "RESET")
+            {
+                ShowToast("Reset canceled", 'Type "RESET" exactly to confirm.', "info");
+                SyncResetModalState();
+                return;
+            }
+
+            IsResetSubmitting = true;
+            SyncResetModalState();
+
+            try
+            {
+                const Response = await fetch(RequestUrl, {
+                    headers: {
+                        Accept: "application/json",
+                    },
+                    method: "POST",
+                });
+                const Payload = await Response.json().catch(() => ({}));
+
+                if (Response.status === 401 || Response.status === 404)
+                {
+                    HandleUnauthorized();
+                    return;
+                }
+
+                if (!Response.ok)
+                {
+                    throw new Error(Payload?.error || `Request failed with ${Response.status}.`);
+                }
+
+                if (Payload.panel)
+                {
+                    LastState = Payload.panel;
+                }
+
+                if (ResetModalForm instanceof HTMLFormElement)
+                {
+                    ResetModalForm.reset();
+                }
+
+                SyncResetModalState();
+                await GetResetModalController()?.close?.();
+                ClosePopout({
+                    animate: false,
+                });
+                Render({
+                    forcePopoutRefresh: true,
+                });
+                ShowToast("Database reset", "Runtime data was cleared and restarted.", "success");
+            }
+            catch (ErrorValue)
+            {
+                ShowToast("Panel error", ErrorValue.message || "Could not reset the database.", "error");
+            }
+            finally
+            {
+                IsResetSubmitting = false;
+                SyncResetModalState();
+            }
+        };
+
         const OpenPlayerPopout = (UserId, Options = {}) =>
         {
             SelectedPopout = BuildSelection("player", UserId);
@@ -1303,6 +1439,31 @@
                 return;
             }
 
+            const ResetButton = Target.closest("[data-admin-reset-state]");
+
+            if (ResetButton && PanelRoot.contains(ResetButton))
+            {
+                ClosePopout({
+                    animate: false,
+                });
+                IsResetSubmitting = false;
+
+                if (ResetModalForm instanceof HTMLFormElement)
+                {
+                    ResetModalForm.reset();
+                }
+
+                SyncResetModalState();
+                window.requestAnimationFrame(() =>
+                {
+                    window.requestAnimationFrame(() =>
+                    {
+                        ResetModalInput?.focus();
+                    });
+                });
+                return;
+            }
+
             const SettingsButton = Target.closest("[data-admin-row-settings]");
 
             if (SettingsButton)
@@ -1341,6 +1502,11 @@
 
         const HandleDocumentPointerDown = (EventValue) =>
         {
+            if (IsResetModalOpen())
+            {
+                return;
+            }
+
             const Target = EventValue.target instanceof Element ? EventValue.target : null;
 
             if (!Target)
@@ -1364,6 +1530,11 @@
 
         const HandleDocumentContextMenu = (EventValue) =>
         {
+            if (IsResetModalOpen())
+            {
+                return;
+            }
+
             const Target = EventValue.target instanceof Element ? EventValue.target : null;
 
             if (!Target)
@@ -1434,9 +1605,35 @@
             }
         };
 
+        const HandleResetModalInput = () =>
+        {
+            SyncResetModalState();
+        };
+
+        const HandleResetModalSubmit = (EventValue) =>
+        {
+            const Form = EventValue.target instanceof HTMLFormElement ? EventValue.target : null;
+
+            if (!Form || Form !== ResetModalForm)
+            {
+                return;
+            }
+
+            EventValue.preventDefault();
+            SubmitStateReset().catch((ErrorValue) =>
+            {
+                console.error(ErrorValue);
+            });
+        };
+
         const HandleKeyDown = (EventValue) =>
         {
             if (EventValue.key !== "Escape")
+            {
+                return;
+            }
+
+            if (IsResetModalOpen())
             {
                 return;
             }
@@ -1463,6 +1660,8 @@
         PanelRoot.addEventListener("contextmenu", HandleRowContextMenu);
         PopoutNode.addEventListener("submit", HandlePopoutSubmit);
         PopoutNode.addEventListener("click", HandlePopoutClick);
+        ResetModalInput?.addEventListener("input", HandleResetModalInput);
+        ResetModalForm?.addEventListener("submit", HandleResetModalSubmit);
         document.addEventListener("pointerdown", HandleDocumentPointerDown);
         document.addEventListener("contextmenu", HandleDocumentContextMenu);
         document.addEventListener("keydown", HandleKeyDown);
@@ -1483,11 +1682,19 @@
             }
 
             HidePopoutNow();
+            if (ResetModalForm instanceof HTMLFormElement)
+            {
+                ResetModalForm.reset();
+            }
+
+            GetResetModalController()?.hideImmediately?.();
             PlayerFilterInput?.removeEventListener("input", HandleFilterInput);
             PanelRoot.removeEventListener("click", HandlePanelClick);
             PanelRoot.removeEventListener("contextmenu", HandleRowContextMenu);
             PopoutNode.removeEventListener("submit", HandlePopoutSubmit);
             PopoutNode.removeEventListener("click", HandlePopoutClick);
+            ResetModalInput?.removeEventListener("input", HandleResetModalInput);
+            ResetModalForm?.removeEventListener("submit", HandleResetModalSubmit);
             document.removeEventListener("pointerdown", HandleDocumentPointerDown);
             document.removeEventListener("contextmenu", HandleDocumentContextMenu);
             document.removeEventListener("keydown", HandleKeyDown);

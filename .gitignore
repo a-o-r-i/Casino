@@ -1,5 +1,8 @@
 .env
 __pycache__/
 .chrome-router-test/
+data/app-state.json
+data/app-state.json.tmp
+data/flask-secret.key
 data/devserver.err
 data/devserver.out

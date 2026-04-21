@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import time
+from datetime import timedelta
 from difflib import SequenceMatcher
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import wraps
@@ -126,6 +127,53 @@ BLACKJACK_CARD_COLORS = {
     "HEARTS": "red",
     "DIAMONDS": "red",
 }
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+PERSISTENT_STATE_SCHEMA_VERSION = 1
+
+
+def env_flag(name, default=False):
+    raw_value = os.environ.get(name)
+
+    if raw_value is None:
+        return default
+
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name, default):
+    raw_value = os.environ.get(name)
+
+    if raw_value is None:
+        return default
+
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return default
+
+
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def resolve_runtime_path(env_name, default_path):
+    raw_path = os.environ.get(env_name)
+
+    if not raw_path:
+        return default_path
+
+    path = Path(raw_path).expanduser()
+    return path if path.is_absolute() else (BASE_DIR / path)
+
+
+APP_STATE_PATH = resolve_runtime_path("APP_STATE_PATH", DATA_DIR / "app-state.json")
+FLASK_SECRET_KEY_PATH = resolve_runtime_path("FLASK_SECRET_KEY_PATH", DATA_DIR / "flask-secret.key")
+SESSION_LIFETIME_DAYS = max(env_int("SESSION_LIFETIME_DAYS", 30), 1)
+SESSION_COOKIE_SECURE = env_flag("SESSION_COOKIE_SECURE", default=False)
 
 USER_BALANCES = {}
 USER_PROFILES = {
@@ -221,13 +269,182 @@ REWARD_TIERS = [
     {"badge": "Legend", "level": 9, "threshold_cents": 2_500_000},
     {"badge": "Whale", "level": 10, "threshold_cents": 5_000_000},
 ]
+LAST_PERSISTED_STATE_DIGEST = None
+
+
+def resolve_flask_secret_key():
+    configured_secret = os.environ.get("FLASK_SECRET_KEY")
+
+    if configured_secret:
+        return configured_secret
+
+    try:
+        if FLASK_SECRET_KEY_PATH.exists():
+            persisted_secret = FLASK_SECRET_KEY_PATH.read_text(encoding="utf-8").strip()
+
+            if persisted_secret:
+                return persisted_secret
+
+        FLASK_SECRET_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        generated_secret = secrets.token_hex(32)
+        FLASK_SECRET_KEY_PATH.write_text(f"{generated_secret}\n", encoding="utf-8")
+        return generated_secret
+    except OSError:
+        return secrets.token_hex(32)
+
+
+def build_persistent_state_payload():
+    return {
+        "schema_version": PERSISTENT_STATE_SCHEMA_VERSION,
+        "next_chat_message_id": NEXT_CHAT_MESSAGE_ID,
+        "next_notification_id": NEXT_NOTIFICATION_ID,
+        "user_balances": USER_BALANCES,
+        "user_profiles": USER_PROFILES,
+        "coinflip_sessions": COINFLIP_SESSIONS,
+        "dice_sessions": DICE_SESSIONS,
+        "blackjack_sessions": BLACKJACK_SESSIONS,
+        "user_stats": USER_STATS,
+        "user_bet_history": USER_BET_HISTORY,
+        "app_notifications": APP_NOTIFICATIONS,
+        "chat_messages": CHAT_MESSAGES,
+        "user_rewards": USER_REWARDS,
+        "user_auth_versions": USER_AUTH_VERSIONS,
+    }
+
+
+def build_persistent_state_digest(payload_json):
+    return hashlib.sha1(payload_json.encode("utf-8")).hexdigest()
+
+
+def build_persistent_state_json():
+    return json.dumps(build_persistent_state_payload(), indent=2, sort_keys=True)
+
+
+def load_persistent_state():
+    global NEXT_CHAT_MESSAGE_ID
+    global NEXT_NOTIFICATION_ID
+    global LAST_PERSISTED_STATE_DIGEST
+
+    if not APP_STATE_PATH.exists():
+        LAST_PERSISTED_STATE_DIGEST = build_persistent_state_digest(build_persistent_state_json())
+        return
+
+    try:
+        payload = json.loads(APP_STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        LAST_PERSISTED_STATE_DIGEST = build_persistent_state_digest(build_persistent_state_json())
+        return
+
+    if not isinstance(payload, dict):
+        LAST_PERSISTED_STATE_DIGEST = build_persistent_state_digest(build_persistent_state_json())
+        return
+
+    user_balances = payload.get("user_balances")
+    user_profiles = payload.get("user_profiles")
+    coinflip_sessions = payload.get("coinflip_sessions")
+    dice_sessions = payload.get("dice_sessions")
+    blackjack_sessions = payload.get("blackjack_sessions")
+    user_stats = payload.get("user_stats")
+    user_bet_history = payload.get("user_bet_history")
+    app_notifications = payload.get("app_notifications")
+    chat_messages = payload.get("chat_messages")
+    user_rewards = payload.get("user_rewards")
+    user_auth_versions = payload.get("user_auth_versions")
+
+    with STATE_LOCK:
+        USER_BALANCES.clear()
+        if isinstance(user_balances, dict):
+            USER_BALANCES.update(user_balances)
+
+        USER_PROFILES.clear()
+        USER_PROFILES[BOT_PROFILE["id"]] = BOT_PROFILE.copy()
+        if isinstance(user_profiles, dict):
+            for user_id, user_profile in user_profiles.items():
+                if isinstance(user_profile, dict):
+                    USER_PROFILES[str(user_id)] = user_profile
+        USER_PROFILES[BOT_PROFILE["id"]] = BOT_PROFILE.copy()
+
+        COINFLIP_SESSIONS.clear()
+        if isinstance(coinflip_sessions, dict):
+            COINFLIP_SESSIONS.update(coinflip_sessions)
+
+        DICE_SESSIONS.clear()
+        if isinstance(dice_sessions, dict):
+            DICE_SESSIONS.update(dice_sessions)
+
+        BLACKJACK_SESSIONS.clear()
+        if isinstance(blackjack_sessions, dict):
+            BLACKJACK_SESSIONS.update(blackjack_sessions)
+
+        USER_STATS.clear()
+        if isinstance(user_stats, dict):
+            USER_STATS.update(user_stats)
+
+        USER_BET_HISTORY.clear()
+        if isinstance(user_bet_history, dict):
+            USER_BET_HISTORY.update(user_bet_history)
+
+        APP_NOTIFICATIONS[:] = app_notifications[-MAX_APP_NOTIFICATIONS:] if isinstance(app_notifications, list) else []
+        CHAT_MESSAGES[:] = chat_messages[-MAX_CHAT_MESSAGES:] if isinstance(chat_messages, list) else []
+
+        USER_REWARDS.clear()
+        if isinstance(user_rewards, dict):
+            USER_REWARDS.update(user_rewards)
+
+        USER_AUTH_VERSIONS.clear()
+        if isinstance(user_auth_versions, dict):
+            USER_AUTH_VERSIONS.update(user_auth_versions)
+
+        latest_notification_id = max(
+            (safe_int(notification.get("id"), 0) for notification in APP_NOTIFICATIONS if isinstance(notification, dict)),
+            default=0,
+        )
+        latest_chat_message_id = max(
+            (safe_int(chat_message.get("id"), 0) for chat_message in CHAT_MESSAGES if isinstance(chat_message, dict)),
+            default=0,
+        )
+
+        NEXT_NOTIFICATION_ID = max(
+            latest_notification_id + 1,
+            safe_int(payload.get("next_notification_id"), 1),
+        )
+        NEXT_CHAT_MESSAGE_ID = max(
+            latest_chat_message_id + 1,
+            safe_int(payload.get("next_chat_message_id"), 1),
+        )
+
+        LAST_PERSISTED_STATE_DIGEST = build_persistent_state_digest(build_persistent_state_json())
+
+
+def persist_app_state_if_changed():
+    global LAST_PERSISTED_STATE_DIGEST
+
+    with STATE_LOCK:
+        payload_json = build_persistent_state_json()
+        payload_digest = build_persistent_state_digest(payload_json)
+
+        if payload_digest == LAST_PERSISTED_STATE_DIGEST:
+            return False
+
+        APP_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = APP_STATE_PATH.parent / f"{APP_STATE_PATH.name}.tmp"
+        temp_path.write_text(f"{payload_json}\n", encoding="utf-8")
+        temp_path.replace(APP_STATE_PATH)
+        LAST_PERSISTED_STATE_DIGEST = payload_digest
+        return True
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
-BASE_DIR = Path(__file__).resolve().parent
-HAND_SLOT_LAYOUT_PATH = BASE_DIR / "data" / "hand-slot-layout.json"
-BLACKJACK_SIDE_BET_LAYOUT_PATH = BASE_DIR / "data" / "blackjack-side-bet-layout.json"
+app.secret_key = resolve_flask_secret_key()
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(days=SESSION_LIFETIME_DAYS),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
+    SESSION_REFRESH_EACH_REQUEST=True,
+)
+HAND_SLOT_LAYOUT_PATH = DATA_DIR / "hand-slot-layout.json"
+BLACKJACK_SIDE_BET_LAYOUT_PATH = DATA_DIR / "blackjack-side-bet-layout.json"
 HAND_SLOT_SEAT_IDS = tuple(f"seat-{index}" for index in range(1, BLACKJACK_SESSION_MAX_SEATS + 1))
 DEFAULT_STACK_OFFSET_X = 2.85
 DEFAULT_STACK_OFFSET_Y = 1.17
@@ -247,6 +464,7 @@ DEFAULT_BLACKJACK_SIDE_BET_LAYOUT = (
     {"seatId": "seat-5", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 72.4, "y": 51.4},
     {"seatId": "seat-5", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 79.2, "y": 50.5},
 )
+load_persistent_state()
 
 
 def format_money(amount_cents):
@@ -453,6 +671,7 @@ def get_current_user():
     current_user = normalize_user_profile(session.get("discord_user"))
 
     if current_user:
+        session.permanent = True
         current_auth_version = USER_AUTH_VERSIONS.setdefault(current_user["id"], 1)
         session_auth_version = session.get("auth_version")
 
@@ -1693,6 +1912,18 @@ def build_chat_typing_users(current_user_id=None):
     ]
 
 
+def build_chat_message_author_payload(user_profile):
+    author_snapshot = make_user_snapshot(user_profile)
+
+    if author_snapshot["id"] == BOT_PROFILE["id"]:
+        return author_snapshot
+
+    reward_state = build_reward_state(author_snapshot["id"])
+    author_snapshot["reward_badge"] = reward_state["badge"]
+    author_snapshot["reward_level"] = reward_state["level"]
+    return author_snapshot
+
+
 def serialize_chat_message(chat_message, current_user_id):
     author_profile = USER_PROFILES.get(chat_message["author_id"])
 
@@ -1710,7 +1941,7 @@ def serialize_chat_message(chat_message, current_user_id):
     session_share = chat_message.get("session_share")
 
     return {
-        "author": make_user_snapshot(author_profile),
+        "author": build_chat_message_author_payload(author_profile),
         "body": chat_message["body"],
         "id": chat_message["id"],
         "is_current_user_mentioned": any(
@@ -5606,6 +5837,54 @@ def admin_cancel_session(actor_user, game, session_id):
     }
 
 
+def admin_reset_runtime_state(actor_user):
+    global NEXT_CHAT_MESSAGE_ID
+    global NEXT_NOTIFICATION_ID
+    global LAST_PERSISTED_STATE_DIGEST
+
+    actor_snapshot = make_user_snapshot(actor_user)
+    actor_auth_version = max(safe_int(session.get("auth_version"), 1), 1)
+    current_time = time.time()
+
+    USER_BALANCES.clear()
+    USER_PROFILES.clear()
+    USER_PROFILES[BOT_PROFILE["id"]] = BOT_PROFILE.copy()
+    COINFLIP_SESSIONS.clear()
+    DICE_SESSIONS.clear()
+    BLACKJACK_SESSIONS.clear()
+    CANCELED_COINFLIP_SESSIONS.clear()
+    CANCELED_DICE_SESSIONS.clear()
+    CANCELED_BLACKJACK_SESSIONS.clear()
+    USER_STATS.clear()
+    USER_BET_HISTORY.clear()
+    APP_NOTIFICATIONS.clear()
+    CHAT_MESSAGES.clear()
+    CHAT_MENTION_NOTIFICATION_HISTORY.clear()
+    USER_PRESENCE.clear()
+    USER_REWARDS.clear()
+    USER_AUTH_VERSIONS.clear()
+    NEXT_NOTIFICATION_ID = 1
+    NEXT_CHAT_MESSAGE_ID = 1
+    LAST_PERSISTED_STATE_DIGEST = None
+
+    ensure_user_balance(actor_snapshot)
+    USER_AUTH_VERSIONS[actor_snapshot["id"]] = actor_auth_version
+    assign_session_auth_version(actor_snapshot)
+    USER_PRESENCE[actor_snapshot["id"]] = {
+        "connected_at": current_time,
+        "current_path": url_for("admin_panel") if has_request_context() else "/panel",
+        "is_online": True,
+        "last_seen": current_time,
+        "typing_until": 0,
+    }
+    persist_app_state_if_changed()
+
+    return {
+        "reset_at": current_time,
+        "reset_by_user_id": actor_snapshot["id"],
+    }
+
+
 def get_coinflip_session_or_404(session_id):
     coinflip_session = COINFLIP_SESSIONS.get(session_id)
 
@@ -5645,6 +5924,19 @@ def load_current_user():
         if request_should_touch_presence():
             with STATE_LOCK:
                 touch_user_presence(g.discord_user, request.path)
+
+
+@app.after_request
+def persist_runtime_state(response):
+    if request.endpoint == "static" or response.status_code >= 500:
+        return response
+
+    try:
+        persist_app_state_if_changed()
+    except OSError:
+        app.logger.exception("Could not persist app state to %s", APP_STATE_PATH)
+
+    return response
 
 
 @app.context_processor
@@ -5977,6 +6269,22 @@ def admin_panel_state():
         return ("", 204)
 
     return jsonify(payload)
+
+
+@app.route("/panel/reset-state", methods=["POST"])
+@admin_panel_required
+def admin_reset_state():
+    try:
+        with STATE_LOCK:
+            result = admin_reset_runtime_state(get_current_user())
+            panel_payload = build_admin_panel_payload(get_current_user_id())
+    except OSError:
+        return jsonify({"error": "Could not reset the persisted state."}), 500
+
+    return jsonify({
+        **result,
+        "panel": panel_payload,
+    })
 
 
 @app.route("/panel/users/<user_id>/balance", methods=["POST"])
@@ -7045,6 +7353,7 @@ def discord_callback():
         return redirect(url_for("play"))
 
     session["discord_user"] = build_discord_user_profile(discord_user)
+    session.permanent = True
     assign_session_auth_version(session["discord_user"])
     ensure_user_balance(session["discord_user"])
 
