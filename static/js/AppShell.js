@@ -11,7 +11,20 @@
     const MasterSoundVolumeStorageKey = "gambling.soundVolume";
     const CountdownAutoplayStorageKey = "gambling.countdownAutoplayOnLoad";
     const PendingToastStorageKey = "gambling.pendingToast";
+    const NotificationBurstSpacingMs = 110;
     const NotificationHiddenPollMultiplier = 2.4;
+    const MaxNotificationToastsPerBurst = 3;
+    const SyncedBodyDatasetKeys = [
+        "chatCurrentUserId",
+        "chatMentionQueryUrl",
+        "chatSendUrl",
+        "chatStateUrl",
+        "chatUserProfileUrl",
+        "notificationCursor",
+        "notificationStateUrl",
+        "presenceHeartbeatUrl",
+        "presenceOfflineUrl",
+    ];
     let ActivePageCleanup = null;
     let DeferredBalanceDisplay = "";
     let GlobalBalanceHoldCount = 0;
@@ -164,11 +177,50 @@
         return `${Number.isInteger(NumberValue) ? NumberValue.toFixed(0) : NumberValue.toFixed(1)}%`;
     };
 
+    const GetRewardBadgeTone = (Profile) =>
+    {
+        const ExplicitTone = String(Profile?.reward_badge_tone || "").trim().toLowerCase();
+
+        if (ExplicitTone)
+        {
+            return ExplicitTone;
+        }
+
+        const RewardLevel = Number.parseInt(Profile?.reward_level || "0", 10);
+
+        if (RewardLevel >= 21)
+        {
+            return "diamond";
+        }
+
+        if (RewardLevel >= 16)
+        {
+            return "platinum";
+        }
+
+        if (RewardLevel >= 11)
+        {
+            return "gold";
+        }
+
+        if (RewardLevel >= 6)
+        {
+            return "silver";
+        }
+
+        if (RewardLevel >= 1)
+        {
+            return "bronze";
+        }
+
+        return "unranked";
+    };
+
     const BuildUserProfileCardMarkup = (Profile, Options = {}) =>
     {
         const IncludeTipControls = Options.includeTipControls === true;
         const BadgeMarkup = Profile.reward_badge
-            ? `<div data-chat-profile-badge>Lvl ${EscapeHtml(Profile.reward_level)} &middot; ${EscapeHtml(Profile.reward_badge)}</div>`
+            ? `<div data-chat-profile-badge data-tone="${EscapeHtml(GetRewardBadgeTone(Profile))}">Lvl ${EscapeHtml(Profile.reward_level)} &middot; ${EscapeHtml(Profile.reward_badge)}</div>`
             : "";
         const StatusLabel = Profile.is_online ? "Online" : "Offline";
         const ActivityLabel = Profile.is_online
@@ -294,6 +346,17 @@
 
         DeferredBalanceDisplay = "";
         ApplyGlobalBalanceDisplay(Value);
+    };
+
+    const SetRewardMenuBadge = (CountValue) =>
+    {
+        const Count = Math.max(Number.parseInt(CountValue || "0", 10) || 0, 0);
+
+        document.querySelectorAll("[data-reward-menu-badge]").forEach((Badge) =>
+        {
+            Badge.textContent = `+${Count}`;
+            Badge.hidden = Count <= 0;
+        });
     };
 
     const HoldGlobalBalanceDisplay = () =>
@@ -1501,6 +1564,36 @@
         return Toast;
     };
 
+    const ShowNotificationBurst = (Payload) =>
+    {
+        const Notifications = Array.isArray(Payload?.notifications) ? Payload.notifications : [];
+        const SkippedCount = Math.max(Number.parseInt(Payload?.skipped_count || "0", 10) || 0, 0);
+        const VisibleNotifications = Notifications.slice(-MaxNotificationToastsPerBurst);
+        const CondensedCount = SkippedCount + Math.max(Notifications.length - VisibleNotifications.length, 0);
+        let DelayMs = 0;
+
+        if (CondensedCount > 0)
+        {
+            const NotificationLabel = CondensedCount === 1 ? "notification was" : "notifications were";
+
+            ShowToast({
+                durationMs: 5200,
+                message: `${CondensedCount} older ${NotificationLabel} condensed to keep the page responsive.`,
+                title: "Notifications condensed",
+                tone: "info",
+            });
+            DelayMs += NotificationBurstSpacingMs;
+        }
+
+        VisibleNotifications.forEach((Notification, Index) =>
+        {
+            window.setTimeout(() =>
+            {
+                ShowToast(Notification);
+            }, DelayMs + (Index * NotificationBurstSpacingMs));
+        });
+    };
+
     const SetPendingToast = (ToastValue) =>
     {
         try
@@ -1649,18 +1742,17 @@
 
             LastNotificationPayload = Payload;
             SetGlobalBalanceDisplay(Payload.current_balance_display);
+            SetRewardMenuBadge(Payload.pending_level_reward_count);
 
             if (Number.isFinite(Payload.latest_id))
             {
                 NotificationCursor = Math.max(Payload.latest_id, 0);
+                document.body.dataset.notificationCursor = String(NotificationCursor);
             }
 
             if (Array.isArray(Payload.notifications))
             {
-                Payload.notifications.forEach((Notification) =>
-                {
-                    ShowToast(Notification);
-                });
+                ShowNotificationBurst(Payload);
             }
 
             ScheduleNotificationPoll();
@@ -1892,6 +1984,22 @@
         Modal.classList.remove("pointer-events-none");
     };
 
+    const SyncModalScrollLock = () =>
+    {
+        const HasBlockingModal = Array.from(document.querySelectorAll("[data-modal]")).some((Modal) =>
+        {
+            if (!(Modal instanceof HTMLElement) || Modal.dataset.modalPassthrough === "true")
+            {
+                return false;
+            }
+
+            return !Modal.classList.contains("pointer-events-none");
+        });
+
+        document.documentElement.style.overflow = HasBlockingModal ? "hidden" : "";
+        document.body.style.overflow = HasBlockingModal ? "hidden" : "";
+    };
+
     const ApplyClosedModalStyles = (Modal, Overlay, Panel) =>
     {
         Modal.classList.add("opacity-0");
@@ -1902,6 +2010,7 @@
         Panel.style.opacity = "0";
         Panel.style.filter = "blur(10px)";
         Panel.style.transform = "translateY(20px) scale(0.84)";
+        SyncModalScrollLock();
     };
 
     const ApplyOpenModalStyles = (Modal, Overlay, Panel) =>
@@ -1914,6 +2023,7 @@
         Panel.style.opacity = "1";
         Panel.style.filter = "blur(0px)";
         Panel.style.transform = "translateY(0px) scale(1)";
+        SyncModalScrollLock();
     };
 
     const BuildModalController = (Modal) =>
@@ -1951,6 +2061,7 @@
             CancelAnimations(Panel);
             Modal.classList.remove("opacity-0");
             SetModalPointerState(Modal, true);
+            SyncModalScrollLock();
             Modal.dataset.modalState = "opening";
             Modal.style.opacity = "1";
             Overlay.style.backgroundColor = "rgba(0, 0, 0, 0)";
@@ -2055,6 +2166,7 @@
             CancelAnimations(Panel);
             Modal.classList.remove("opacity-0");
             SetModalPointerState(Modal, true);
+            SyncModalScrollLock();
             Modal.dataset.modalState = "closing";
             Modal.style.opacity = "1";
             Overlay.style.backgroundColor = "rgba(0, 0, 0, 0.65)";
@@ -2163,6 +2275,28 @@
         {
             GetModalController(Modal);
         });
+    };
+
+    const SyncBodyDataset = (Snapshot) =>
+    {
+        const BodyDataset = Snapshot?.bodyDataset || {};
+
+        SyncedBodyDatasetKeys.forEach((DatasetKey) =>
+        {
+            if (Object.prototype.hasOwnProperty.call(BodyDataset, DatasetKey))
+            {
+                document.body.dataset[DatasetKey] = BodyDataset[DatasetKey];
+                return;
+            }
+
+            delete document.body.dataset[DatasetKey];
+        });
+
+        const SnapshotCursor = ParseNotificationCursor(document.body.dataset.notificationCursor);
+        NotificationCursor = NotificationCursor === null
+            ? SnapshotCursor
+            : Math.max(NotificationCursor, SnapshotCursor);
+        document.body.dataset.notificationCursor = String(NotificationCursor);
     };
 
     const SyncOverlayShell = (Snapshot) =>
@@ -2374,6 +2508,7 @@
         return {
             authLocked: IsAuthLocked(DocumentValue),
             authShell: AuthShell,
+            bodyDataset: { ...DocumentValue.body.dataset },
             header: Header,
             main: Main,
             overlayShell: OverlayShell,
@@ -2477,6 +2612,7 @@
             SyncAuthShell(snapshot, {
                 animate: snapshot.authLocked && !WasAuthLocked,
             });
+            SyncBodyDataset(snapshot);
             document.title = snapshot.title;
             CommitHistory(historyMode, FinalUrl);
 
@@ -2790,6 +2926,82 @@
         StartNotificationPolling();
     };
 
+    const CloseProfileMenus = () =>
+    {
+        document.querySelectorAll("[data-profile-menu]").forEach((Menu) =>
+        {
+            delete Menu.dataset.profileMenuOpen;
+        });
+    };
+
+    const OpenProfileMenu = (Menu) =>
+    {
+        if (!Menu)
+        {
+            return;
+        }
+
+        document.querySelectorAll("[data-profile-menu]").forEach((OtherMenu) =>
+        {
+            if (OtherMenu !== Menu)
+            {
+                delete OtherMenu.dataset.profileMenuOpen;
+            }
+        });
+        Menu.dataset.profileMenuOpen = "true";
+    };
+
+    const HandleProfileMenuPointerOver = (EventValue) =>
+    {
+        const Target = EventValue.target instanceof Element ? EventValue.target : null;
+        const Menu = Target?.closest("[data-profile-menu]");
+
+        if (!Menu)
+        {
+            return;
+        }
+
+        OpenProfileMenu(Menu);
+    };
+
+    const HandleProfileMenuFocusIn = (EventValue) =>
+    {
+        const Target = EventValue.target instanceof Element ? EventValue.target : null;
+        const Menu = Target?.closest("[data-profile-menu]");
+
+        if (Menu)
+        {
+            OpenProfileMenu(Menu);
+        }
+    };
+
+    const HandleProfileMenuDocumentClick = (EventValue) =>
+    {
+        const Target = EventValue.target instanceof Element ? EventValue.target : null;
+        const Trigger = Target?.closest("[data-profile-menu-trigger]");
+
+        if (Trigger)
+        {
+            const Menu = Trigger.closest("[data-profile-menu]");
+
+            if (Menu)
+            {
+                EventValue.preventDefault();
+                EventValue.stopPropagation();
+                OpenProfileMenu(Menu);
+            }
+
+            return;
+        }
+
+        if (Target?.closest("[data-profile-menu]"))
+        {
+            return;
+        }
+
+        CloseProfileMenus();
+    };
+
     MasterSoundVolume = ReadStoredMasterSoundVolume();
     RegisterBuiltInSounds();
 
@@ -2819,15 +3031,19 @@
         registerPageInitializer: RegisterPageInitializer,
         setMasterSoundVolume: SetMasterSoundVolume,
         setGlobalBalanceDisplay: SetGlobalBalanceDisplay,
+        setRewardMenuBadge: SetRewardMenuBadge,
         showToast: ShowToast,
         stopSound: StopSound,
     };
 
     document.addEventListener("click", HandleModalTriggerClick);
     document.addEventListener("click", HandleDocumentClick);
+    document.addEventListener("click", HandleProfileMenuDocumentClick);
+    document.addEventListener("focusin", HandleProfileMenuFocusIn);
     document.addEventListener("input", HandleSoundControlInput);
     document.addEventListener("change", HandleSoundControlInput);
     document.addEventListener("keydown", HandleDocumentKeyDown);
+    document.addEventListener("pointerover", HandleProfileMenuPointerOver);
     document.addEventListener("submit", HandleDocumentSubmit);
     document.addEventListener("visibilitychange", HandleVisibilityChange);
     window.addEventListener("popstate", HandlePopState);

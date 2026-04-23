@@ -186,8 +186,20 @@
 
         const RakebackCooldownSeconds = GetRakebackCooldownSeconds(Rewards);
         const CanClaimRakeback = Rewards.claimable_rakeback_cents > 0 && RakebackCooldownSeconds <= 0;
+        const RewardBadgeNode = document.querySelector("[data-reward-badge]");
 
         SetText("[data-reward-badge]", Rewards.badge);
+        if (RewardBadgeNode)
+        {
+            if (Rewards.badge_tone)
+            {
+                RewardBadgeNode.dataset.tone = Rewards.badge_tone;
+            }
+            else
+            {
+                delete RewardBadgeNode.dataset.tone;
+            }
+        }
         SetText("[data-reward-level]", `Level ${Rewards.level} / ${Rewards.max_level}`);
         SetText("[data-reward-points]", Rewards.reward_points_display);
         SetText("[data-reward-visits]", String(Rewards.site_visits));
@@ -197,7 +209,7 @@
             "[data-rakeback-cooldown]",
             RakebackCooldownSeconds > 0
                 ? `Claim again in ${FormatDuration(RakebackCooldownSeconds)}.`
-                : "Claim every 5 minutes.",
+                : "Claim every hour.",
         );
         SetText("[data-rakeback-earned]", Rewards.earned_rakeback_display);
         SetText("[data-rakeback-claimed]", Rewards.claimed_rakeback_display);
@@ -499,6 +511,135 @@
         }
     };
 
+    const GetRankGuideScrollAmount = (Viewport) =>
+    {
+        const Cards = [...Viewport.querySelectorAll("[data-rank-guide-card]")];
+
+        if (Cards.length >= 2)
+        {
+            return Math.max(Cards[1].offsetLeft - Cards[0].offsetLeft, 220);
+        }
+
+        return Math.max(Math.round(Viewport.clientWidth * 0.82), 220);
+    };
+
+    const InitializeRankGuideScroller = (scope = document) =>
+    {
+        const Viewport = scope.querySelector("[data-rank-guide-viewport]");
+
+        if (!Viewport || Viewport.dataset.initialized === "true")
+        {
+            return;
+        }
+
+        Viewport.dataset.initialized = "true";
+
+        let ActivePointerId = null;
+        let DragStartX = 0;
+        let DragStartScrollLeft = 0;
+        let DragDistance = 0;
+        let SuppressClick = false;
+
+        const StopDragging = () =>
+        {
+            if (ActivePointerId === null)
+            {
+                return;
+            }
+
+            if (Math.abs(DragDistance) > 6)
+            {
+                SuppressClick = true;
+                window.setTimeout(() =>
+                {
+                    SuppressClick = false;
+                }, 120);
+            }
+
+            if (Viewport.hasPointerCapture?.(ActivePointerId))
+            {
+                Viewport.releasePointerCapture(ActivePointerId);
+            }
+
+            delete Viewport.dataset.dragging;
+            ActivePointerId = null;
+            DragDistance = 0;
+        };
+
+        Viewport.addEventListener("pointerdown", (EventValue) =>
+        {
+            if (EventValue.pointerType === "mouse" && EventValue.button !== 0)
+            {
+                return;
+            }
+
+            if (EventValue.target.closest("[data-rank-guide-arrow], [data-rank-guide-tier]"))
+            {
+                return;
+            }
+
+            ActivePointerId = EventValue.pointerId;
+            DragStartX = EventValue.clientX;
+            DragStartScrollLeft = Viewport.scrollLeft;
+            DragDistance = 0;
+            Viewport.dataset.dragging = "true";
+            Viewport.setPointerCapture?.(EventValue.pointerId);
+        });
+
+        Viewport.addEventListener("pointermove", (EventValue) =>
+        {
+            if (ActivePointerId !== EventValue.pointerId)
+            {
+                return;
+            }
+
+            DragDistance = EventValue.clientX - DragStartX;
+            Viewport.scrollLeft = DragStartScrollLeft - DragDistance;
+
+            if (EventValue.cancelable)
+            {
+                EventValue.preventDefault();
+            }
+        });
+
+        Viewport.addEventListener("pointerup", StopDragging);
+        Viewport.addEventListener("pointercancel", StopDragging);
+        Viewport.addEventListener("pointerleave", (EventValue) =>
+        {
+            if (EventValue.pointerType !== "mouse")
+            {
+                return;
+            }
+
+            StopDragging();
+        });
+
+        Viewport.addEventListener("click", (EventValue) =>
+        {
+            if (!SuppressClick)
+            {
+                return;
+            }
+
+            EventValue.preventDefault();
+            EventValue.stopPropagation();
+        }, true);
+
+        scope.querySelectorAll("[data-rank-guide-arrow]").forEach((Button) =>
+        {
+            Button.addEventListener("click", () =>
+            {
+                const Direction = Number(Button.dataset.direction || "1");
+                const ScrollAmount = GetRankGuideScrollAmount(Viewport) * Direction;
+
+                Viewport.scrollBy({
+                    behavior: "smooth",
+                    left: ScrollAmount,
+                });
+            });
+        });
+    };
+
     const InitializeProfilePage = ({ main }) =>
     {
         const StateNode = main.querySelector("[data-profile-state]");
@@ -521,6 +662,8 @@
                 console.error(ErrorValue);
             }
         }
+
+        InitializeRankGuideScroller(document);
 
         InitialBets.sort((a, b) => b.timestamp - a.timestamp);
 

@@ -118,6 +118,35 @@
         background: #fff !important;
       }
 
+      [data-modal-panel] a[data-auth-help-link]
+      {
+        display: block !important;
+        width: fit-content !important;
+        height: auto !important;
+        margin: 0.9rem auto 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        color: rgba(255, 255, 255, 0.36) !important;
+        font-size: 0.9rem !important;
+        font-weight: 500 !important;
+        line-height: 1.5rem !important;
+        text-align: center !important;
+        text-decoration: underline !important;
+        text-decoration-color: rgba(255, 255, 255, 0.22) !important;
+        text-underline-offset: 0.22rem !important;
+        transition:
+          color 160ms ease,
+          text-decoration-color 160ms ease !important;
+      }
+
+      [data-modal-panel] a[data-auth-help-link][data-auth-help-link]:hover:not(:disabled)
+      {
+        background: transparent !important;
+        color: #fff !important;
+        text-decoration-color: rgba(255, 255, 255, 0.76) !important;
+      }
+
       body[data-route-busy="true"] [data-app-main]
       {
         pointer-events: none;
@@ -739,35 +768,80 @@
         align-items: center;
         max-width: 100%;
         padding: 0.18rem 0.42rem;
-        border: 1px solid rgba(110, 231, 183, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 9999px;
-        background: rgba(52, 211, 153, 0.1);
-        color: #d1fae5;
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.72);
         font-size: 0.62rem;
         font-weight: 700;
         line-height: 1;
         white-space: nowrap;
       }
 
-      [data-chat-author-badge][data-tone="low"]
+      [data-reward-badge],
+      [data-chat-profile-badge],
+      [data-chat-author-badge]
+      {
+        transition:
+          border-color 180ms ease,
+          background-color 180ms ease,
+          color 180ms ease,
+          box-shadow 180ms ease;
+      }
+
+      [data-reward-badge][data-tone="unranked"],
+      [data-chat-profile-badge][data-tone="unranked"],
+      [data-chat-author-badge][data-tone="unranked"]
       {
         border-color: rgba(255, 255, 255, 0.11);
         background: rgba(255, 255, 255, 0.05);
         color: rgba(255, 255, 255, 0.72);
       }
 
-      [data-chat-author-badge][data-tone="high"]
+      [data-reward-badge][data-tone="bronze"],
+      [data-chat-profile-badge][data-tone="bronze"],
+      [data-chat-author-badge][data-tone="bronze"]
       {
-        border-color: rgba(96, 165, 250, 0.24);
-        background: rgba(59, 130, 246, 0.12);
-        color: #dbeafe;
+        border-color: rgba(191, 123, 82, 0.34);
+        background: rgba(120, 68, 37, 0.18);
+        color: #f7d2bc;
       }
 
-      [data-chat-author-badge][data-tone="whale"]
+      [data-reward-badge][data-tone="silver"],
+      [data-chat-profile-badge][data-tone="silver"],
+      [data-chat-author-badge][data-tone="silver"]
       {
-        border-color: rgba(248, 113, 113, 0.24);
-        background: rgba(239, 68, 68, 0.12);
-        color: #fecaca;
+        border-color: rgba(184, 198, 214, 0.32);
+        background: rgba(121, 133, 151, 0.16);
+        color: #eef4fb;
+      }
+
+      [data-reward-badge][data-tone="gold"],
+      [data-chat-profile-badge][data-tone="gold"],
+      [data-chat-author-badge][data-tone="gold"]
+      {
+        border-color: rgba(237, 196, 79, 0.34);
+        background: rgba(154, 110, 11, 0.2);
+        color: #fde8a2;
+      }
+
+      [data-reward-badge][data-tone="platinum"],
+      [data-chat-profile-badge][data-tone="platinum"],
+      [data-chat-author-badge][data-tone="platinum"]
+      {
+        border-color: rgba(118, 225, 223, 0.34);
+        background: rgba(17, 102, 113, 0.2);
+        color: #d7ffff;
+      }
+
+      [data-reward-badge][data-tone="diamond"],
+      [data-chat-profile-badge][data-tone="diamond"],
+      [data-chat-author-badge][data-tone="diamond"]
+      {
+        border-color: rgba(126, 171, 255, 0.38);
+        background: rgba(44, 85, 175, 0.18);
+        color: #dbe7ff;
+        box-shadow: 0 0 0 1px rgba(126, 171, 255, 0.08);
       }
 
       [data-chat-author-time]
@@ -1699,6 +1773,26 @@
         text-align: right;
       }
 
+      [data-profile-menu-panel]
+      {
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+        transform-origin: top right;
+        transition:
+          opacity 150ms ease,
+          transform 170ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      [data-profile-menu]:hover [data-profile-menu-panel],
+      [data-profile-menu]:focus-within [data-profile-menu-panel],
+      [data-profile-menu][data-profile-menu-open="true"] [data-profile-menu-panel]
+      {
+        pointer-events: auto;
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+
       @media (max-width: 640px)
       {
         [data-site-chat-shell]
@@ -1756,7 +1850,7 @@
     data-sfx-coinflip-full-url="{{ asset_url('assets/sfx/FlippingCoin.mp3') }}"
     data-sfx-coinflip-spin-url="{{ asset_url('assets/sfx/Flipping.mp3') }}"
     data-sfx-coinflip-reveal-url="{{ asset_url('assets/sfx/FlippedCoin.mp3') }}"
-    {% if not is_authenticated %}data-auth-locked="true"{% endif %}
+    {% if not is_authenticated and auth_modal_locked | default(true) %}data-auth-locked="true"{% endif %}
   >
     <div
       aria-hidden="true"
@@ -1767,7 +1861,7 @@
       class="pointer-events-none fixed inset-0 -z-10 opacity-30 [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_38px,rgba(255,255,255,0.018)_38px,rgba(255,255,255,0.018)_39px)]"
     ></div>
 
-    <header data-app-header class="relative z-10 px-4 pt-6 md:px-6">
+    <header data-app-header class="relative z-40 px-4 pt-6 md:px-6">
       <nav
         class="mx-auto flex w-full max-w-[940px] items-center justify-between gap-3 rounded-[28px] border border-white/8 bg-black/80 px-4 py-3 shadow-[0_22px_60px_rgba(0,0,0,0.34)] md:gap-6 md:px-5"
         aria-label="Primary"
@@ -1812,28 +1906,81 @@
             <div class="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-right">
               <p class="text-sm font-semibold text-white" data-balance-display>{{ current_balance_display }}</p>
             </div>
-            <a
-              class="flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-2 text-white transition hover:bg-white/10 md:gap-3 md:px-3 md:py-2"
-              href="{{ url_for('profile') }}"
-              aria-label="Profile"
-            >
-              {% if discord_user.avatar_url %}
-                <img
-                  alt="{{ discord_user.display_name }}"
-                  class="h-9 w-9 rounded-full object-cover"
-                  data-fallback-src="{{ discord_user.avatar_static_url or discord_user.avatar_url }}"
-                  onerror="if (this.dataset.fallbackSrc && this.currentSrc !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
-                  src="{{ discord_user.avatar_static_url or discord_user.avatar_url }}"
-                >
-              {% else %}
-                <span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-sm font-semibold uppercase text-white">
-                  {{ discord_user.display_name[0] }}
+            <div class="relative z-50" data-profile-menu>
+              <button
+                class="flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-2 text-white transition hover:bg-white/10 md:gap-3 md:px-3 md:py-2"
+                aria-label="Profile"
+                data-profile-menu-trigger
+                type="button"
+              >
+                {% if discord_user.avatar_url %}
+                  <img
+                    alt="{{ discord_user.display_name }}"
+                    class="h-9 w-9 rounded-full object-cover"
+                    data-fallback-src="{{ discord_user.avatar_static_url or discord_user.avatar_url }}"
+                    onerror="if (this.dataset.fallbackSrc && this.currentSrc !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
+                    src="{{ discord_user.avatar_static_url or discord_user.avatar_url }}"
+                  >
+                {% else %}
+                  <span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-sm font-semibold uppercase text-white">
+                    {{ discord_user.display_name[0] }}
+                  </span>
+                {% endif %}
+                <span class="hidden max-w-[140px] truncate text-sm font-medium text-white md:inline">
+                  {{ discord_user.display_name }}
                 </span>
-              {% endif %}
-              <span class="hidden max-w-[140px] truncate text-sm font-medium text-white md:inline">
-                {{ discord_user.display_name }}
-              </span>
-            </a>
+              </button>
+
+              <div class="absolute left-1/2 top-full z-50 w-32 -translate-x-1/2 pt-2" data-profile-menu-panel>
+                <div class="space-y-0.5 rounded-[8px] border border-white/8 bg-black/90 p-1 shadow-[0_18px_58px_rgba(0,0,0,0.48)]">
+                  <a
+                    class="flex h-8 items-center gap-2 rounded-[8px] px-2 text-xs font-medium transition {% if active_page == 'profile' %}bg-white/[0.05] text-white{% else %}text-white/54 hover:bg-white/[0.04] hover:text-white/88{% endif %}"
+                    data-full-reload="true"
+                    href="{{ url_for('profile') }}"
+                  >
+                    <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+                      <path d="M20 21a8 8 0 0 0-16 0"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    Profile
+                  </a>
+                  <a
+                    class="flex h-8 items-center justify-between gap-2 rounded-[8px] px-2 text-xs font-medium transition {% if active_page == 'rewards' %}bg-white/[0.05] text-white{% else %}text-white/54 hover:bg-white/[0.04] hover:text-white/88{% endif %}"
+                    data-full-reload="true"
+                    href="{{ url_for('rewards_page') }}"
+                  >
+                    <span class="flex min-w-0 items-center gap-2">
+                      <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+                        <path d="M20 12v10H4V12"></path>
+                        <path d="M2 7h20v5H2z"></path>
+                        <path d="M12 22V7"></path>
+                        <path d="M12 7H7.5a2.5 2.5 0 1 1 2.1-3.85L12 7Z"></path>
+                        <path d="M12 7h4.5a2.5 2.5 0 1 0-2.1-3.85L12 7Z"></path>
+                      </svg>
+                      <span class="truncate">Rewards</span>
+                    </span>
+                    <span
+                      class="inline-block h-[17px] min-w-[17px] shrink-0 rounded-full bg-red-500 px-[5px] text-center text-[10px] font-semibold leading-[17px] text-white shadow-[0_0_6px_rgba(239,68,68,0.24)]"
+                      data-reward-menu-badge
+                      {% if pending_level_reward_count | int <= 0 %}hidden{% endif %}
+                    >
+                      +{{ pending_level_reward_count }}
+                    </span>
+                  </a>
+                  <a
+                    class="flex h-8 items-center gap-2 rounded-[8px] px-2 text-xs font-medium transition {% if active_page == 'settings' %}bg-white/[0.05] text-white{% else %}text-white/54 hover:bg-white/[0.04] hover:text-white/88{% endif %}"
+                    data-full-reload="true"
+                    href="{{ url_for('settings_page') }}"
+                  >
+                    <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+                      <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
+                      <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21a2 2 0 1 1-4 0v-.09a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-1.65-1.09H3a2 2 0 1 1 0-4h.09A1.8 1.8 0 0 0 4.74 8.8a1.8 1.8 0 0 0-.36-1.98l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.8 1.8 0 0 0 1.98.36A1.8 1.8 0 0 0 10.28 2.7V2a2 2 0 1 1 4 0v.09a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.09H21a2 2 0 1 1 0 4h-.09A1.8 1.8 0 0 0 19.4 15Z"></path>
+                    </svg>
+                    Settings
+                  </a>
+                </div>
+              </div>
+            </div>
           {% else %}
             <a
               class="inline-flex h-9 w-9 items-center justify-center rounded-xl text-white/55 transition hover:bg-white/5 hover:text-white/85"
@@ -1976,7 +2123,14 @@
               </div>
             {% endif %}
 
-            <p class="mt-8 border-t border-white/8 pt-5 text-center text-[15px] leading-8 text-white/42">
+            <a
+              data-auth-help-link
+              href="{{ url_for('why_discord') }}"
+            >
+              Why do you need to connect with Discord?
+            </a>
+
+            <p class="mt-4 leading-4 border-t border-white/8 pt-5 text-center text-[15px] text-white/42">
               By signing in you agree to our terms. Only users with a valid license will have full
               access.
             </p>
@@ -2068,9 +2222,9 @@
       </section>
     {% endif %}
     <div aria-atomic="false" aria-live="polite" data-app-toast-shell></div>
-    <script src="{{ url_for('static', filename='js/AppShell.js') }}"></script>
+    <script src="{{ asset_url('js/AppShell.js') }}"></script>
     {% if is_authenticated %}
-      <script src="{{ url_for('static', filename='js/SiteChat.js') }}"></script>
+      <script src="{{ asset_url('js/SiteChat.js') }}"></script>
     {% endif %}
     {% if client_lockdown_enabled %}
       <script>

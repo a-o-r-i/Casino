@@ -29,21 +29,9 @@ function GetRelativeRect(Node, StageRect) {
     height: Rect.height
   };
 }
-function DecomposeAmount(Amount) {
-  let Remaining = Math.max(0, Math.round(Amount));
-  const Chips = [];
-  [...CHIP_VALUES].sort((Left, Right) => Right - Left).forEach(Value => {
-    if (!Remaining || Remaining < Value) {
-      return;
-    }
-    const Count = Math.floor(Remaining / Value);
-    Remaining -= Count * Value;
-    Chips.push({
-      value: Value,
-      count: Count
-    });
-  });
-  return Chips;
+function GetDisplayChipValue(Amount) {
+  const NormalizedAmount = Math.max(0, Number(Amount) || 0);
+  return [...CHIP_VALUES].sort((Left, Right) => Right - Left).find(Value => NormalizedAmount >= Value) || CHIP_VALUES[0];
 }
 function CompareSeatHands(Left, Right) {
   return (Left.seatLayoutIndex ?? 0) - (Right.seatLayoutIndex ?? 0);
@@ -476,29 +464,21 @@ export function CreateTableRenderer({
         if (!Anchor) {
           return "";
         }
-        const ChipParts = DecomposeAmount(Amount);
-        const Chips = ChipParts.map(({
-          value: Value,
-          count: Count
-        }, Index) => {
-          const ChipColor = CHIP_STYLES[Value];
-          const StackShift = (Index - (ChipParts.length - 1) / 2) * 10;
-          const DisplayValue = Count > 1 ? Value * Count : Value;
-          const AriaLabel = Count > 1 ? `${Money(DisplayValue)} chip from ${Count} ${Money(Value)} chips` : `${Money(Value)} chip`;
-          return `
-              <div
-                class="SeatBetChip"
-                style="
-                  --ChipIndex: ${Index};
-                  --ChipColor: ${ChipColor};
-                  --ChipShift: ${StackShift}px;
-                "
-                aria-label="${AriaLabel}"
-              >
-                <span class="SeatBetLabel">${Money(DisplayValue)}</span>
-              </div>
-            `;
-        }).join("");
+        const DisplayChipValue = GetDisplayChipValue(Amount);
+        const ChipColor = CHIP_STYLES[DisplayChipValue];
+        const Chips = `
+          <div
+            class="SeatBetChip"
+            style="
+              --ChipIndex: 0;
+              --ChipColor: ${ChipColor};
+              --ChipShift: 0px;
+            "
+            aria-label="${Money(Amount)} bet chip using ${Money(DisplayChipValue)} chip color"
+          >
+            <span class="SeatBetLabel">${Money(Amount)}</span>
+          </div>
+        `;
         return `
           <div class="SeatBet${SideClass}" data-bet-type="${BetType}" style="left: ${Anchor.x}px; top: ${Anchor.y}px;">
             ${Chips}
@@ -676,6 +656,7 @@ export function CreateTableRenderer({
     }
     if (Elements.countdownValue) {
       Elements.countdownValue.textContent = View.countdownLabel || "";
+      Elements.countdownValue.closest(".TableReadout")?.classList.toggle("IsHidden", !View.countdownLabel);
     }
     if (Elements.balanceValue) {
       Elements.balanceValue.textContent = View.balanceLabel;

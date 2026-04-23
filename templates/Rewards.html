@@ -1,0 +1,286 @@
+{% extends "Base.html" %}
+
+{% block title %}Shuffling | Rewards{% endblock %}
+{% block page_key %}rewards{% endblock %}
+
+{% block content %}
+  <section class="mx-auto w-full max-w-[1120px] px-4 py-8 md:px-6" data-rewards-page>
+    <div data-route-card>
+      <h1 class="text-4xl font-semibold tracking-[-0.05em] text-white">Rewards</h1>
+    </div>
+
+    <section class="mt-6 rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="text-2xl font-semibold tracking-[-0.05em] text-white">Level Rewards</h2>
+            <span
+              class="inline-flex items-center rounded-[8px] border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-normal text-white/78"
+              data-reward-badge
+              data-tone="{{ rewards_page.reward_progress.badge_tone }}"
+            >
+              {{ rewards_page.reward_progress.badge }}
+            </span>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-white/50" data-reward-next-copy>
+            {% if rewards_page.reward_progress.next_level %}
+              {{ rewards_page.reward_progress.to_next_display }} until {{ rewards_page.reward_progress.next_badge }}.
+            {% else %}
+              Max level reached.
+            {% endif %}
+          </p>
+        </div>
+
+        <button
+          class="inline-flex h-11 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/80 px-5 text-sm font-semibold text-black transition hover:bg-white disabled:cursor-default disabled:opacity-45"
+          data-reward-claim
+          data-claim-key="level"
+          data-claim-url="{{ url_for('claim_level_reward') }}"
+          type="button"
+          {% if not rewards_page.reward_progress.can_claim_level_reward %}disabled{% endif %}
+        >
+          {% if rewards_page.reward_progress.pending_level_reward %}
+            Claim level {{ rewards_page.reward_progress.pending_level_reward.level }}
+          {% else %}
+            Claim reward
+          {% endif %}
+        </button>
+      </div>
+
+      <div class="mt-5 h-2 overflow-hidden rounded-[8px] bg-white/[0.08]">
+        <div
+          class="h-full rounded-[8px] bg-white/70 transition-[width] duration-300"
+          data-reward-progress
+          style="width: {{ rewards_page.reward_progress.progress_percent }}%;"
+        ></div>
+      </div>
+
+      <div class="mt-5 grid gap-3 sm:grid-cols-3">
+        <div class="rounded-[8px] border border-white/8 bg-white/[0.03] p-4">
+          <p class="text-xs font-semibold text-white/38">Level</p>
+          <p class="mt-2 text-lg font-semibold text-white" data-reward-level>Level {{ rewards_page.reward_progress.level }} / {{ rewards_page.reward_progress.max_level }}</p>
+        </div>
+        <div class="rounded-[8px] border border-white/8 bg-white/[0.03] p-4">
+          <p class="text-xs font-semibold text-white/38">Reward score</p>
+          <p class="mt-2 text-lg font-semibold text-white" data-reward-points>{{ rewards_page.reward_progress.reward_points_display }}</p>
+        </div>
+        <div class="rounded-[8px] border border-white/8 bg-white/[0.03] p-4">
+          <p class="text-xs font-semibold text-white/38">Total wagered</p>
+          <p class="mt-2 text-lg font-semibold text-white">{{ rewards_page.reward_progress.total_wagered_display }}</p>
+        </div>
+      </div>
+
+      <div class="mt-5 grid gap-3 md:grid-cols-5">
+        {% for rank in reward_rank_guide %}
+          {% set current_rank = namespace(active=false) %}
+          {% for tier in rank.tiers %}
+            {% if rewards_page.reward_progress.badge == tier.badge %}
+              {% set current_rank.active = true %}
+            {% endif %}
+          {% endfor %}
+          {% set is_current_rank = current_rank.active or (loop.first and rewards_page.reward_progress.level == 0) %}
+          <article class="relative rounded-[8px] border {% if is_current_rank %}border-white/18 bg-white/[0.06]{% else %}border-white/8 bg-white/[0.03]{% endif %} p-4">
+            <p class="text-sm font-semibold {% if rank.tone == 'bronze' %}text-[#f7d2bc]{% elif rank.tone == 'silver' %}text-[#eef4fb]{% elif rank.tone == 'gold' %}text-[#fde8a2]{% elif rank.tone == 'platinum' %}text-[#d7ffff]{% else %}text-[#dbe7ff]{% endif %}">
+              {{ rank.title }}
+            </p>
+            <p class="mt-1 text-xs text-white/42">{{ rank.level_range_display }}</p>
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              {% for tier in rank.tiers %}
+                <span class="group relative">
+                  <span class="inline-flex rounded-[8px] border px-2 py-1 text-xs transition {% if rewards_page.reward_progress.badge == tier.badge %}{% if rank.tone == 'bronze' %}border-[#f7d2bc]/60 bg-[#f7d2bc] text-[#1b0f09]{% elif rank.tone == 'silver' %}border-[#eef4fb]/60 bg-[#eef4fb] text-[#10141a]{% elif rank.tone == 'gold' %}border-[#fde8a2]/60 bg-[#fde8a2] text-[#1c1605]{% elif rank.tone == 'platinum' %}border-[#d7ffff]/60 bg-[#d7ffff] text-[#062326]{% else %}border-[#dbe7ff]/60 bg-[#dbe7ff] text-[#081629]{% endif %}{% else %}border-white/10 bg-black/20 text-white/66 hover:border-white/16 hover:text-white{% endif %}">
+                    {{ tier.badge | replace(rank.title ~ ' ', '') }}
+                  </span>
+                  <span class="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 w-max min-w-[92px] -translate-x-1/2 translate-y-1.5 scale-[0.96] rounded-[8px] border border-white/12 bg-[#07090e] px-3 py-2 text-center opacity-0 shadow-[0_18px_50px_rgba(0,0,0,0.46)] transition group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100">
+                    <span class="block text-[10px] font-semibold uppercase text-white/38">Level {{ tier.level }}</span>
+                    <span class="mt-1 block text-sm font-semibold text-white">{{ tier.bonus_display }}</span>
+                  </span>
+                </span>
+              {% endfor %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="mt-6 rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+      <h2 class="text-2xl font-semibold tracking-[-0.05em] text-white">Claimable Rewards</h2>
+
+      <div class="mt-5 grid gap-4 lg:grid-cols-3">
+        <article class="rounded-[8px] border border-white/8 bg-white/[0.03] p-5">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-semibold text-white">Instant Rakeback</h3>
+              <p class="mt-1 text-sm text-white/44">Claim every hour.</p>
+            </div>
+            <span class="rounded-[8px] border border-white/10 px-2.5 py-1 text-xs font-semibold text-white/60">{{ rewards_page.instant_rakeback.rate_percent }}%</span>
+          </div>
+          <p class="mt-5 text-3xl font-semibold tracking-[-0.04em] text-white" data-instant-rakeback-available>{{ rewards_page.instant_rakeback.claimable_display }}</p>
+          <div class="mt-4 grid gap-2 text-sm">
+            <div class="flex justify-between gap-3 text-white/58">
+              <span>Earned</span>
+              <span class="text-white/82" data-instant-rakeback-earned>{{ rewards_page.instant_rakeback.earned_display }}</span>
+            </div>
+            <div class="flex justify-between gap-3 text-white/58">
+              <span>Status</span>
+              <span class="text-right text-white/82" data-instant-rakeback-cooldown>{{ rewards_page.instant_rakeback.cooldown_copy }}</span>
+            </div>
+          </div>
+          <button
+            class="mt-5 inline-flex h-11 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/80 px-5 text-sm font-semibold text-black transition hover:bg-white disabled:cursor-default disabled:opacity-45"
+            data-reward-claim
+            data-claim-key="instant"
+            data-claim-url="{{ url_for('claim_rakeback') }}"
+            type="button"
+            {% if not rewards_page.instant_rakeback.can_claim %}disabled{% endif %}
+          >
+            Claim
+          </button>
+        </article>
+
+        <article class="rounded-[8px] border border-white/8 bg-white/[0.03] p-5">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-semibold text-white">Daily Rakeback</h3>
+              <p class="mt-1 text-sm text-white/44">Claim once per day.</p>
+            </div>
+            <span class="rounded-[8px] border border-white/10 px-2.5 py-1 text-xs font-semibold text-white/60">{{ rewards_page.daily_rakeback.rate_percent }}%</span>
+          </div>
+          <p class="mt-5 text-3xl font-semibold tracking-[-0.04em] text-white" data-daily-rakeback-available>{{ rewards_page.daily_rakeback.claimable_display }}</p>
+          <div class="mt-4 grid gap-2 text-sm">
+            <div class="flex justify-between gap-3 text-white/58">
+              <span>Daily wager</span>
+              <span class="text-white/82" data-daily-rakeback-wagered>{{ rewards_page.daily_rakeback.wagered_display }}</span>
+            </div>
+            <div class="flex justify-between gap-3 text-white/58">
+              <span>Reset</span>
+              <span class="text-white/82" data-daily-rakeback-reset>{{ rewards_page.daily_rakeback.seconds_until_reset }}s</span>
+            </div>
+          </div>
+          <button
+            class="mt-5 inline-flex h-11 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/80 px-5 text-sm font-semibold text-black transition hover:bg-white disabled:cursor-default disabled:opacity-45"
+            data-reward-claim
+            data-claim-key="daily"
+            data-claim-url="{{ url_for('claim_daily_rakeback_reward') }}"
+            type="button"
+            {% if not rewards_page.daily_rakeback.can_claim %}disabled{% endif %}
+          >
+            Claim
+          </button>
+        </article>
+
+        <article class="rounded-[8px] border border-white/8 bg-white/[0.03] p-5">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-lg font-semibold text-white">Weekly Bonus</h3>
+              <p class="mt-1 text-sm text-white/44">Based on last 7 days wager.</p>
+            </div>
+            <span class="rounded-[8px] border border-white/10 px-2.5 py-1 text-xs font-semibold text-white/60" data-weekly-bonus-tier>{{ rewards_page.weekly_bonus.current_week_tier.label }}</span>
+          </div>
+          <p class="mt-5 text-3xl font-semibold tracking-[-0.04em] text-white" data-weekly-bonus-available>{{ rewards_page.weekly_bonus.claimable_display }}</p>
+          <div class="mt-4 grid gap-2 text-sm">
+            <div class="flex justify-between gap-3 text-white/58">
+              <span>Last 7 days</span>
+              <span class="text-white/82" data-weekly-bonus-wagered>{{ rewards_page.weekly_bonus.last_7_days_wagered_display }}</span>
+            </div>
+            <div class="flex justify-between gap-3 text-white/58">
+              <span>Last week</span>
+              <span class="text-white/82" data-weekly-bonus-previous>{{ rewards_page.weekly_bonus.previous_week_wagered_display }}</span>
+            </div>
+          </div>
+          <button
+            class="mt-5 inline-flex h-11 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/80 px-5 text-sm font-semibold text-black transition hover:bg-white disabled:cursor-default disabled:opacity-45"
+            data-reward-claim
+            data-claim-key="weekly"
+            data-claim-url="{{ url_for('claim_weekly_bonus_reward') }}"
+            type="button"
+            {% if not rewards_page.weekly_bonus.can_claim %}disabled{% endif %}
+          >
+            Claim
+          </button>
+        </article>
+      </div>
+
+      <p class="mt-4 hidden text-sm text-white/46" data-reward-claim-message></p>
+    </section>
+
+    <section class="mt-6 rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 class="text-2xl font-semibold tracking-[-0.05em] text-white">Leader Rewards</h2>
+          <p class="mt-2 text-sm leading-6 text-white/50">Weekly wager leaderboard resets every week.</p>
+        </div>
+        <div class="grid gap-2 text-sm sm:grid-cols-3">
+          <div class="rounded-[8px] border border-white/8 bg-white/[0.03] px-4 py-3 text-center">
+            <p class="text-white/38">#1</p>
+            <p class="font-semibold text-white">$10,000</p>
+          </div>
+          <div class="rounded-[8px] border border-white/8 bg-white/[0.03] px-4 py-3 text-center">
+            <p class="text-white/38">#2</p>
+            <p class="font-semibold text-white">$5,000</p>
+          </div>
+          <div class="rounded-[8px] border border-white/8 bg-white/[0.03] px-4 py-3 text-center">
+            <p class="text-white/38">#3</p>
+            <p class="font-semibold text-white">$2,500</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 grid gap-4 lg:grid-cols-[1fr_320px]">
+        <div class="space-y-3" data-weekly-leaderboard>
+          {% for row in rewards_page.leader_reward.current_week_rows %}
+            <div class="flex items-center justify-between gap-4 rounded-[8px] border border-white/8 bg-white/[0.03] px-4 py-4">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] text-sm font-semibold text-white">#{{ row.rank }}</span>
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-white">{{ row.display_name }}</p>
+                  <p class="truncate text-xs text-white/40">{{ row.id }}</p>
+                </div>
+              </div>
+              <p class="shrink-0 text-sm font-semibold text-white">{{ row.wagered_display }}</p>
+            </div>
+          {% else %}
+            <div class="rounded-[8px] border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45">
+              No weekly wagers yet.
+            </div>
+          {% endfor %}
+        </div>
+
+        <article class="rounded-[8px] border border-white/8 bg-white/[0.03] p-5">
+          <h3 class="text-lg font-semibold text-white">Your weekly prize</h3>
+          <p class="mt-5 text-3xl font-semibold tracking-[-0.04em] text-white" data-leader-reward-available>{{ rewards_page.leader_reward.claimable_display }}</p>
+          <div class="mt-4 grid gap-2 text-sm">
+            <div class="flex justify-between gap-3 text-white/58">
+              <span>Current rank</span>
+              <span class="text-white/82" data-leader-current-rank>{% if rewards_page.leader_reward.current_rank %}#{{ rewards_page.leader_reward.current_rank }}{% else %}-{% endif %}</span>
+            </div>
+            <div class="flex justify-between gap-3 text-white/58">
+              <span>Last week</span>
+              <span class="text-white/82" data-leader-previous-rank>{% if rewards_page.leader_reward.previous_rank %}#{{ rewards_page.leader_reward.previous_rank }}{% else %}-{% endif %}</span>
+            </div>
+          </div>
+          <button
+            class="mt-5 inline-flex h-11 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/80 px-5 text-sm font-semibold text-black transition hover:bg-white disabled:cursor-default disabled:opacity-45"
+            data-reward-claim
+            data-claim-key="leader"
+            data-claim-url="{{ url_for('claim_leader_reward') }}"
+            type="button"
+            {% if not rewards_page.leader_reward.can_claim %}disabled{% endif %}
+          >
+            Claim
+          </button>
+        </article>
+      </div>
+    </section>
+
+    <script data-rewards-page-state type="application/json">
+      {{ {
+        "current_balance_display": current_balance_display,
+        "page": rewards_page,
+      } | tojson }}
+    </script>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/Rewards.js') }}"></script>
+{% endblock %}

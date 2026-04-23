@@ -5,7 +5,7 @@
 
 {% block content %}
   <section class="mx-auto w-full max-w-[900px] px-4 py-8 md:px-6">
-    <div class="mb-8 flex items-center gap-4">
+    <div class="mb-8 flex items-center gap-4" data-route-card>
       <a
         class="inline-flex items-center gap-1.5 text-sm font-medium text-white/38 transition hover:text-white"
         href="{{ url_for('play') }}"
@@ -15,7 +15,7 @@
         </svg>
         <span>Home</span>
       </a>
-      <h1 class="text-4xl font-semibold tracking-[-0.05em] text-white">Sessions</h1>
+      <h1 class="text-4xl font-semibold tracking-[-0.05em] text-white">Dice Sessions</h1>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}

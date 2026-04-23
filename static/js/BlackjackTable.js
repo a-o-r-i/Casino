@@ -366,9 +366,43 @@ class NetworkBlackjackTable {
     this.state.insuranceOfferSeatIds = InsuranceOfferSeatIds;
     this.state.lockedInputs = false;
     this.state.isAnimating = false;
+    this.SyncCountdownState();
     this.state.message = this.localMessage || Table.message || "";
     this.Render();
     this.localMessage = "";
+  }
+  SyncCountdownState() {
+    const EndsAtSeconds = Number(this.tableState?.betting_ends_at) || 0;
+    const HasCountdown = [ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState) && EndsAtSeconds > 0;
+    if (!HasCountdown) {
+      this.state.countdownDeadline = null;
+      this.state.countdownSeconds = 0;
+      return;
+    }
+    this.state.countdownDeadline = EndsAtSeconds * 1000;
+    this.state.countdownSeconds = Math.max(Math.ceil((this.state.countdownDeadline - Date.now()) / 1000), 0);
+  }
+  TickCountdown() {
+    if (!this.state.countdownDeadline || ![ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState)) {
+      return {
+        changed: false,
+        expired: false
+      };
+    }
+    const PreviousSeconds = this.state.countdownSeconds;
+    const NextSeconds = Math.max(Math.ceil((this.state.countdownDeadline - Date.now()) / 1000), 0);
+    const Changed = NextSeconds !== PreviousSeconds;
+    this.state.countdownSeconds = NextSeconds;
+    return {
+      changed: Changed,
+      expired: PreviousSeconds > 0 && NextSeconds === 0
+    };
+  }
+  GetCountdownLabel() {
+    if (!this.state.countdownDeadline || ![ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState)) {
+      return "";
+    }
+    return `${Math.max(this.state.countdownSeconds, 0)}s`;
   }
   async AnimateOpeningDeal(Payload) {
     if (!this.animator || !this.renderer?.GetProjectedCardRect) {
@@ -888,7 +922,7 @@ class NetworkBlackjackTable {
     this.SyncSideBetEditorState();
     return {
       balanceLabel: Money(BalanceAfterPending),
-      countdownLabel: "",
+      countdownLabel: this.GetCountdownLabel(),
       insuranceDecision: this.BuildInsuranceDecision(),
       pendingBetLabel: Money(SelfPendingBet),
       seatBetAmounts: NormalizeSeatAmounts(this.tableState?.seat_bet_amounts),
@@ -1199,6 +1233,7 @@ export async function InitializeBlackjackTable({
   });
   let LatestTableState = InitialTableState;
   let PollHandle = 0;
+  let CountdownHandle = 0;
   let IsDisposed = false;
   let CleanupControls = () => {};
   let ActiveSideBetDrag = null;
@@ -1263,6 +1298,16 @@ export async function InitializeBlackjackTable({
     }
     ScheduleStatePoll();
   }
+  function HandleCountdownTick() {
+    const TickState = Table.TickCountdown();
+    if (TickState.changed) {
+      Table.Render();
+    }
+    if (TickState.expired) {
+      ScopeWindow.clearTimeout(PollHandle);
+      PollHandle = ScopeWindow.setTimeout(PollTableState, 90);
+    }
+  }
   const HandleVisibilityChange = () => {
     if (ScopeDocument.visibilityState !== "visible") {
       return;
@@ -1277,6 +1322,7 @@ export async function InitializeBlackjackTable({
     IsDisposed = true;
     ActiveSideBetDrag = null;
     ScopeWindow.clearTimeout(PollHandle);
+    ScopeWindow.clearInterval(CountdownHandle);
     ScopeDocument.removeEventListener("visibilitychange", HandleVisibilityChange);
     ScopeWindow.removeEventListener("pagehide", Dispose);
     ScopeWindow.removeEventListener("resize", HandleStageLayoutChange);
@@ -1387,6 +1433,7 @@ export async function InitializeBlackjackTable({
   ScopeWindow.addEventListener("pointercancel", HandleSideBetPointerEnd);
   ScopeDocument.addEventListener("visibilitychange", HandleVisibilityChange);
   ScopeWindow.addEventListener("pagehide", Dispose);
+  CountdownHandle = ScopeWindow.setInterval(HandleCountdownTick, 250);
   ScheduleStatePoll();
   return Dispose;
 }

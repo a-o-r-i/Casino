@@ -903,8 +903,8 @@
         PersistChatDragPosition(ChatDragPosition);
     };
 
-    const BuildAvatarMarkup = (User) =>
-    {
+const BuildAvatarMarkup = (User) =>
+{
         const FallbackUrl = User?.avatar_static_url || User?.avatar_url || "";
         const AvatarUrl = FallbackUrl || User?.avatar_url || "";
 
@@ -919,27 +919,62 @@
             `;
         }
 
-        return EscapeHtml((User?.display_name || User?.username || "?").slice(0, 1));
-    };
+    return EscapeHtml((User?.display_name || User?.username || "?").slice(0, 1));
+};
 
-    const BuildAuthorBadgeMarkup = (User) =>
+const GetRewardBadgeTone = (User) =>
+{
+    const ExplicitTone = String(User?.reward_badge_tone || "").trim().toLowerCase();
+
+    if (ExplicitTone)
     {
-        const RewardLevel = Number.parseInt(User?.reward_level || "0", 10);
-        const RewardBadge = String(User?.reward_badge || "").trim();
+        return ExplicitTone;
+    }
+
+    const RewardLevel = Number.parseInt(User?.reward_level || "0", 10);
+
+    if (RewardLevel >= 21)
+    {
+        return "diamond";
+    }
+
+    if (RewardLevel >= 16)
+    {
+        return "platinum";
+    }
+
+    if (RewardLevel >= 11)
+    {
+        return "gold";
+    }
+
+    if (RewardLevel >= 6)
+    {
+        return "silver";
+    }
+
+    if (RewardLevel >= 1)
+    {
+        return "bronze";
+    }
+
+    return "unranked";
+};
+
+const BuildAuthorBadgeMarkup = (User) =>
+{
+    const RewardLevel = Number.parseInt(User?.reward_level || "0", 10);
+    const RewardBadge = String(User?.reward_badge || "").trim();
 
         if (!RewardBadge || RewardLevel <= 0 || RewardBadge.toLowerCase() === "unranked")
         {
             return "";
         }
 
-        const BadgeTone = RewardLevel >= 10
-            ? "whale"
-            : (RewardLevel >= 6 ? "high" : "low");
-
         return `
             <span
               data-chat-author-badge
-              data-tone="${BadgeTone}"
+              data-tone="${EscapeHtml(GetRewardBadgeTone(User))}"
               aria-label="${EscapeHtml(`Level ${RewardLevel} - ${RewardBadge}`)}"
               title="${EscapeHtml(`Level ${RewardLevel} - ${RewardBadge}`)}"
             >
