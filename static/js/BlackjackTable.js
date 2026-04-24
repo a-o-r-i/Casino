@@ -842,10 +842,24 @@ class NetworkBlackjackTable {
     }
   }
   GetSelfPendingBet() {
-    return Number(this.tableState?.self_pending_bet_amount) || 0;
+    const LocalPendingBet = (this.state.pendingBetChips || []).reduce((Total, Chip) => Total + (Number(Chip.value) || 0), 0);
+    return LocalPendingBet || Number(this.tableState?.self_pending_bet_amount) || 0;
   }
   CanUseBettingControls() {
     return [ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState) && this.state.selectedSeatIds.length > 0;
+  }
+  UserHasMainBetsOnSelectedSeats() {
+    return Boolean(this.state.selectedSeatIds.length) && this.state.selectedSeatIds.every(SeatId => (Number(this.state.pendingBets?.[SeatId]) || 0) > 0);
+  }
+  GetSeatBetAmounts() {
+    const SeatBetAmounts = NormalizeSeatAmounts(this.tableState?.seat_bet_amounts);
+    Object.entries(this.state.pendingBets || {}).forEach(([SeatId, Amount]) => {
+      const NormalizedAmount = Number(Amount) || 0;
+      if (NormalizedAmount > 0) {
+        SeatBetAmounts[SeatId] = NormalizedAmount;
+      }
+    });
+    return SeatBetAmounts;
   }
   GetSeatPendingSideBet(SeatId, BetType) {
     return Number(this.state.pendingSideBets?.[SeatId]?.[BetType]) || 0;
@@ -915,7 +929,7 @@ class NetworkBlackjackTable {
     const CanBet = this.CanUseBettingControls();
     const HasSelfPendingBet = SelfPendingBet > 0;
     const SelfReady = Boolean(this.tableState?.self_ready);
-    const SelfCanReady = Boolean(this.tableState?.self_can_ready);
+    const SelfCanReady = Boolean(this.tableState?.self_can_ready) || this.UserHasMainBetsOnSelectedSeats();
     const CanRebet = Boolean(this.tableState?.self_can_rebet) && !HasSelfPendingBet;
     const LastBetAmount = Number(this.tableState?.self_last_bet_amount) || 0;
     const CanAct = this.state.roundState === ROUND_STATES.PLAYER_TURN && Boolean(ActiveHand?.isSelf);
@@ -925,7 +939,7 @@ class NetworkBlackjackTable {
       countdownLabel: this.GetCountdownLabel(),
       insuranceDecision: this.BuildInsuranceDecision(),
       pendingBetLabel: Money(SelfPendingBet),
-      seatBetAmounts: NormalizeSeatAmounts(this.tableState?.seat_bet_amounts),
+      seatBetAmounts: this.GetSeatBetAmounts(),
       seatSideBetSpots: this.BuildSeatSideBetSpots(),
       selectedChipValue: this.state.selectedChipValue,
       shoeLabel: this.state.shoe?.isReady ? `${this.state.shoe.remaining} cards` : "Offline",
@@ -1055,6 +1069,66 @@ class NetworkBlackjackTable {
     this.state.message = this.localMessage;
     this.Render();
   }
+  CreateOptimisticSnapshot() {
+    return {
+      localMessage: this.localMessage,
+      state: ClonePayload(this.state),
+      tableState: ClonePayload(this.tableState)
+    };
+  }
+  RestoreOptimisticSnapshot(Snapshot) {
+    if (!Snapshot) {
+      return;
+    }
+    this.localMessage = Snapshot.localMessage || "";
+    this.state = Snapshot.state;
+    this.tableState = Snapshot.tableState;
+    this.Render();
+  }
+  AddChipToLocalState(SeatId, ChipValue, BetType = BET_TYPES.MAIN) {
+    const NormalizedChipValue = Number(ChipValue) || 0;
+    if (!SeatId || NormalizedChipValue <= 0 || !this.CanUseBettingControls()) {
+      return false;
+    }
+    if (this.GetSelfPendingBet() + NormalizedChipValue > this.state.balance) {
+      this.SetLocalMessage(`Not enough balance for another ${Money(NormalizedChipValue)} chip.`);
+      return false;
+    }
+    this.state.activeSeatId = SeatId;
+    this.state.roundState = ROUND_STATES.BETTING;
+    this.state.pendingBetChips = [...(this.state.pendingBetChips || []), {
+      betType: BetType,
+      seatId: SeatId,
+      value: NormalizedChipValue
+    }];
+    if (BetType === BET_TYPES.MAIN) {
+      this.state.pendingBets = {
+        ...(this.state.pendingBets || {}),
+        [SeatId]: (Number(this.state.pendingBets?.[SeatId]) || 0) + NormalizedChipValue
+      };
+    } else {
+      this.state.pendingSideBets = {
+        ...(this.state.pendingSideBets || {}),
+        [SeatId]: {
+          ...(this.state.pendingSideBets?.[SeatId] || {}),
+          [BetType]: (Number(this.state.pendingSideBets?.[SeatId]?.[BetType]) || 0) + NormalizedChipValue
+        }
+      };
+    }
+    this.tableState = {
+      ...(this.tableState || {}),
+      round_state: ROUND_STATES.BETTING,
+      self_can_ready: this.UserHasMainBetsOnSelectedSeats(),
+      self_can_rebet: false,
+      self_pending_bet_amount: this.GetSelfPendingBet(),
+      self_pending_bet_cents: Math.round(this.GetSelfPendingBet() * 100),
+      self_ready: false
+    };
+    this.localMessage = "";
+    this.state.message = "";
+    this.Render();
+    return true;
+  }
   async PostSeatAction(Action, SeatId) {
     if (!this.seatActionUrl) {
       return false;
@@ -1084,10 +1158,18 @@ class NetworkBlackjackTable {
       return false;
     }
   }
-  async PostTableAction(Action, Body = {}) {
+  async PostTableAction(Action, Body = {}, Options = {}) {
     if (!this.actionUrl) {
-      return false;
+      return Options.returnDetails ? {
+        appliedPayload: false,
+        ok: false
+      } : false;
     }
+    const BuildResult = (Ok, Details = {}) => Options.returnDetails ? {
+      appliedPayload: false,
+      ...Details,
+      ok: Ok
+    } : Ok;
     try {
       const Response = await fetch(this.actionUrl, {
         method: "POST",
@@ -1105,13 +1187,22 @@ class NetworkBlackjackTable {
       ApplyParentBalanceDisplay(Payload.current_balance_display);
       if (!Response.ok) {
         this.SetLocalMessage(Payload?.error || "Blackjack action failed.");
-        return false;
+        return BuildResult(false, {
+          appliedPayload: true,
+          payload: Payload
+        });
       }
-      return true;
+      return BuildResult(true, {
+        appliedPayload: true,
+        payload: Payload
+      });
     } catch (Error) {
       console.error(Error);
       this.SetLocalMessage("Blackjack action failed.");
-      return false;
+      return BuildResult(false, {
+        appliedPayload: false,
+        error: Error
+      });
     }
   }
   async ToggleSeat(SeatId, ClickCount = 1) {
@@ -1178,11 +1269,21 @@ class NetworkBlackjackTable {
     if (!this.CanUseBettingControls()) {
       return;
     }
-    await this.PostTableAction("add_chip", {
+    const Snapshot = this.CreateOptimisticSnapshot();
+    if (!this.AddChipToLocalState(SeatId, ChipValue, BetType)) {
+      return;
+    }
+    const Result = await this.PostTableAction("add_chip", {
       bet_type: BetType,
       chip_value_cents: Math.round(ChipValue * 100),
       seat_id: SeatId
+    }, {
+      returnDetails: true
     });
+    if (!Result.ok && !Result.appliedPayload) {
+      this.RestoreOptimisticSnapshot(Snapshot);
+      this.SetLocalMessage("Chip was not placed. Try again.");
+    }
   }
   SelectChip(Value) {
     const ChipValue = Number(Value) || 0;
