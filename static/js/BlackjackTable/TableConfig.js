@@ -30,7 +30,7 @@ export const CHIP_STYLES = Object.freeze({
 });
 export const SHOE_COUNT = 6;
 export const RESHUFFLE_THRESHOLD = 20;
-export const BETTING_COUNTDOWN_SECONDS = 15;
+export const BETTING_COUNTDOWN_SECONDS = 30;
 export const DEALER_HITS_SOFT_17 = false;
 export const SETTLE_DISPLAY_MS = 3200;
 export const BETWEEN_DEALS_MS = 140;
