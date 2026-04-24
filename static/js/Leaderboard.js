@@ -130,7 +130,9 @@ const BuildProfileMarkup = (Profile) =>
 
 const RenderProfileMarkup = (Profile) =>
 {
-    return window.GamblingApp?.buildUserProfileCardMarkup?.(Profile) || "";
+    return window.GamblingApp?.buildUserProfileCardMarkup?.(Profile, {
+        includeTipControls: true,
+    }) || BuildProfileMarkup(Profile);
 };
 
 const SetLeaderboardBalanceDisplay = (BalanceDisplay) =>
@@ -247,6 +249,7 @@ const InitializeLeaderboardPage = ({ main }) =>
     let IsDisposed = false;
     let PollTimeout = 0;
     let RenderedProfileUserId = "";
+    let IsSendingTip = false;
     let LastState = InitialState;
     const Runtime = {
         dispose: () => {},
@@ -363,6 +366,123 @@ const InitializeLeaderboardPage = ({ main }) =>
         }
 
         HoverHideTimeout = window.setTimeout(HideProfileCard, LeaderboardProfileHideDelayMs);
+    };
+
+    const SetTipMessage = (Message, Tone = "neutral") =>
+    {
+        const MessageNode = ProfileCard?.querySelector("[data-chat-tip-message]");
+
+        if (!MessageNode)
+        {
+            return;
+        }
+
+        MessageNode.textContent = Message || "";
+        MessageNode.dataset.tone = Tone;
+    };
+
+    const ToggleTipForm = () =>
+    {
+        const TipPanel = ProfileCard?.querySelector("[data-chat-tip-panel]");
+        const TipToggle = ProfileCard?.querySelector("[data-chat-tip-toggle]");
+        const TipInput = ProfileCard?.querySelector("[data-chat-tip-input]");
+
+        if (!TipPanel || !TipToggle)
+        {
+            return;
+        }
+
+        const ShouldOpen = TipPanel.dataset.open !== "true";
+
+        TipPanel.dataset.open = ShouldOpen ? "true" : "false";
+        TipPanel.setAttribute("aria-hidden", ShouldOpen ? "false" : "true");
+        TipToggle.dataset.open = ShouldOpen ? "true" : "false";
+        SetTipMessage("");
+        window.requestAnimationFrame(PositionProfileCard);
+        window.setTimeout(PositionProfileCard, 360);
+
+        if (ShouldOpen)
+        {
+            window.requestAnimationFrame(() =>
+            {
+                TipInput?.focus();
+                TipInput?.select?.();
+            });
+        }
+    };
+
+    const SendTip = async (TipForm) =>
+    {
+        if (IsSendingTip)
+        {
+            return;
+        }
+
+        const TipInput = TipForm.querySelector("[data-chat-tip-input]");
+        const TipSubmit = TipForm.querySelector("[data-chat-tip-submit]");
+        const TipUrl = TipForm.dataset.tipUrl || "";
+        const Amount = TipInput?.value.trim() || "";
+
+        if (!TipUrl || !Amount)
+        {
+            SetTipMessage("Enter an amount.", "error");
+            return;
+        }
+
+        IsSendingTip = true;
+        SetTipMessage("Sending...");
+
+        if (TipSubmit)
+        {
+            TipSubmit.disabled = true;
+        }
+
+        try
+        {
+            const Response = await fetch(TipUrl, {
+                body: JSON.stringify({
+                    amount: Amount,
+                }),
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                method: "POST",
+            });
+            const Payload = await Response.json().catch(() => ({}));
+
+            if (!Response.ok)
+            {
+                SetLeaderboardBalanceDisplay(Payload.current_balance_display);
+                SetTipMessage(Payload.error || "Tip could not be sent.", "error");
+                return;
+            }
+
+            SetLeaderboardBalanceDisplay(Payload.current_balance_display);
+            SetTipMessage(`Sent ${Payload.amount_display}.`, "success");
+            TipInput.value = "";
+            window.GamblingApp?.showToast?.({
+                message: `You tipped ${Payload.recipient_name} ${Payload.amount_display}.`,
+                title: "Tip sent",
+                tone: "success",
+            });
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+            SetTipMessage("Tip could not be sent.", "error");
+        }
+        finally
+        {
+            IsSendingTip = false;
+
+            if (TipSubmit)
+            {
+                TipSubmit.disabled = false;
+            }
+
+            PositionProfileCard();
+        }
     };
 
     const ShowProfileCard = async (UserId, Anchor) =>
@@ -547,10 +667,43 @@ const InitializeLeaderboardPage = ({ main }) =>
         ScheduleHideProfileCard();
     };
 
+    const HandleCardClick = (EventValue) =>
+    {
+        const Target = EventValue.target instanceof Element ? EventValue.target : null;
+        const ToggleButton = Target?.closest("[data-chat-tip-toggle]");
+
+        if (!ToggleButton || !ProfileCard?.contains(ToggleButton))
+        {
+            return;
+        }
+
+        EventValue.preventDefault();
+        ToggleTipForm();
+    };
+
+    const HandleCardSubmit = (EventValue) =>
+    {
+        const Target = EventValue.target instanceof Element ? EventValue.target : null;
+        const TipForm = Target?.closest("[data-chat-tip-form]");
+
+        if (!TipForm || !ProfileCard?.contains(TipForm))
+        {
+            return;
+        }
+
+        EventValue.preventDefault();
+        SendTip(TipForm).catch((ErrorValue) =>
+        {
+            console.error(ErrorValue);
+        });
+    };
+
     LeaderboardList?.addEventListener("mouseover", HandleListMouseOver);
     LeaderboardList?.addEventListener("mouseout", HandleListMouseOut);
+    ProfileCard?.addEventListener("click", HandleCardClick);
     ProfileCard?.addEventListener("mouseenter", HandleCardMouseEnter);
     ProfileCard?.addEventListener("mouseleave", HandleCardMouseLeave);
+    ProfileCard?.addEventListener("submit", HandleCardSubmit);
     window.addEventListener("resize", PositionProfileCard);
 
     if (StateUrl)
@@ -580,8 +733,10 @@ const InitializeLeaderboardPage = ({ main }) =>
 
         LeaderboardList?.removeEventListener("mouseover", HandleListMouseOver);
         LeaderboardList?.removeEventListener("mouseout", HandleListMouseOut);
+        ProfileCard?.removeEventListener("click", HandleCardClick);
         ProfileCard?.removeEventListener("mouseenter", HandleCardMouseEnter);
         ProfileCard?.removeEventListener("mouseleave", HandleCardMouseLeave);
+        ProfileCard?.removeEventListener("submit", HandleCardSubmit);
         window.removeEventListener("resize", PositionProfileCard);
 
         if (App[LeaderboardRuntimeKey] === Runtime)

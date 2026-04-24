@@ -72,6 +72,57 @@
         });
     };
 
+    const FormatActivityTime = (Timestamp) =>
+    {
+        const NumberValue = Number(Timestamp);
+
+        if (!Number.isFinite(NumberValue) || NumberValue <= 0)
+        {
+            return "--";
+        }
+
+        const Delta = Math.max(0, Math.floor(Date.now() / 1000 - NumberValue));
+
+        if (Delta < 5)
+        {
+            return "just now";
+        }
+
+        if (Delta < 60)
+        {
+            return `${Delta} ${Delta === 1 ? "second" : "seconds"} ago`;
+        }
+
+        if (Delta < 3600)
+        {
+            const Minutes = Math.floor(Delta / 60);
+            return `${Minutes} ${Minutes === 1 ? "min" : "mins"} ago`;
+        }
+
+        if (Delta < 86400)
+        {
+            return `${Math.floor(Delta / 3600)}h ago`;
+        }
+
+        if (Delta < 2592000)
+        {
+            const Days = Math.floor(Delta / 86400);
+            return `${Days} ${Days === 1 ? "day" : "days"} ago`;
+        }
+
+        return FormatRelativeTime(Timestamp);
+    };
+
+    const GetLastActivityTimestamp = (Row) =>
+    {
+        return Row?.last_seen || Row?.connected_since || 0;
+    };
+
+    const GetLastActivityCopy = (Row) =>
+    {
+        return FormatActivityTime(GetLastActivityTimestamp(Row));
+    };
+
     const ShowToast = (Title, Message, Tone = "info") =>
     {
         window.GamblingApp?.showToast?.({
@@ -132,17 +183,8 @@
               data-admin-row-settings
               type="button"
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" aria-hidden="true">
-                <circle cx="12" cy="12" r="6.1"></circle>
-                <circle cx="12" cy="12" r="2.9"></circle>
-                <path d="M12 2.8v2.35"></path>
-                <path d="M12 18.85v2.35"></path>
-                <path d="m18.54 5.46-1.66 1.66"></path>
-                <path d="m7.12 16.88-1.66 1.66"></path>
-                <path d="M21.2 12h-2.35"></path>
-                <path d="M5.15 12H2.8"></path>
-                <path d="m18.54 18.54-1.66-1.66"></path>
-                <path d="m7.12 7.12-1.66-1.66"></path>
+              <svg viewBox="0 0 122.88 122.878" width="16" height="16" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M101.589,14.7l8.818,8.819c2.321,2.321,2.321,6.118,0,8.439l-7.101,7.101 c1.959,3.658,3.454,7.601,4.405,11.752h9.199c3.283,0,5.969,2.686,5.969,5.968V69.25c0,3.283-2.686,5.969-5.969,5.969h-10.039 c-1.231,4.063-2.992,7.896-5.204,11.418l6.512,6.51c2.321,2.323,2.321,6.12,0,8.44l-8.818,8.819c-2.321,2.32-6.119,2.32-8.439,0 l-7.102-7.102c-3.657,1.96-7.601,3.456-11.753,4.406v9.199c0,3.282-2.685,5.968-5.968,5.968H53.629 c-3.283,0-5.969-2.686-5.969-5.968v-10.039c-4.063-1.232-7.896-2.993-11.417-5.205l-6.511,6.512c-2.323,2.321-6.12,2.321-8.441,0 l-8.818-8.818c-2.321-2.321-2.321-6.118,0-8.439l7.102-7.102c-1.96-3.657-3.456-7.6-4.405-11.751H5.968 C2.686,72.067,0,69.382,0,66.099V53.628c0-3.283,2.686-5.968,5.968-5.968h10.039c1.232-4.063,2.993-7.896,5.204-11.418l-6.511-6.51 c-2.321-2.322-2.321-6.12,0-8.44l8.819-8.819c2.321-2.321,6.118-2.321,8.439,0l7.101,7.101c3.658-1.96,7.601-3.456,11.753-4.406 V5.969C50.812,2.686,53.498,0,56.78,0h12.471c3.282,0,5.968,2.686,5.968,5.969v10.036c4.064,1.231,7.898,2.992,11.422,5.204 l6.507-6.509C95.471,12.379,99.268,12.379,101.589,14.7L101.589,14.7z M61.44,36.92c13.54,0,24.519,10.98,24.519,24.519 c0,13.538-10.979,24.519-24.519,24.519c-13.539,0-24.519-10.98-24.519-24.519C36.921,47.9,47.901,36.92,61.44,36.92L61.44,36.92z"></path>
               </svg>
             </button>
         `;
@@ -259,10 +301,63 @@
         return "--";
     };
 
+    const BuildSessionHeadlineCopy = (Row) =>
+    {
+        if (Row?.status === "countdown")
+        {
+            return `${FormatCountdown(Row?.countdown_remaining)} left`;
+        }
+
+        if (Row?.status === "open")
+        {
+            return "Waiting for opponent";
+        }
+
+        return BuildSessionResultCopy(Row);
+    };
+
+    const BuildSessionDetailsMarkup = (Row) =>
+    {
+        const DetailRows = [
+            RenderDetailRow("wager", "Wager", Row.bet_display || "$0"),
+            RenderDetailRow("pot", "Pot", Row.pot_display || "$0"),
+            RenderDetailRow("created", "Created", FormatRelativeTime(Row.created_at)),
+        ];
+
+        if (Row?.game === "coinflip")
+        {
+            DetailRows.splice(
+                0,
+                0,
+                RenderDetailRow("sides", "Sides", BuildSessionMatchupCopy(Row)),
+            );
+        }
+        else
+        {
+            DetailRows.splice(
+                0,
+                0,
+                RenderDetailRow("rules", "Rules", BuildSessionMatchupCopy(Row)),
+            );
+        }
+
+        if (Row?.status === "countdown")
+        {
+            DetailRows.push(RenderDetailRow("time-left", "Time left", FormatCountdown(Row.countdown_remaining)));
+        }
+        else if (Row?.status !== "resolved")
+        {
+            DetailRows.push(RenderDetailRow("next", "Next", "Waiting for another player"));
+        }
+
+        return DetailRows.join("");
+    };
+
     const RenderPlayerRow = (Row) =>
     {
         const StatusColor = Row.is_online ? "bg-emerald-400" : "bg-white/28";
         const BalanceCopy = Row.balance_display || "$0";
+        const LastActivityCopy = GetLastActivityCopy(Row);
 
         return `
             <div
@@ -276,6 +371,7 @@
               <div class="min-w-0 flex-1">
                 <div class="truncate text-[1.02rem] font-medium text-white">${EscapeHtml(Row.display_name)}</div>
                 <div class="mt-1 truncate text-xs text-white/34">@${EscapeHtml(Row.username)}</div>
+                <div class="mt-1 truncate text-xs text-white/34">Last activity ${EscapeHtml(LastActivityCopy)}</div>
               </div>
               <div class="flex shrink-0 items-center gap-3">
                 <div class="text-right">
@@ -307,9 +403,6 @@
                 <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/34">
                   <span>#${EscapeHtml(Row.id)}</span>
                   <span>${EscapeHtml(BuildSessionMatchupCopy(Row))}</span>
-                  <span>Bet ${EscapeHtml(Row.bet_display || "$0")}</span>
-                  <span>Pot ${EscapeHtml(Row.pot_display || "$0")}</span>
-                  <span>${EscapeHtml(String(Row.viewer_count || 0))} viewers</span>
                 </div>
                 <div class="mt-2 text-xs text-white/42">${EscapeHtml(Row.status_text || "--")}</div>
               </div>
@@ -346,6 +439,7 @@
         const StatusCopy = Row.is_online ? "Active" : "Offline";
         const LevelCopy = `${Row.reward_level || 0} (${Row.reward_badge || "Unranked"})`;
         const ActivityCopy = Row.current_path_label || "--";
+        const LastActivityCopy = GetLastActivityCopy(Row);
 
         return `
             <div
@@ -377,7 +471,8 @@
                   ${RenderDetailRow("level", "Level", LevelCopy)}
                   ${RenderDetailRow("win-rate", "Win rate", FormatPercent(Row.win_rate))}
                   ${RenderDetailRow("registered", "Registered", FormatRelativeTime(Row.registered_at))}
-                  ${RenderDetailRow("activity", "Activity", ActivityCopy, "col-span-2")}
+                  ${RenderDetailRow("last-activity", "Last activity", LastActivityCopy)}
+                  ${RenderDetailRow("activity", "Page", ActivityCopy)}
                 </div>
 
                 <form
@@ -426,11 +521,11 @@
             `
             : "";
         const ActionGridClass = Row.can_cancel ? "grid-cols-2" : "grid-cols-1";
-        const ResultCopy = BuildSessionResultCopy(Row);
-        const StatusBadgeMarkup = Row?.status === "open"
+        const StatusBadgeMarkup = Row?.status === "resolved"
             ? ""
             : BuildStatusBadgeMarkup(GetSessionStatusLabel(Row), GetSessionStatusTone(Row));
         const TitleClassName = StatusBadgeMarkup ? "mt-3" : "";
+        const HeadlineCopy = BuildSessionHeadlineCopy(Row);
 
         return `
             <div
@@ -451,17 +546,12 @@
                     ${StatusBadgeMarkup ? `<div class="flex flex-wrap items-center gap-2">${StatusBadgeMarkup}</div>` : ""}
                     <div class="${TitleClassName} truncate text-[1.02rem] font-semibold text-white">${EscapeHtml(Row.participants_display)}</div>
                     <div class="mt-1 text-[11px] uppercase tracking-[0.12em] text-white/34">Session #${EscapeHtml(Row.id)}</div>
+                    <div class="mt-2 text-sm font-medium text-white/72">${EscapeHtml(HeadlineCopy)}</div>
                   </div>
                 </div>
 
                 <div class="mt-3 grid grid-cols-2 gap-2">
-                  ${RenderDetailRow("status", "Status", Row.status_text || "--")}
-                  ${RenderDetailRow("mode", "Mode", BuildSessionMatchupCopy(Row))}
-                  ${RenderDetailRow("bet", "Bet", Row.bet_display || "$0")}
-                  ${RenderDetailRow("pot", "Pot", Row.pot_display || "$0")}
-                  ${RenderDetailRow("viewers", "Viewers", String(Row.viewer_count || 0))}
-                  ${RenderDetailRow("created", "Created", FormatRelativeTime(Row.created_at))}
-                  ${RenderDetailRow("result", "Result", ResultCopy, "col-span-2")}
+                  ${BuildSessionDetailsMarkup(Row)}
                 </div>
 
                 <div class="mt-3 grid gap-2 ${ActionGridClass}">
@@ -501,6 +591,7 @@
         let RenderedCoinflipSignature = "";
         let RenderedDiceSignature = "";
         let RenderedPlayersSignature = "";
+        let PlayerOrder = [];
         const PlayerCountNode = PanelRoot.querySelector("[data-admin-player-count]");
         const PlayerFilterInput = PanelRoot.querySelector("[data-admin-player-filter]");
         const ResetStateButton = PanelRoot.querySelector("[data-admin-reset-state]");
@@ -622,6 +713,43 @@
             return Array.isArray(LastState?.players) ? LastState.players : [];
         };
 
+        const GetPlayerId = (Row) =>
+        {
+            return String(Row?.id ?? "");
+        };
+
+        const SyncPlayerOrder = (Rows) =>
+        {
+            const RowIds = Rows.map(GetPlayerId).filter(Boolean);
+            const AvailableIds = new Set(RowIds);
+
+            PlayerOrder = PlayerOrder.filter((UserId) => AvailableIds.has(UserId));
+
+            const KnownIds = new Set(PlayerOrder);
+
+            RowIds.forEach((UserId) =>
+            {
+                if (!KnownIds.has(UserId))
+                {
+                    PlayerOrder.push(UserId);
+                    KnownIds.add(UserId);
+                }
+            });
+        };
+
+        const GetOrderedPlayers = () =>
+        {
+            const Rows = GetPlayers();
+
+            SyncPlayerOrder(Rows);
+
+            const RowsById = new Map(Rows.map((Row) => [GetPlayerId(Row), Row]));
+
+            return PlayerOrder
+                .map((UserId) => RowsById.get(UserId))
+                .filter(Boolean);
+        };
+
         const GetSessions = () =>
         {
             return Array.isArray(LastState?.sessions) ? LastState.sessions : [];
@@ -692,10 +820,10 @@
 
             if (!Query)
             {
-                return GetPlayers();
+                return GetOrderedPlayers();
             }
 
-            return GetPlayers().filter((Row) =>
+            return GetOrderedPlayers().filter((Row) =>
             {
                 const SearchBlob = [
                     Row.display_name,

@@ -129,20 +129,23 @@
 
         if (Delta < 60)
         {
-            return `${Delta}s ago`;
+            return `${Delta} ${Delta === 1 ? "second" : "seconds"} ago`;
         }
 
         if (Delta < 3600)
         {
-            return `${Math.floor(Delta / 60)}m ago`;
+            const Minutes = Math.floor(Delta / 60);
+            return `${Minutes} ${Minutes === 1 ? "min" : "mins"} ago`;
         }
 
         if (Delta < 86400)
         {
-            return `${Math.floor(Delta / 3600)}h ago`;
+            const Hours = Math.floor(Delta / 3600);
+            return `${Hours} ${Hours === 1 ? "hour" : "hours"} ago`;
         }
 
-        return `${Math.floor(Delta / 86400)}d ago`;
+        const Days = Math.floor(Delta / 86400);
+        return `${Days} ${Days === 1 ? "day" : "days"} ago`;
     };
 
     const BuildUserProfileAvatarMarkup = (Profile) =>
@@ -232,7 +235,7 @@
             : (
                 Profile.last_seen
                     ? `Last seen ${FormatRelativeTime(Profile.last_seen)}`
-                    : "Away right now"
+                    : "Last seen unknown"
             );
         const CanTip = Boolean(IncludeTipControls && Profile.can_tip && Profile.tip_url);
         const TipButtonMarkup = CanTip

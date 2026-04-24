@@ -821,6 +821,8 @@ def remember_user_profile(user_profile):
         or user_profile.get("registered_at")
         or time.time()
     )
+    if existing_profile.get("last_active_at") or user_profile.get("last_active_at"):
+        user_snapshot["last_active_at"] = existing_profile.get("last_active_at") or user_profile.get("last_active_at")
     USER_PROFILES[user_snapshot["id"]] = user_snapshot
     return user_snapshot
 
@@ -2247,6 +2249,7 @@ def touch_user_presence(user_profile, current_path=None, is_typing=None):
         "typing_until": typing_until,
     }
     USER_PRESENCE[user_id] = presence
+    USER_PROFILES[user_id]["last_active_at"] = now
     record_user_site_visit(user_id, now)
     return presence
 
@@ -2264,6 +2267,8 @@ def mark_user_presence_offline(user_id):
         "typing_until": 0,
     })
     USER_PRESENCE[user_id] = presence
+    if user_id in USER_PROFILES:
+        USER_PROFILES[user_id]["last_active_at"] = now
     return presence
 
 
@@ -2608,6 +2613,7 @@ def build_chat_user_profile_payload(user_id, current_user_id=None):
     is_online = user_presence_is_online(presence)
     reward_state = build_reward_state(user_id)
     can_tip = bool(current_user_id and current_user_id != user_id and user_id != BOT_PROFILE["id"])
+    last_seen = (presence or {}).get("last_seen") or user_profile.get("last_active_at")
 
     return {
         "bets_lost": stats["bets_lost"],
@@ -2617,7 +2623,7 @@ def build_chat_user_profile_payload(user_id, current_user_id=None):
         "display_name": user_profile["display_name"],
         "id": user_profile["id"],
         "is_online": is_online,
-        "last_seen": presence.get("last_seen") if presence else None,
+        "last_seen": last_seen,
         "registered_at": user_profile.get("registered_at"),
         "reward_badge": reward_state["badge"],
         "reward_badge_tone": reward_state["badge_tone"],
@@ -6128,6 +6134,7 @@ def build_admin_player_rows(current_user_id):
         is_online = user_presence_is_online(presence)
         balance_cents = get_user_balance(user_id)
         current_path = normalize_presence_path(presence.get("current_path"))
+        last_seen = presence.get("last_seen") or user_profile.get("last_active_at")
 
         player_rows.append(
             {
@@ -6155,7 +6162,7 @@ def build_admin_player_rows(current_user_id):
                 "is_admin": user_id == ADMIN_PANEL_USER_ID,
                 "is_current_user": user_id == current_user_id,
                 "is_online": is_online,
-                "last_seen": presence.get("last_seen"),
+                "last_seen": last_seen,
                 "registered_at": user_profile.get("registered_at"),
                 "reward_badge": reward_state["badge"],
                 "reward_level": reward_state["level"],
@@ -6306,9 +6313,11 @@ def build_admin_panel_payload(current_user_id):
         "players": [
             {
                 "balance_cents": row["balance_cents"],
+                "connected_since": row["connected_since"],
                 "current_path": row["current_path"],
                 "id": row["id"],
                 "is_online": row["is_online"],
+                "last_seen": row["last_seen"],
                 "reward_level": row["reward_level"],
                 "total_wagered_cents": row["total_wagered_cents"],
                 "win_rate": row["win_rate"],
