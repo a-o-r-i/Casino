@@ -6,7 +6,7 @@
 {% block content %}
   <section class="mx-auto w-full max-w-[960px] px-4 py-8 md:px-6">
     <div
-      class="relative rounded-[30px] border border-white/10 bg-black/45 p-6 shadow-[0_20px_64px_rgba(0,0,0,0.3)]"
+      class="relative rounded-[8px] border border-white/10 bg-[#07090e] p-6 shadow-[0_20px_64px_rgba(0,0,0,0.3)]"
       data-admin-panel
       data-route-card
       data-state-url="{{ url_for('admin_panel_state') }}"
@@ -16,7 +16,7 @@
 
         <div class="w-full md:w-auto">
           <input
-            class="h-12 w-full rounded-[18px] border border-white/10 bg-white/[0.03] px-5 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/18 focus:bg-white/[0.05] md:w-[320px]"
+            class="h-12 w-full rounded-[8px] border border-white/10 bg-white/[0.03] px-5 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/18 focus:bg-white/[0.05] md:w-[320px]"
             data-admin-player-filter
             placeholder="Search player, @user, uid"
             type="search"
@@ -29,7 +29,7 @@
           <h2 class="text-sm font-semibold uppercase tracking-[0.18em] text-white/42">Players</h2>
           <p class="text-xs text-white/34" data-admin-player-count></p>
         </div>
-        <div class="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.02]">
+        <div class="overflow-hidden rounded-[8px] border border-white/10 bg-white/[0.02]">
           <div class="divide-y divide-white/10" data-admin-players></div>
         </div>
       </section>
@@ -41,7 +41,7 @@
         </div>
 
         <div class="grid gap-4 xl:grid-cols-2">
-          <section class="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.02]">
+          <section class="overflow-hidden rounded-[8px] border border-white/10 bg-white/[0.02]">
             <div class="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
               <h3 class="text-sm font-semibold text-white">Coinflip</h3>
               <p class="text-xs text-white/34" data-admin-session-count="coinflip"></p>
@@ -49,7 +49,7 @@
             <div class="divide-y divide-white/10" data-admin-coinflip-sessions></div>
           </section>
 
-          <section class="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.02]">
+          <section class="overflow-hidden rounded-[8px] border border-white/10 bg-white/[0.02]">
             <div class="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
               <h3 class="text-sm font-semibold text-white">Dice</h3>
               <p class="text-xs text-white/34" data-admin-session-count="dice"></p>
@@ -60,14 +60,14 @@
       </section>
 
       <section class="mt-8 border-t border-white/10 pt-6">
-        <div class="rounded-[24px] border border-red-400/14 bg-red-500/[0.05] p-5">
+        <div class="rounded-[8px] border border-red-400/14 bg-red-500/[0.05] p-5">
           <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <p class="max-w-[540px] text-sm leading-6 text-white/56">
               Wipes balances, profiles, chat, rewards, notifications, and sessions.
             </p>
 
             <button
-              class="inline-flex h-11 items-center justify-center rounded-[16px] border border-red-400/20 bg-red-500/12 px-4 text-sm font-medium text-red-100 transition hover:bg-red-500/18 md:min-w-[180px]"
+              class="inline-flex h-11 items-center justify-center rounded-[8px] border border-red-400/20 bg-red-500/12 px-4 text-sm font-medium text-red-100 transition hover:bg-red-500/18 md:min-w-[180px]"
               data-open-modal="admin-reset-state"
               data-admin-reset-state
               data-url="{{ url_for('admin_reset_state') }}"

@@ -157,7 +157,7 @@ const RenderLeaderboardRows = (Rows) =>
     if (!Rows?.length)
     {
         return `
-            <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
+            <div class="rounded-[8px] border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
               No balances yet.
             </div>
         `;
@@ -166,7 +166,7 @@ const RenderLeaderboardRows = (Rows) =>
     return Rows.map((Row) =>
     {
         return `
-            <div class="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 transition hover:border-white/14 hover:bg-white/[0.05]" data-leaderboard-user-id="${EscapeLeaderboardHtml(Row.id)}" data-route-card>
+            <div class="flex items-center justify-between rounded-[8px] border border-white/8 bg-white/[0.03] px-4 py-4 transition hover:border-white/14 hover:bg-white/[0.05]" data-leaderboard-user-id="${EscapeLeaderboardHtml(Row.id)}" data-route-card>
               <div>
                 <p class="text-lg font-semibold text-white">${EscapeLeaderboardHtml(Row.display_name)}</p>
                 <p class="text-sm text-white/40">${EscapeLeaderboardHtml(Row.id)}</p>

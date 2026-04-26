@@ -293,7 +293,7 @@
       {% if messages %}
         <div class="mb-6 space-y-3">
           {% for category, message in messages %}
-            <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+            <div class="break-words rounded-[8px] border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
               {{ message }}
             </div>
           {% endfor %}
@@ -309,7 +309,7 @@
       data-dice-mode="{{ session_state.mode }}"
     >
       <aside
-        class="dice-side-panel rounded-3xl border p-6"
+        class="dice-side-panel rounded-[8px] border p-6"
         data-dice-panel="creator"
         data-result-state="{% if session_state.status == 'resolved' and not session_state.reveal_pending %}{% if session_state.winner_id == session_state.creator.id %}win{% else %}loss{% endif %}{% else %}neutral{% endif %}"
         data-route-card
@@ -344,7 +344,7 @@
         </div>
       </aside>
 
-      <section class="dice-main-panel rounded-3xl border border-white/8 bg-black/35 px-6 py-8" data-route-card>
+      <section class="dice-main-panel rounded-[8px] border border-white/8 bg-[#07090e] px-6 py-8" data-route-card>
         <div class="flex items-center justify-between gap-4 text-sm text-white/45">
           <p>Bet {{ session_state.bet_display }}</p>
           <p>{{ session_state.mode_label }}</p>
@@ -420,14 +420,14 @@
             </div>
           </div>
 
-          <div class="dice-status-card rounded-2xl border border-white/8 px-5 py-5 text-center">
+          <div class="dice-status-card rounded-[8px] border border-white/8 px-5 py-5 text-center">
           <p class="text-2xl font-semibold tracking-[-0.04em] text-white" data-session-status>{{ session_state.display_status_text }}</p>
           </div>
         </div>
       </section>
 
       <aside
-        class="dice-side-panel rounded-3xl border p-6"
+        class="dice-side-panel rounded-[8px] border p-6"
         data-dice-panel="opponent"
         data-result-state="{% if session_state.status == 'resolved' and session_state.opponent and not session_state.reveal_pending %}{% if session_state.winner_id == session_state.opponent.id %}win{% else %}loss{% endif %}{% else %}neutral{% endif %}"
         data-route-card
@@ -464,7 +464,7 @@
         <div class="mt-8" data-join-wrap {% if not session_state.can_join %}hidden{% endif %}>
           <form action="{{ session_state.join_url or '#' }}" data-session-join-form method="post">
             <button
-              class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+              class="inline-flex h-12 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
               type="submit"
             >
               Join session
@@ -475,7 +475,7 @@
         <div class="mt-8" data-call-bot-wrap {% if not session_state.can_call_bot %}hidden{% endif %}>
           <form method="post" action="{{ url_for('call_dice_bot', session_id=session_state.id) }}">
             <button
-              class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+              class="inline-flex h-12 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
               type="submit"
             >
               Call a bot
@@ -494,7 +494,7 @@
 
     <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
       <button
-        class="{% if not session_state.can_share_chat %}hidden{% else %}inline-flex{% endif %} h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+        class="{% if not session_state.can_share_chat %}hidden{% else %}inline-flex{% endif %} h-12 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
         data-share-chat-session
         data-share-game="dice"
         data-share-session-id="{{ session_state.id }}"
@@ -510,7 +510,7 @@
         method="post"
       >
         <button
-          class="inline-flex h-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+          class="inline-flex h-12 items-center justify-center rounded-[8px] border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
           type="submit"
         >
           Redo match
@@ -518,12 +518,22 @@
       </form>
     </div>
 
+    <div class="mt-5 flex justify-center">
+      <button
+        class="text-sm font-medium text-white/42 underline decoration-white/22 underline-offset-4 transition hover:text-white hover:decoration-white"
+        data-open-modal="dice-provably-fair"
+        type="button"
+      >
+        Provably Fair
+      </button>
+    </div>
+
     <div
       class="mt-8 {% if session_state.status == 'resolved' and not session_state.reveal_pending %}flex{% else %}hidden{% endif %} justify-center"
       data-session-return-wrap
     >
       <a
-        class="inline-flex h-12 items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white opacity-0 scale-[0.92] pointer-events-none transition hover:bg-white/10"
+        class="inline-flex h-12 items-center justify-center gap-3 rounded-[8px] border border-white/10 bg-white/5 px-5 text-sm font-medium text-white opacity-0 scale-[0.92] pointer-events-none transition hover:bg-white/10"
         href="{{ url_for('dice_game') }}"
         data-session-return-link
       >
@@ -538,6 +548,9 @@
     </div>
 
     <script data-dice-state type="application/json">{{ session_state | tojson }}</script>
+    {% set fairness_modal_id = "dice-provably-fair" %}
+    {% set fairness_state = session_state.fairness %}
+    {% include "Games/_ProvablyFairModal.html" %}
   </section>
 {% endblock %}
 

@@ -80,7 +80,24 @@ BLACKJACK_SHOE_COUNT = 6
 BLACKJACK_RESHUFFLE_THRESHOLD = 20
 BLACKJACK_BETTING_COUNTDOWN_SECONDS = 30
 BLACKJACK_SETTLE_HOLD_SECONDS = 4.0
-BLACKJACK_CHIP_VALUES_CENTS = (100, 200, 500, 2500, 10000, 100000)
+BLACKJACK_IDLE_EMPTY_TTL_SECONDS = 60 * 60
+BLACKJACK_DEFAULT_MIN_BET_CENTS = 100
+BLACKJACK_DEFAULT_MAX_BET_CENTS = 100000
+BLACKJACK_TABLE_LIMIT_CAP_CENTS = 100000000
+BIG_WIN_CHAT_THRESHOLD_CENTS = 1000000
+BLACKJACK_CHIP_VALUES_CENTS = (
+    100,
+    200,
+    500,
+    2500,
+    10000,
+    100000,
+    500000,
+    1000000,
+    2500000,
+    5000000,
+    10000000,
+)
 BLACKJACK_ROUND_WAITING = "waiting"
 BLACKJACK_ROUND_BETTING = "betting"
 BLACKJACK_ROUND_DEALING = "dealing"
@@ -2503,7 +2520,7 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
             raise ValueError("That message can no longer be replied to.")
 
     if shared_game or shared_session_id:
-        if shared_game not in {"coinflip", "dice"}:
+        if shared_game not in {"blackjack", "coinflip", "dice"}:
             raise ValueError("Choose a valid session to share.")
 
         session_share = build_chat_session_share_payload(
@@ -2516,11 +2533,12 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
             raise ValueError("That session could not be shared.")
 
         if not normalized_body:
-            normalized_body = (
-                "Shared a coinflip session."
-                if shared_game == "coinflip"
-                else "Shared a dice session."
-            )
+            default_share_bodies = {
+                "blackjack": "Shared a blackjack table.",
+                "coinflip": "Shared a coinflip session.",
+                "dice": "Shared a dice session.",
+            }
+            normalized_body = default_share_bodies.get(shared_game, "Shared a session.")
 
     if not normalized_body:
         raise ValueError("Write a message before sending it.")
@@ -2556,6 +2574,29 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
     add_chat_reply_notifications(author_snapshot, message)
 
     return message
+
+
+def maybe_add_big_win_chat_announcement(session_record, winner_user, game_label, payout_cents, announcement_key):
+    if int(payout_cents or 0) < BIG_WIN_CHAT_THRESHOLD_CENTS:
+        return False
+
+    winner_snapshot = normalize_user_profile(winner_user)
+
+    if not winner_snapshot or winner_snapshot["id"] == BOT_PROFILE["id"]:
+        return False
+
+    announced_keys = set(session_record.setdefault("big_win_announced_keys", []))
+
+    if announcement_key in announced_keys:
+        return False
+
+    add_chat_message(
+        BOT_PROFILE,
+        f"{winner_snapshot['display_name']} just won {format_money(payout_cents)} on {game_label}.",
+    )
+    announced_keys.add(announcement_key)
+    session_record["big_win_announced_keys"] = sorted(announced_keys)
+    return True
 
 
 def get_latest_chat_message_id():
@@ -2708,6 +2749,105 @@ def parse_bet_amount_to_cents(raw_value):
         raise ValueError("The minimum bet is $1.")
 
     return int(parsed_value * 100)
+
+
+def parse_blackjack_table_limit_to_cents(raw_value, default_cents, label):
+    normalized_value = str(raw_value or "").strip()
+
+    if not normalized_value:
+        return int(default_cents)
+
+    try:
+        parsed_value = Decimal(normalized_value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError(f"Enter a valid {label.lower()}.")
+
+    if parsed_value < Decimal("1.00"):
+        raise ValueError(f"{label} must be at least $1.")
+
+    parsed_cents = int(parsed_value * 100)
+
+    if parsed_cents > BLACKJACK_TABLE_LIMIT_CAP_CENTS:
+        raise ValueError(f"{label} cannot be higher than {format_money(BLACKJACK_TABLE_LIMIT_CAP_CENTS)}.")
+
+    return parsed_cents
+
+
+def normalize_blackjack_table_limits(min_bet_cents, max_bet_cents):
+    try:
+        normalized_min = int(min_bet_cents)
+    except (TypeError, ValueError):
+        normalized_min = BLACKJACK_DEFAULT_MIN_BET_CENTS
+
+    try:
+        normalized_max = int(max_bet_cents)
+    except (TypeError, ValueError):
+        normalized_max = BLACKJACK_DEFAULT_MAX_BET_CENTS
+
+    normalized_min = min(
+        max(normalized_min, BLACKJACK_DEFAULT_MIN_BET_CENTS),
+        BLACKJACK_TABLE_LIMIT_CAP_CENTS,
+    )
+    normalized_max = min(
+        max(normalized_max, BLACKJACK_DEFAULT_MIN_BET_CENTS),
+        BLACKJACK_TABLE_LIMIT_CAP_CENTS,
+    )
+
+    if normalized_max < normalized_min:
+        normalized_max = normalized_min
+
+    return normalized_min, normalized_max
+
+
+def ensure_blackjack_session_limits(blackjack_session):
+    min_bet_cents, max_bet_cents = normalize_blackjack_table_limits(
+        blackjack_session.get("min_bet_cents", BLACKJACK_DEFAULT_MIN_BET_CENTS),
+        blackjack_session.get("max_bet_cents", BLACKJACK_DEFAULT_MAX_BET_CENTS),
+    )
+    blackjack_session["min_bet_cents"] = min_bet_cents
+    blackjack_session["max_bet_cents"] = max_bet_cents
+    return min_bet_cents, max_bet_cents
+
+
+def format_blackjack_table_limits(min_bet_cents, max_bet_cents):
+    return f"{format_money(min_bet_cents)} min / {format_money(max_bet_cents)} max"
+
+
+def generate_fair_server_seed():
+    return secrets.token_hex(32)
+
+
+def hash_fair_server_seed(server_seed):
+    return hashlib.sha256(str(server_seed or "").encode("utf-8")).hexdigest()
+
+
+def ensure_session_fairness(session_record):
+    server_seed = str(session_record.get("server_seed") or "").strip()
+
+    if not server_seed:
+        server_seed = generate_fair_server_seed()
+        session_record["server_seed"] = server_seed
+
+    session_record["server_seed_hash"] = hash_fair_server_seed(server_seed)
+    return server_seed, session_record["server_seed_hash"]
+
+
+def get_fair_random_int(session_record, label, modulo):
+    server_seed, _ = ensure_session_fairness(session_record)
+    digest = hashlib.sha256(
+        f"{server_seed}:{session_record.get('id')}:{label}".encode("utf-8")
+    ).hexdigest()
+    return int(digest, 16) % modulo
+
+
+def build_fairness_payload(session_record, is_resolved):
+    server_seed, server_seed_hash = ensure_session_fairness(session_record)
+    return {
+        "nonce": session_record.get("id"),
+        "server_seed": server_seed if is_resolved else None,
+        "server_seed_hash": server_seed_hash,
+        "verification": "sha256(server_seed) before reveal; results are derived from sha256(server_seed:session_id:roll).",
+    }
 
 
 def other_coin_side(side_name):
@@ -3343,23 +3483,62 @@ def blackjack_user_claimed_seat_ids(seat_claims, user_id):
     ]
 
 
-def blackjack_user_has_bets_on_claimed_seats(table_state, seat_claims, user_id):
+def validate_blackjack_main_bet_amount(blackjack_session, bet_cents, *, require_min=True):
+    min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
+    normalized_bet_cents = int(bet_cents or 0)
+
+    if require_min and normalized_bet_cents < min_bet_cents:
+        raise ValueError(f"Main bet must be at least {format_money(min_bet_cents)}.")
+
+    if normalized_bet_cents > max_bet_cents:
+        raise ValueError(f"Main bet cannot be higher than {format_money(max_bet_cents)}.")
+
+
+def validate_blackjack_pending_main_bets_for_seats(blackjack_session, table_state, seat_ids):
+    pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state)
+
+    for seat_id in seat_ids:
+        validate_blackjack_main_bet_amount(
+            blackjack_session,
+            pending_bets_by_seat.get(seat_id, 0),
+        )
+
+
+def blackjack_user_has_bets_on_claimed_seats(table_state, seat_claims, user_id, blackjack_session=None):
     user_seat_ids = blackjack_user_claimed_seat_ids(seat_claims, user_id)
 
     if not user_seat_ids:
         return False
 
     pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state)
-    return all(pending_bets_by_seat.get(seat_id, 0) > 0 for seat_id in user_seat_ids)
+
+    if blackjack_session:
+        min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
+    else:
+        min_bet_cents = BLACKJACK_DEFAULT_MIN_BET_CENTS
+        max_bet_cents = BLACKJACK_TABLE_LIMIT_CAP_CENTS
+
+    return all(
+        min_bet_cents <= pending_bets_by_seat.get(seat_id, 0) <= max_bet_cents
+        for seat_id in user_seat_ids
+    )
 
 
-def blackjack_table_ready_to_start(table_state, seat_claims):
+def blackjack_table_ready_to_start(table_state, seat_claims, blackjack_session=None):
     if not seat_claims:
         return False
 
     pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state)
+    if blackjack_session:
+        min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
+    else:
+        min_bet_cents = BLACKJACK_DEFAULT_MIN_BET_CENTS
+        max_bet_cents = BLACKJACK_TABLE_LIMIT_CAP_CENTS
 
-    if any(pending_bets_by_seat.get(seat_id, 0) <= 0 for seat_id in seat_claims):
+    if any(
+        not (min_bet_cents <= pending_bets_by_seat.get(seat_id, 0) <= max_bet_cents)
+        for seat_id in seat_claims
+    ):
         return False
 
     ready_user_ids = get_blackjack_ready_user_ids(table_state)
@@ -3542,6 +3721,20 @@ def record_blackjack_hand_result(blackjack_session, hand):
         result in {"win", "blackjack"},
         blackjack_session["id"],
     )
+    if result in {"win", "blackjack"}:
+        maybe_add_big_win_chat_announcement(
+            blackjack_session,
+            USER_PROFILES.get(user_id) or {
+                "avatar_url": None,
+                "avatar_static_url": None,
+                "display_name": user_id,
+                "id": user_id,
+                "username": user_id,
+            },
+            "Blackjack",
+            payout_cents,
+            record_key,
+        )
     recorded_result_ids.add(record_key)
     table_state["recorded_result_ids"] = sorted(recorded_result_ids)
 
@@ -3583,6 +3776,20 @@ def record_blackjack_side_bet_result(
         payout_cents > 0,
         blackjack_session["id"],
     )
+    if payout_cents > 0:
+        maybe_add_big_win_chat_announcement(
+            blackjack_session,
+            USER_PROFILES.get(user_id) or {
+                "avatar_url": None,
+                "avatar_static_url": None,
+                "display_name": user_id,
+                "id": user_id,
+                "username": user_id,
+            },
+            "Blackjack",
+            payout_cents,
+            record_key,
+        )
     recorded_result_ids.add(record_key)
     table_state["recorded_result_ids"] = sorted(recorded_result_ids)
 
@@ -3877,6 +4084,7 @@ def reset_blackjack_table_for_next_round(blackjack_session):
 
 
 def maybe_begin_blackjack_round_on_timeout(blackjack_session, now=None):
+    min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
     table_state = ensure_blackjack_table_state(blackjack_session)
     seat_claims = blackjack_session.setdefault("seat_claims", {})
     current_time = now or time.time()
@@ -3889,7 +4097,8 @@ def maybe_begin_blackjack_round_on_timeout(blackjack_session, now=None):
 
     pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state, BLACKJACK_BET_TYPE_MAIN)
     has_participating_seat = any(
-        seat_claims.get(seat_id) and pending_bets_by_seat.get(seat_id, 0) > 0
+        seat_claims.get(seat_id)
+        and min_bet_cents <= pending_bets_by_seat.get(seat_id, 0) <= max_bet_cents
         for seat_id in HAND_SLOT_SEAT_IDS
     )
 
@@ -3898,7 +4107,7 @@ def maybe_begin_blackjack_round_on_timeout(blackjack_session, now=None):
         return True
 
     start_blackjack_betting_timer(table_state, current_time)
-    table_state["message"] = "Place a main bet before the timer ends."
+    table_state["message"] = f"Place at least {format_money(min_bet_cents)} Main before the timer ends."
     table_state["updated_at"] = current_time
     return False
 
@@ -3971,6 +4180,7 @@ def get_blackjack_available_actions(table_state, current_user_id):
 
 
 def begin_blackjack_round(blackjack_session, current_user_id=None):
+    min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
     table_state = ensure_blackjack_table_state(blackjack_session)
     cleanup_blackjack_pending_bets_for_claims(blackjack_session)
 
@@ -3987,11 +4197,18 @@ def begin_blackjack_round(blackjack_session, current_user_id=None):
     participating_seat_ids = [
         seat_id
         for seat_id in reversed(HAND_SLOT_SEAT_IDS)
-        if pending_bets_by_seat.get(seat_id, 0) > 0 and seat_claims.get(seat_id)
+        if (
+            seat_claims.get(seat_id)
+            and min_bet_cents <= pending_bets_by_seat.get(seat_id, 0) <= max_bet_cents
+        )
     ]
 
     if not participating_seat_ids:
-        raise ValueError("Place a bet before starting the round.")
+        raise ValueError(
+            "Place a main bet between "
+            f"{format_money(min_bet_cents)} and {format_money(max_bet_cents)} "
+            "before starting the round."
+        )
 
     user_bet_totals = {}
 
@@ -4098,6 +4315,33 @@ def rebet_blackjack_user(blackjack_session, current_user_id):
     if snapshot_total_cents > get_user_balance(current_user_id):
         raise ValueError("You do not have enough balance to rebet that wager.")
 
+    snapshot_main_bets_by_seat = {}
+    for chip in snapshot:
+        if normalize_blackjack_bet_type(chip.get("bet_type")) != BLACKJACK_BET_TYPE_MAIN:
+            continue
+
+        seat_id = chip.get("seat_id")
+        snapshot_main_bets_by_seat[seat_id] = (
+            snapshot_main_bets_by_seat.get(seat_id, 0)
+            + int(chip.get("value_cents") or 0)
+        )
+
+    if not snapshot_main_bets_by_seat:
+        raise ValueError("There is no previous main bet to rebet.")
+
+    validate_blackjack_pending_main_bets_for_seats(
+        blackjack_session,
+        {"pending_bet_chips": [
+            {
+                "bet_type": BLACKJACK_BET_TYPE_MAIN,
+                "seat_id": seat_id,
+                "value_cents": amount_cents,
+            }
+            for seat_id, amount_cents in snapshot_main_bets_by_seat.items()
+        ]},
+        snapshot_main_bets_by_seat.keys(),
+    )
+
     for chip in snapshot:
         seat_claims[chip["seat_id"]] = current_user_id
 
@@ -4123,6 +4367,7 @@ def rebet_blackjack_user(blackjack_session, current_user_id):
     table_state["round_state"] = BLACKJACK_ROUND_BETTING
     table_state["message"] = ""
     table_state["updated_at"] = time.time()
+    touch_blackjack_session_activity(blackjack_session, table_state["updated_at"])
 
 
 def ready_blackjack_user(blackjack_session, current_user_id):
@@ -4136,8 +4381,13 @@ def ready_blackjack_user(blackjack_session, current_user_id):
     if current_user_id not in set(seat_claims.values()):
         raise ValueError("Take a seat before readying up.")
 
-    if not blackjack_user_has_bets_on_claimed_seats(table_state, seat_claims, current_user_id):
-        raise ValueError("Place a bet on every seat you took before readying up.")
+    if not blackjack_user_has_bets_on_claimed_seats(table_state, seat_claims, current_user_id, blackjack_session):
+        min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
+        raise ValueError(
+            "Place a main bet between "
+            f"{format_money(min_bet_cents)} and {format_money(max_bet_cents)} "
+            "on every seat you took before readying up."
+        )
 
     pending_total_cents = get_blackjack_pending_total_for_user(table_state, current_user_id)
 
@@ -4154,7 +4404,7 @@ def ready_blackjack_user(blackjack_session, current_user_id):
     table_state["message"] = ""
     table_state["updated_at"] = time.time()
 
-    if blackjack_table_ready_to_start(table_state, seat_claims):
+    if blackjack_table_ready_to_start(table_state, seat_claims, blackjack_session):
         begin_blackjack_round(blackjack_session, current_user_id)
 
 
@@ -4319,9 +4569,11 @@ def create_coinflip_session_record(creator_user, choice, bet_cents, *, opponent=
     creator_snapshot = remember_user_profile(creator_user)
     opponent_snapshot = remember_user_profile(opponent) if opponent else None
     session_id = build_coinflip_session_id()
+    server_seed = generate_fair_server_seed()
 
     return {
         "bet_cents": bet_cents,
+        "big_win_announced_keys": [],
         "countdown_started_at": countdown_started_at if opponent_snapshot else None,
         "created_at": time.time(),
         "creator": creator_snapshot,
@@ -4333,6 +4585,8 @@ def create_coinflip_session_record(creator_user, choice, bet_cents, *, opponent=
         "rematch_source_session_id": None,
         "resolved_at": None,
         "result_side": None,
+        "server_seed": server_seed,
+        "server_seed_hash": hash_fair_server_seed(server_seed),
         "winner_id": None,
         "winner_name": None,
     }
@@ -4352,9 +4606,11 @@ def create_dice_session_record(
     creator_snapshot = remember_user_profile(creator_user)
     opponent_snapshot = remember_user_profile(opponent) if opponent else None
     session_id = build_dice_session_id()
+    server_seed = generate_fair_server_seed()
 
     return {
         "bet_cents": bet_cents,
+        "big_win_announced_keys": [],
         "countdown_started_at": countdown_started_at if opponent_snapshot else None,
         "created_at": time.time(),
         "creator": creator_snapshot,
@@ -4371,6 +4627,8 @@ def create_dice_session_record(
         "rounds": [],
         "resolved_at": None,
         "result_face": None,
+        "server_seed": server_seed,
+        "server_seed_hash": hash_fair_server_seed(server_seed),
         "target_wins": target_wins if mode == "first_to" else None,
         "winner_id": None,
         "winner_name": None,
@@ -4585,11 +4843,22 @@ def build_dice_side_hint(side_name):
     return "Wins on 1 to 3" if side_name == "Low" else "Wins on 4 to 6"
 
 
-def build_first_to_dice_match(target_wins, double_roll=False):
+def build_first_to_dice_match(target_wins, double_roll=False, dice_session=None):
     creator_score = 0
     opponent_score = 0
     rounds = []
     round_guard = 0
+    roll_index = 0
+
+    def next_die_face():
+        nonlocal roll_index
+        current_roll_index = roll_index
+        roll_index += 1
+
+        if dice_session:
+            return get_fair_random_int(dice_session, f"dice:{current_roll_index}", 6) + 1
+
+        return roll_die_face()
 
     while creator_score < target_wins and opponent_score < target_wins:
         round_guard += 1
@@ -4600,8 +4869,8 @@ def build_first_to_dice_match(target_wins, double_roll=False):
         }
 
         if double_roll:
-            creator_faces = [roll_die_face(), roll_die_face()]
-            opponent_faces = [roll_die_face(), roll_die_face()]
+            creator_faces = [next_die_face(), next_die_face()]
+            opponent_faces = [next_die_face(), next_die_face()]
             creator_total = sum(creator_faces)
             opponent_total = sum(opponent_faces)
 
@@ -4625,8 +4894,8 @@ def build_first_to_dice_match(target_wins, double_roll=False):
                 "opponent_total": opponent_total,
             })
         else:
-            creator_face = roll_die_face()
-            opponent_face = roll_die_face()
+            creator_face = next_die_face()
+            opponent_face = next_die_face()
 
             if creator_face == opponent_face and round_guard > 128:
                 opponent_face = 1 if creator_face > 1 else 6
@@ -4666,6 +4935,13 @@ def settle_dice_session(dice_session, winning_user):
     if winning_user["id"] != BOT_PROFILE["id"]:
         payout_cents = dice_session["bet_cents"] * 2
         set_user_balance(winning_user["id"], get_user_balance(winning_user["id"]) + payout_cents)
+        maybe_add_big_win_chat_announcement(
+            dice_session,
+            winning_user,
+            "Dice",
+            payout_cents,
+            f"dice:{dice_session['id']}:payout",
+        )
 
     for player in [dice_session["creator"], dice_session.get("opponent")]:
         if not player or player["id"] == BOT_PROFILE["id"] or not dice_session["winner_id"]:
@@ -4889,7 +5165,7 @@ def sync_coinflip_session_state(coinflip_session):
     if time.time() < countdown_end:
         return
 
-    result_side = flip_coin_side()
+    result_side = "Heads" if get_fair_random_int(coinflip_session, "coinflip", 2) == 0 else "Tails"
     winning_user = (
         coinflip_session["creator"]
         if coinflip_session["creator_choice"] == result_side
@@ -4903,6 +5179,13 @@ def sync_coinflip_session_state(coinflip_session):
     if winning_user["id"] != BOT_PROFILE["id"]:
         payout_cents = coinflip_session["bet_cents"] * 2
         set_user_balance(winning_user["id"], get_user_balance(winning_user["id"]) + payout_cents)
+        maybe_add_big_win_chat_announcement(
+            coinflip_session,
+            winning_user,
+            "Coinflip",
+            payout_cents,
+            f"coinflip:{coinflip_session['id']}:payout",
+        )
 
     for player in [coinflip_session["creator"], coinflip_session.get("opponent")]:
         if player and player["id"] != BOT_PROFILE["id"] and coinflip_session["winner_id"]:
@@ -4949,6 +5232,7 @@ def sync_dice_session_state(dice_session):
         match_result = build_first_to_dice_match(
             get_dice_target_wins(dice_session),
             double_roll=is_double_dice_session(dice_session),
+            dice_session=dice_session,
         )
         dice_session["creator_score"] = match_result["creator_score"]
         dice_session["opponent_score"] = match_result["opponent_score"]
@@ -4961,7 +5245,7 @@ def sync_dice_session_state(dice_session):
         settle_dice_session(dice_session, winning_user)
         return
 
-    result_face = roll_die_face()
+    result_face = get_fair_random_int(dice_session, "dice:0", 6) + 1
     winning_user = (
         dice_session["creator"]
         if dice_side_matches_face(dice_session["creator_side"], result_face)
@@ -4979,6 +5263,9 @@ def sync_all_dice_sessions():
 def sync_all_game_sessions():
     sync_all_coinflip_sessions()
     sync_all_dice_sessions()
+    cleanup_idle_blackjack_sessions()
+    for blackjack_session in list(BLACKJACK_SESSIONS.values()):
+        sync_blackjack_table_lifecycle(blackjack_session)
 
 
 def sync_game_session_state(game, session_record):
@@ -5085,6 +5372,7 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
         "current_balance_display": format_money(get_user_balance(current_user_id)) if current_user_id else None,
         "current_user_choice": current_user_choice,
         "did_win": did_win,
+        "fairness": build_fairness_payload(coinflip_session, status == "resolved"),
         "id": coinflip_session["id"],
         "is_creator": is_creator,
         "is_participant": is_participant,
@@ -5121,19 +5409,27 @@ def build_coinflip_session_state(coinflip_session, current_user_id):
     return session_state
 
 
-def create_blackjack_session_record(creator_user, table_name):
+def create_blackjack_session_record(creator_user, table_name, min_bet_cents=None, max_bet_cents=None):
     creator_snapshot = remember_user_profile(creator_user)
     session_id = build_blackjack_session_id()
     normalized_table_name = normalize_blackjack_table_name(
         table_name,
         creator_snapshot["display_name"],
     )
+    min_bet_cents, max_bet_cents = normalize_blackjack_table_limits(
+        min_bet_cents if min_bet_cents is not None else BLACKJACK_DEFAULT_MIN_BET_CENTS,
+        max_bet_cents if max_bet_cents is not None else BLACKJACK_DEFAULT_MAX_BET_CENTS,
+    )
 
     return {
+        "big_win_announced_keys": [],
         "created_at": time.time(),
         "creator": creator_snapshot,
         "description": "Live blackjack room with shared seats and dealer cards.",
         "id": session_id,
+        "last_activity_at": time.time(),
+        "max_bet_cents": max_bet_cents,
+        "min_bet_cents": min_bet_cents,
         "seat_count": BLACKJACK_SESSION_MAX_SEATS,
         "seat_claims": {},
         "table_state": create_blackjack_table_state(),
@@ -5307,6 +5603,7 @@ def build_dice_session_state(dice_session, current_user_id):
         "creator_score": dice_session.get("creator_score", 0),
         "current_balance_display": format_money(get_user_balance(current_user_id)) if current_user_id else None,
         "did_win": did_win,
+        "fairness": build_fairness_payload(dice_session, status == "resolved"),
         "id": dice_session["id"],
         "is_creator": is_creator,
         "is_double_roll": is_double_roll,
@@ -5454,6 +5751,7 @@ def build_dice_lobby_payload(current_user_id):
 
 
 def build_blackjack_session_state(blackjack_session, current_user_id):
+    min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
     sync_blackjack_session_seat_claims(blackjack_session)
     creator = make_user_snapshot(blackjack_session["creator"])
     session_path = f"/games/blackjack/sessions/{blackjack_session['id']}"
@@ -5482,6 +5780,12 @@ def build_blackjack_session_state(blackjack_session, current_user_id):
         ),
         "id": blackjack_session["id"],
         "is_creator": current_user_id == creator["id"],
+        "last_activity_at": blackjack_session.get("last_activity_at") or blackjack_session["created_at"],
+        "limits_display": format_blackjack_table_limits(min_bet_cents, max_bet_cents),
+        "max_bet_cents": max_bet_cents,
+        "max_bet_display": format_money(max_bet_cents),
+        "min_bet_cents": min_bet_cents,
+        "min_bet_display": format_money(min_bet_cents),
         "occupancy_count": occupancy_count,
         "occupancy_text": occupancy_text,
         "seat_count": blackjack_session.get("seat_count", BLACKJACK_SESSION_MAX_SEATS),
@@ -5496,6 +5800,9 @@ def build_blackjack_session_state(blackjack_session, current_user_id):
             "created_at": session_state["created_at"],
             "creator_name": session_state["creator"]["display_name"],
             "id": session_state["id"],
+            "last_activity_at": session_state["last_activity_at"],
+            "max_bet_cents": session_state["max_bet_cents"],
+            "min_bet_cents": session_state["min_bet_cents"],
             "occupancy_count": session_state["occupancy_count"],
             "status": session_state["status"],
             "table_name": session_state["table_name"],
@@ -5507,6 +5814,10 @@ def build_blackjack_session_state(blackjack_session, current_user_id):
 
 def get_blackjack_session_path(session_id):
     return f"/games/blackjack/sessions/{session_id}"
+
+
+def touch_blackjack_session_activity(blackjack_session, now=None):
+    blackjack_session["last_activity_at"] = now or time.time()
 
 
 def touch_blackjack_session_presence(session_id, user_profile=None):
@@ -5544,6 +5855,36 @@ def sync_blackjack_session_seat_claims(blackjack_session):
 
     cleanup_blackjack_pending_bets_for_claims(blackjack_session)
     return seat_claims
+
+
+def cleanup_idle_blackjack_sessions(now=None):
+    current_time = now or time.time()
+    expired_session_ids = []
+
+    for session_id, blackjack_session in list(BLACKJACK_SESSIONS.items()):
+        ensure_blackjack_session_limits(blackjack_session)
+        seat_claims = sync_blackjack_session_seat_claims(blackjack_session)
+
+        if seat_claims:
+            continue
+
+        try:
+            last_activity_at = float(
+                blackjack_session.get("last_activity_at")
+                or blackjack_session.get("created_at")
+                or current_time
+            )
+        except (TypeError, ValueError):
+            last_activity_at = current_time
+
+        if current_time >= last_activity_at + BLACKJACK_IDLE_EMPTY_TTL_SECONDS:
+            expired_session_ids.append(session_id)
+
+    for session_id in expired_session_ids:
+        BLACKJACK_SESSIONS.pop(session_id, None)
+        CANCELED_BLACKJACK_SESSIONS.pop(session_id, None)
+
+    return expired_session_ids
 
 
 def build_public_blackjack_dealer_state(table_state):
@@ -5632,6 +5973,7 @@ def build_public_blackjack_side_bet(side_bet):
 
 
 def build_public_blackjack_table_state(blackjack_session, current_user_id):
+    min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
     table_state = sync_blackjack_table_lifecycle(blackjack_session)
     seat_claims = blackjack_session.get("seat_claims") or {}
     live_bets_by_seat = get_blackjack_live_bets_by_seat(table_state)
@@ -5653,12 +5995,36 @@ def build_public_blackjack_table_state(blackjack_session, current_user_id):
         for chip in self_last_bet_snapshot
         if chip.get("seat_id")
     }
+    self_last_main_bets_by_seat = {}
+    for chip in self_last_bet_snapshot:
+        if normalize_blackjack_bet_type(chip.get("bet_type")) != BLACKJACK_BET_TYPE_MAIN:
+            continue
+
+        seat_id = chip.get("seat_id")
+        self_last_main_bets_by_seat[seat_id] = (
+            self_last_main_bets_by_seat.get(seat_id, 0)
+            + int(chip.get("value_cents") or 0)
+        )
+
+    self_last_bet_within_limits = bool(self_last_main_bets_by_seat)
+    for amount_cents in self_last_main_bets_by_seat.values():
+        try:
+            validate_blackjack_main_bet_amount(blackjack_session, amount_cents)
+        except ValueError:
+            self_last_bet_within_limits = False
+            break
+
     self_last_bet_seats_available = bool(self_last_bet_seat_ids) and all(
         seat_claims.get(seat_id) in {None, current_user_id}
         for seat_id in self_last_bet_seat_ids
     )
     ready_user_ids = get_blackjack_ready_user_ids(table_state) & get_blackjack_claimed_user_ids(seat_claims)
-    self_has_required_bets = blackjack_user_has_bets_on_claimed_seats(table_state, seat_claims, current_user_id)
+    self_has_required_bets = blackjack_user_has_bets_on_claimed_seats(
+        table_state,
+        seat_claims,
+        current_user_id,
+        blackjack_session,
+    )
     required_ready_count = len(get_blackjack_claimed_user_ids(seat_claims))
     ready_count = len(ready_user_ids)
     public_seat_side_bets = {}
@@ -5694,6 +6060,13 @@ def build_public_blackjack_table_state(blackjack_session, current_user_id):
         ],
         "insurance_offer_seat_ids": get_blackjack_insurance_offer_seat_ids(table_state),
         "last_results": list(table_state.get("last_results") or []),
+        "main_bet_limits_display": format_blackjack_table_limits(min_bet_cents, max_bet_cents),
+        "main_bet_max_amount": max_bet_cents / 100,
+        "main_bet_max_cents": max_bet_cents,
+        "main_bet_max_display": format_money(max_bet_cents),
+        "main_bet_min_amount": min_bet_cents / 100,
+        "main_bet_min_cents": min_bet_cents,
+        "main_bet_min_display": format_money(min_bet_cents),
         "message": table_state.get("message") or "",
         "pending_bet_chips": [
             build_public_blackjack_pending_chip(chip, current_user_id)
@@ -5731,6 +6104,7 @@ def build_public_blackjack_table_state(blackjack_session, current_user_id):
         "self_can_rebet": bool(
             current_user_id
             and self_last_bet_cents > 0
+            and self_last_bet_within_limits
             and not self_has_pending_chips
             and self_last_bet_seats_available
             and self_last_bet_cents <= get_user_balance(current_user_id)
@@ -5829,6 +6203,11 @@ def build_blackjack_lobby_sessions(current_user_id):
                 "created_at": session_state["created_at"],
                 "creator_name": session_state["creator"]["display_name"],
                 "id": session_state["id"],
+                "limits_display": session_state["limits_display"],
+                "max_bet_cents": session_state["max_bet_cents"],
+                "max_bet_display": session_state["max_bet_display"],
+                "min_bet_cents": session_state["min_bet_cents"],
+                "min_bet_display": session_state["min_bet_display"],
                 "occupancy_count": session_state["occupancy_count"],
                 "occupancy_text": session_state["occupancy_text"],
                 "seat_count": session_state["seat_count"],
@@ -5845,6 +6224,7 @@ def build_blackjack_lobby_sessions(current_user_id):
 
 
 def build_blackjack_lobby_payload(current_user_id):
+    cleanup_idle_blackjack_sessions()
     blackjack_sessions, session_summary = build_blackjack_lobby_sessions(current_user_id)
     current_balance_cents = get_user_balance(current_user_id) if current_user_id else None
     version_payload = {
@@ -5854,6 +6234,8 @@ def build_blackjack_lobby_payload(current_user_id):
             {
                 "created_at": blackjack_session["created_at"],
                 "id": blackjack_session["id"],
+                "max_bet_cents": blackjack_session["max_bet_cents"],
+                "min_bet_cents": blackjack_session["min_bet_cents"],
                 "occupancy_count": blackjack_session["occupancy_count"],
                 "status": blackjack_session["status"],
                 "table_name": blackjack_session["table_name"],
@@ -6009,6 +6391,30 @@ def build_chat_session_share_payload(game, session_id, current_user_id):
             "status_text": status_text,
             "title": f"{creator['display_name']}'s dice session",
             "view_url": url_for("dice_session", session_id=session_state["id"]) if has_request_context() else None,
+        }
+
+    if game == "blackjack":
+        blackjack_session = BLACKJACK_SESSIONS.get(session_id)
+
+        if not blackjack_session:
+            return None
+
+        session_state = build_blackjack_session_state(blackjack_session, current_user_id)
+
+        return {
+            "bet_display": session_state["min_bet_display"],
+            "creator_name": session_state["creator"]["display_name"],
+            "detail_copy": f"{session_state['seat_count']} seats · Main {session_state['limits_display']}",
+            "game": "blackjack",
+            "is_joinable": True,
+            "join_url": None,
+            "label": f"{session_state['seat_count']} seats",
+            "pot_display": session_state["max_bet_display"],
+            "session_id": session_state["id"],
+            "status": session_state["status"],
+            "status_text": f"{session_state['occupancy_text']} Main {session_state['limits_display']}.",
+            "title": session_state["table_name"],
+            "view_url": url_for("blackjack_session", session_id=session_state["id"]) if has_request_context() else None,
         }
 
     return None
@@ -6525,11 +6931,13 @@ def get_dice_session_or_404(session_id):
 
 
 def get_blackjack_session_or_404(session_id):
+    cleanup_idle_blackjack_sessions()
     blackjack_session = BLACKJACK_SESSIONS.get(session_id)
 
     if not blackjack_session:
         abort(404)
 
+    ensure_blackjack_session_limits(blackjack_session)
     return blackjack_session
 
 
@@ -7139,7 +7547,11 @@ def blackjack_game():
         "Games/Blackjack.html",
         active_page="play",
         blackjack_lobby_state=blackjack_lobby_state,
+        default_max_bet_amount=BLACKJACK_DEFAULT_MAX_BET_CENTS / 100,
         blackjack_sessions=blackjack_lobby_state["sessions"],
+        default_max_bet_display=format_money(BLACKJACK_DEFAULT_MAX_BET_CENTS),
+        default_min_bet_amount=BLACKJACK_DEFAULT_MIN_BET_CENTS / 100,
+        default_min_bet_display=format_money(BLACKJACK_DEFAULT_MIN_BET_CENTS),
         session_summary=blackjack_lobby_state["session_summary"],
     )
 
@@ -7163,9 +7575,34 @@ def blackjack_lobby_state():
 def create_blackjack_session():
     current_user = make_user_snapshot(get_current_user())
     table_name = request.form.get("table_name")
+    raw_min_bet = request.form.get("min_bet")
+    raw_max_bet = request.form.get("max_bet")
+
+    try:
+        min_bet_cents = parse_blackjack_table_limit_to_cents(
+            raw_min_bet,
+            BLACKJACK_DEFAULT_MIN_BET_CENTS,
+            "Minimum bet",
+        )
+        max_bet_cents = parse_blackjack_table_limit_to_cents(
+            raw_max_bet,
+            BLACKJACK_DEFAULT_MAX_BET_CENTS,
+            "Maximum bet",
+        )
+
+        if max_bet_cents < min_bet_cents:
+            raise ValueError("Maximum bet has to be at least the minimum bet.")
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("blackjack_game"))
 
     with STATE_LOCK:
-        blackjack_session = create_blackjack_session_record(current_user, table_name)
+        blackjack_session = create_blackjack_session_record(
+            current_user,
+            table_name,
+            min_bet_cents,
+            max_bet_cents,
+        )
         BLACKJACK_SESSIONS[blackjack_session["id"]] = blackjack_session
 
     return redirect(url_for("blackjack_session", session_id=blackjack_session["id"]))
@@ -7261,6 +7698,7 @@ def blackjack_table_seats(session_id):
             ensure_blackjack_betting_timer(table_state, seat_claims, reset=True)
             table_state["message"] = ""
             table_state["updated_at"] = time.time()
+            touch_blackjack_session_activity(blackjack_session_data, table_state["updated_at"])
         elif current_owner_id == current_user_id:
             if blackjack_table_has_active_hand_for_seat(table_state, seat_id):
                 return jsonify({"error": "Finish the current hand before leaving that seat."}), 409
@@ -7274,6 +7712,7 @@ def blackjack_table_seats(session_id):
                 clear_blackjack_betting_timer(table_state)
 
             table_state["updated_at"] = time.time()
+            touch_blackjack_session_activity(blackjack_session_data, table_state["updated_at"])
 
         table_payload = build_blackjack_table_payload(blackjack_session_data, current_user_id)
 
@@ -7318,6 +7757,17 @@ def blackjack_table_actions(session_id):
                 if not bet_type:
                     raise ValueError("Choose a valid bet type.")
 
+                if bet_type == BLACKJACK_BET_TYPE_MAIN:
+                    next_seat_main_bet = (
+                        get_blackjack_pending_bets_by_seat(table_state, BLACKJACK_BET_TYPE_MAIN).get(seat_id, 0)
+                        + chip_value_cents
+                    )
+                    validate_blackjack_main_bet_amount(
+                        blackjack_session_data,
+                        next_seat_main_bet,
+                        require_min=False,
+                    )
+
                 next_pending_total = get_blackjack_pending_total_for_user(table_state, current_user_id) + chip_value_cents
 
                 if next_pending_total > get_user_balance(current_user_id):
@@ -7334,6 +7784,7 @@ def blackjack_table_actions(session_id):
                 table_state["round_state"] = BLACKJACK_ROUND_BETTING
                 table_state["message"] = ""
                 table_state["updated_at"] = time.time()
+                touch_blackjack_session_activity(blackjack_session_data, table_state["updated_at"])
             elif action == "undo_chip":
                 if table_state.get("round_state") not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
                     raise ValueError("Wait for the next betting round.")
@@ -7380,6 +7831,7 @@ def blackjack_table_actions(session_id):
                 table_state["pending_bet_action_history"] = pending_bet_action_history
                 remove_blackjack_ready_user(table_state, current_user_id)
                 table_state["updated_at"] = time.time()
+                touch_blackjack_session_activity(blackjack_session_data, table_state["updated_at"])
             elif action == "double_pending":
                 if table_state.get("round_state") not in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
                     raise ValueError("Wait for the next betting round.")
@@ -7398,10 +7850,28 @@ def blackjack_table_actions(session_id):
                 if current_pending_total * 2 > get_user_balance(current_user_id):
                     raise ValueError("You do not have enough balance to double that bet.")
 
+                pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state, BLACKJACK_BET_TYPE_MAIN)
+                for seat_id in blackjack_user_claimed_seat_ids(seat_claims, current_user_id):
+                    own_main_addition = sum(
+                        int(chip.get("value_cents") or 0)
+                        for chip in own_chips
+                        if (
+                            chip.get("seat_id") == seat_id
+                            and normalize_blackjack_bet_type(chip.get("bet_type")) == BLACKJACK_BET_TYPE_MAIN
+                        )
+                    )
+                    if own_main_addition > 0:
+                        validate_blackjack_main_bet_amount(
+                            blackjack_session_data,
+                            pending_bets_by_seat.get(seat_id, 0) + own_main_addition,
+                            require_min=False,
+                        )
+
                 table_state.setdefault("pending_bet_chips", []).extend(own_chips)
                 record_blackjack_pending_bet_action(table_state, current_user_id, "double_pending", len(own_chips))
                 remove_blackjack_ready_user(table_state, current_user_id)
                 table_state["updated_at"] = time.time()
+                touch_blackjack_session_activity(blackjack_session_data, table_state["updated_at"])
             elif action == "rebet":
                 rebet_blackjack_user(blackjack_session_data, current_user_id)
             elif action == "insurance_accept":

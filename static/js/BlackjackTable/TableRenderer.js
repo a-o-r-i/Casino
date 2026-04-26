@@ -33,6 +33,15 @@ function GetDisplayChipValue(Amount) {
   const NormalizedAmount = Math.max(0, Number(Amount) || 0);
   return [...CHIP_VALUES].sort((Left, Right) => Right - Left).find(Value => NormalizedAmount >= Value) || CHIP_VALUES[0];
 }
+function FormatChipLabel(Value) {
+  const NumericValue = Number(Value) || 0;
+  if (NumericValue >= 1000) {
+    return `$${Number(NumericValue / 1000).toLocaleString("en-US", {
+      maximumFractionDigits: NumericValue % 1000 === 0 ? 0 : 1
+    })}K`;
+  }
+  return Money(NumericValue);
+}
 function CompareSeatHands(Left, Right) {
   return (Left.seatLayoutIndex ?? 0) - (Right.seatLayoutIndex ?? 0);
 }
@@ -474,9 +483,9 @@ export function CreateTableRenderer({
               --ChipColor: ${ChipColor};
               --ChipShift: 0px;
             "
-            aria-label="${Money(Amount)} bet chip using ${Money(DisplayChipValue)} chip color"
+            aria-label="${FormatChipLabel(Amount)} bet chip using ${FormatChipLabel(DisplayChipValue)} chip color"
           >
-            <span class="SeatBetLabel">${Money(Amount)}</span>
+            <span class="SeatBetLabel">${FormatChipLabel(Amount)}</span>
           </div>
         `;
         return `
@@ -691,7 +700,9 @@ export function CreateTableRenderer({
       if (!ChipButton) {
         return;
       }
-      ChipButton.disabled = !View.enabledChips[Value];
+      const IsVisible = !View.visibleChips || View.visibleChips[Value] !== false;
+      ChipButton.hidden = !IsVisible;
+      ChipButton.disabled = !IsVisible || !View.enabledChips[Value];
       ChipButton.classList.toggle("IsSelected", Value === View.selectedChipValue);
       ChipButton.setAttribute("aria-pressed", String(Value === View.selectedChipValue));
     });
@@ -739,7 +750,7 @@ export function CreateTableRenderer({
           aria-label="Select ${Money(Value)} chip"
           aria-pressed="false"
         >
-          <span class="ChipLabel">${Money(Value)}</span>
+          <span class="ChipLabel">${FormatChipLabel(Value)}</span>
         </button>
       `;
     }).join("");

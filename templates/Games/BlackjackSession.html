@@ -1,6 +1,6 @@
 {% extends "Base.html" %}
 
-{% block title %}Shuffling | Blackjack Session{% endblock %}
+{% block title %}Shuffling | {{ session_state.table_name }}{% endblock %}
 {% block page_key %}blackjack-session{% endblock %}
 
 {% block content %}
@@ -41,13 +41,29 @@
       {% if messages %}
         <div class="mx-auto mb-4 w-full max-w-[1100px] px-4 pt-4 md:px-6">
           {% for category, message in messages %}
-            <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+            <div class="break-words rounded-[8px] border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
               {{ message }}
             </div>
           {% endfor %}
         </div>
       {% endif %}
     {% endwith %}
+
+    <div class="mx-auto flex w-full max-w-[1100px] flex-col gap-3 px-4 pt-4 md:flex-row md:items-center md:justify-between md:px-6">
+      <div class="min-w-0">
+        <h1 class="truncate text-2xl font-semibold text-white">{{ session_state.table_name }}</h1>
+        <p class="mt-1 text-sm text-white/45">Main {{ session_state.limits_display }}</p>
+      </div>
+      <button
+        class="inline-flex h-10 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-4 text-sm font-medium text-white transition hover:bg-white/[0.08]"
+        data-share-chat-session
+        data-share-game="blackjack"
+        data-share-session-id="{{ session_state.id }}"
+        type="button"
+      >
+        Share table
+      </button>
+    </div>
 
     {% include "Games/_BlackjackTableStage.html" %}
     <script data-blackjack-table-config type="application/json">{{ blackjack_table_config | tojson }}</script>

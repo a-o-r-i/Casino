@@ -848,8 +848,42 @@ class NetworkBlackjackTable {
   CanUseBettingControls() {
     return [ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState) && this.state.selectedSeatIds.length > 0;
   }
+  GetMainBetLimits() {
+    const MinAmount = Number(this.tableState?.main_bet_min_amount);
+    const MaxAmount = Number(this.tableState?.main_bet_max_amount);
+    return {
+      max: Number.isFinite(MaxAmount) && MaxAmount > 0 ? MaxAmount : Number.POSITIVE_INFINITY,
+      maxLabel: this.tableState?.main_bet_max_display || "",
+      min: Number.isFinite(MinAmount) && MinAmount > 0 ? MinAmount : 1,
+      minLabel: this.tableState?.main_bet_min_display || "$1"
+    };
+  }
+  GetSeatMainBet(SeatId) {
+    return Number(this.state.pendingBets?.[SeatId]) || 0;
+  }
   UserHasMainBetsOnSelectedSeats() {
-    return Boolean(this.state.selectedSeatIds.length) && this.state.selectedSeatIds.every(SeatId => (Number(this.state.pendingBets?.[SeatId]) || 0) > 0);
+    const Limits = this.GetMainBetLimits();
+    return Boolean(this.state.selectedSeatIds.length) && this.state.selectedSeatIds.every(SeatId => {
+      const Amount = this.GetSeatMainBet(SeatId);
+      return Amount >= Limits.min && Amount <= Limits.max;
+    });
+  }
+  CanAddMainChip(SeatId, ChipValue) {
+    const Limits = this.GetMainBetLimits();
+    return this.GetSeatMainBet(SeatId) + (Number(ChipValue) || 0) <= Limits.max;
+  }
+  CanDoublePendingBet() {
+    if (!this.CanUseBettingControls() || this.GetSelfPendingBet() <= 0 || this.GetSelfPendingBet() * 2 > this.state.balance) {
+      return false;
+    }
+    const MainAdditionsBySeat = {};
+    (this.state.pendingBetChips || []).forEach(Chip => {
+      if (Chip.betType !== BET_TYPES.MAIN) {
+        return;
+      }
+      MainAdditionsBySeat[Chip.seatId] = (MainAdditionsBySeat[Chip.seatId] || 0) + (Number(Chip.value) || 0);
+    });
+    return Object.entries(MainAdditionsBySeat).every(([SeatId, Addition]) => this.CanAddMainChip(SeatId, Addition));
   }
   GetSeatBetAmounts() {
     const SeatBetAmounts = NormalizeSeatAmounts(this.tableState?.seat_bet_amounts);
@@ -933,6 +967,11 @@ class NetworkBlackjackTable {
     const CanRebet = Boolean(this.tableState?.self_can_rebet) && !HasSelfPendingBet;
     const LastBetAmount = Number(this.tableState?.self_last_bet_amount) || 0;
     const CanAct = this.state.roundState === ROUND_STATES.PLAYER_TURN && Boolean(ActiveHand?.isSelf);
+    const MainBetLimits = this.GetMainBetLimits();
+    const VisibleChips = Object.fromEntries(CHIP_VALUES.map(Value => [Value, Value <= MainBetLimits.max]));
+    if (this.state.selectedChipValue && VisibleChips[this.state.selectedChipValue] === false) {
+      this.state.selectedChipValue = 0;
+    }
     this.SyncSideBetEditorState();
     return {
       balanceLabel: Money(BalanceAfterPending),
@@ -954,7 +993,7 @@ class NetworkBlackjackTable {
       showInsurancePanel: this.state.roundState === ROUND_STATES.INSURANCE,
       disableSeatSelection: false,
       disableUndoChip: !CanBet || !HasSelfPendingBet,
-      disableDoubleBet: !CanBet || !HasSelfPendingBet || SelfPendingBet * 2 > this.state.balance,
+      disableDoubleBet: !this.CanDoublePendingBet(),
       primaryBetAction: CanRebet ? {
         label: "Rebet",
         tone: "rebet",
@@ -966,7 +1005,8 @@ class NetworkBlackjackTable {
         disabled: !CanBet || !SelfCanReady || SelfReady,
         ariaLabel: SelfReady ? "You are ready for the next blackjack round" : "Ready up for the next blackjack round"
       },
-      enabledChips: Object.fromEntries(CHIP_VALUES.map(Value => [Value, CanBet && (Value === this.state.selectedChipValue || SelfPendingBet + Value <= this.state.balance)])),
+      enabledChips: Object.fromEntries(CHIP_VALUES.map(Value => [Value, VisibleChips[Value] && CanBet && (Value === this.state.selectedChipValue || SelfPendingBet + Value <= this.state.balance)])),
+      visibleChips: VisibleChips,
       actions: {
         hit: {
           hidden: false,
@@ -1092,6 +1132,11 @@ class NetworkBlackjackTable {
     }
     if (this.GetSelfPendingBet() + NormalizedChipValue > this.state.balance) {
       this.SetLocalMessage(`Not enough balance for another ${Money(NormalizedChipValue)} chip.`);
+      return false;
+    }
+    if (BetType === BET_TYPES.MAIN && !this.CanAddMainChip(SeatId, NormalizedChipValue)) {
+      const Limits = this.GetMainBetLimits();
+      this.SetLocalMessage(`Main bet cannot be higher than ${Limits.maxLabel || Money(Limits.max)}.`);
       return false;
     }
     this.state.activeSeatId = SeatId;
@@ -1287,6 +1332,11 @@ class NetworkBlackjackTable {
   }
   SelectChip(Value) {
     const ChipValue = Number(Value) || 0;
+    if (ChipValue > this.GetMainBetLimits().max) {
+      this.state.selectedChipValue = 0;
+      this.Render();
+      return;
+    }
     this.state.selectedChipValue = this.state.selectedChipValue === ChipValue ? 0 : ChipValue;
     this.Render();
   }

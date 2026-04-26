@@ -1,3 +1,26 @@
+:root {
+  --app-radius: 8px;
+  --app-radius-pill: 999px;
+  --app-bg: #07090d;
+  --app-surface: #07090e;
+  --app-surface-muted: #07090e;
+  --app-surface-soft: rgba(255, 255, 255, 0.03);
+  --app-surface-hover: rgba(255, 255, 255, 0.06);
+  --app-surface-glass: rgba(7, 9, 14, 0.92);
+  --app-border: rgba(255, 255, 255, 0.1);
+  --app-border-soft: rgba(255, 255, 255, 0.08);
+  --app-text: #fff;
+  --app-text-soft: rgba(255, 255, 255, 0.72);
+  --app-text-muted: rgba(255, 255, 255, 0.5);
+  --app-text-faint: rgba(255, 255, 255, 0.34);
+  --app-panel-padding: 1.5rem;
+  --app-control-padding-x: 1rem;
+  --app-control-height: 2.75rem;
+  --app-gap: 1rem;
+  --app-shadow-panel: 0 24px 80px rgba(0, 0, 0, 0.52);
+  --app-shadow-soft: 0 18px 54px rgba(0, 0, 0, 0.42);
+}
+
 .BlackjackTableRoot {
   color-scheme: dark;
   --CardBackImage: none;
@@ -116,14 +139,13 @@
 
 .TableReadout {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: clamp(72px, 7vw, 96px);
-  padding: 0.42rem 0.54rem;
-  border: 1px solid rgba(243, 225, 172, 0.16);
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(10, 28, 23, 0.94) 0%, rgba(4, 16, 13, 0.74) 100%);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+  padding: 0.46rem 0.6rem;
+  border: 1px solid var(--app-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--app-radius, 8px);
+  background: var(--app-surface-glass, rgba(7, 9, 14, 0.9));
+  box-shadow: var(--app-shadow-soft, 0 18px 54px rgba(0, 0, 0, 0.42));
   backdrop-filter: blur(14px);
 }
 
@@ -138,7 +160,7 @@
 }
 
 .TableReadoutLabel {
-  color: rgba(247, 243, 230, 0.72);
+  color: var(--app-text-muted, rgba(255, 255, 255, 0.5));
   font-size: 0.5rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -146,6 +168,7 @@
 }
 
 .TableReadoutValue {
+  color: var(--app-text, #fff);
   font-size: clamp(0.7rem, 0.84vw, 0.82rem);
   font-weight: 900;
   line-height: 1.15;
@@ -1069,7 +1092,7 @@
   margin: 0;
   padding: 12px 14px 14px;
   border: 1px solid rgba(243, 225, 172, 0.14);
-  border-radius: 24px;
+  border-radius: var(--app-radius);
   background:
     linear-gradient(180deg, rgba(72, 72, 72, 0.92) 0%, rgba(35, 35, 35, 0.96) 100%);
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.26);
@@ -1206,7 +1229,7 @@
   min-height: 56px;
   padding: 0.7rem 0.8rem;
   border: 3px solid rgba(255, 236, 176, 0.72);
-  border-radius: 18px;
+  border-radius: var(--app-radius);
   box-shadow:
     inset 0 2px 4px rgba(255, 255, 255, 0.18),
     0 14px 24px rgba(0, 0, 0, 0.24);
@@ -1226,7 +1249,7 @@
   position: absolute;
   inset: 5px;
   border: 1px solid rgba(255, 246, 214, 0.34);
-  border-radius: 14px;
+  border-radius: var(--app-radius);
 }
 
 .DecisionButton:hover,
@@ -1321,7 +1344,7 @@
   .TableReadoutBalance {
     min-width: 0;
     padding: 0.36rem 0.46rem;
-    border-radius: 12px;
+    border-radius: var(--app-radius);
   }
 
   .TableReadoutBalance {
@@ -1388,7 +1411,7 @@
 
   .DecisionPanel {
     padding: 10px 10px 12px;
-    border-radius: 20px;
+    border-radius: var(--app-radius);
   }
 
   .DecisionPanelRow {

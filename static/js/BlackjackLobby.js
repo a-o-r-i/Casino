@@ -60,7 +60,7 @@ const BuildSessionCardMarkup = (BlackjackSession) =>
 
     return `
         <a
-          class="flex flex-col gap-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.05] md:flex-row md:items-center md:justify-between"
+          class="flex flex-col gap-4 rounded-[8px] border border-white/8 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.05] md:flex-row md:items-center md:justify-between"
           data-route-card
           href="${EscapeHtml(BlackjackSession.view_url)}"
         >
@@ -72,14 +72,14 @@ const BuildSessionCardMarkup = (BlackjackSession) =>
               </span>
             </div>
             <p class="mt-1 text-sm text-white/55">
-              ${EscapeHtml(BlackjackSession.creator_name)} &middot; ${EscapeHtml(BlackjackSession.seat_count)} seats
+              ${EscapeHtml(BlackjackSession.creator_name)} &middot; ${EscapeHtml(BlackjackSession.seat_count)} seats &middot; Main ${EscapeHtml(BlackjackSession.limits_display)}
             </p>
             <p class="mt-1 text-sm text-white/40">
               ${EscapeHtml(BlackjackSession.occupancy_text)}${WatchingCopy}
             </p>
           </div>
 
-          <span class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10">
+          <span class="inline-flex h-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10">
             Open session
           </span>
         </a>
@@ -96,7 +96,7 @@ const RenderSessionList = (SessionList, Sessions) =>
     if (!Sessions?.length)
     {
         SessionList.innerHTML = `
-            <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
+            <div class="rounded-[8px] border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
               No sessions yet. Create the first one.
             </div>
         `;

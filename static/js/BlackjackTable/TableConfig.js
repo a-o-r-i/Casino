@@ -19,14 +19,19 @@ export const ROUND_STATE_LABELS = Object.freeze({
   [ROUND_STATES.SETTLING]: "Settling"
 });
 export const STARTING_BALANCE = 1000;
-export const CHIP_VALUES = [1, 2, 5, 25, 100, 1000];
+export const CHIP_VALUES = [1, 2, 5, 25, 100, 1000, 5000, 10000, 25000, 50000, 100000];
 export const CHIP_STYLES = Object.freeze({
   1: "#8b8b8b",
   2: "#ef89d8",
   5: "#eb5428",
   25: "#29b44b",
   100: "#2f2f2f",
-  1000: "#6d45a7"
+  1000: "#6d45a7",
+  5000: "#8b1747",
+  10000: "#087b50",
+  25000: "#c81fa3",
+  50000: "#601827",
+  100000: "#c39a42"
 });
 export const SHOE_COUNT = 6;
 export const RESHUFFLE_THRESHOLD = 20;

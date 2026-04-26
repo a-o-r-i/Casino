@@ -159,7 +159,7 @@
             return `
                 <img
                   alt="${EscapeHtml(Row.display_name)}"
-                  class="${SizeClass} rounded-[14px] border border-white/10 object-cover"
+                  class="${SizeClass} rounded-[8px] border border-white/10 object-cover"
                   data-fallback-src="${EscapeHtml(FallbackUrl)}"
                   onerror="if (this.dataset.fallbackSrc && this.currentSrc !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; }"
                   src="${EscapeHtml(AvatarUrl)}"
@@ -168,7 +168,7 @@
         }
 
         return `
-            <span class="inline-flex ${SizeClass} items-center justify-center rounded-[14px] border border-white/10 bg-white/10 text-sm font-semibold uppercase text-white">
+            <span class="inline-flex ${SizeClass} items-center justify-center rounded-[8px] border border-white/10 bg-white/10 text-sm font-semibold uppercase text-white">
               ${EscapeHtml((Row?.display_name || Row?.username || "?").slice(0, 1))}
             </span>
         `;
@@ -179,7 +179,7 @@
         return `
             <button
               aria-label="Open ${EscapeHtml(Label)} settings"
-              class="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.04] text-white/54 transition hover:bg-white/[0.08] hover:text-white"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] text-white/54 transition hover:bg-white/[0.08] hover:text-white"
               data-admin-row-settings
               type="button"
             >
@@ -208,7 +208,7 @@
     const RenderDetailRow = (Key, Label, Value, AdditionalClassName = "") =>
     {
         return `
-            <div class="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-2.5 ${AdditionalClassName}">
+            <div class="rounded-[8px] border border-white/10 bg-white/[0.03] px-3 py-2.5 ${AdditionalClassName}">
               <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">${EscapeHtml(Label)}</div>
               <div class="mt-1 text-sm font-medium text-white" data-admin-popout-value="${EscapeHtml(Key)}">${EscapeHtml(Value)}</div>
             </div>
@@ -419,7 +419,7 @@
         const LogoutMarkup = Row.can_force_logout
             ? `
                 <button
-                  class="inline-flex h-10 w-full items-center justify-center rounded-[12px] border border-red-400/14 bg-red-500/10 px-3 text-sm font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
+                  class="inline-flex h-10 w-full items-center justify-center rounded-[8px] border border-red-400/14 bg-red-500/10 px-3 text-sm font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
                   data-admin-force-logout
                   data-url="${EscapeHtml(Row.force_logout_url || "")}"
                   type="button"
@@ -429,7 +429,7 @@
             `
             : `
                 <a
-                  class="inline-flex h-10 w-full items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
+                  class="inline-flex h-10 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
                   data-admin-logout-href
                   href="/logout"
                 >
@@ -449,11 +449,11 @@
               data-user-id="${EscapeHtml(Row.id)}"
             >
               <span
-                class="pointer-events-none absolute h-4 w-4 rotate-45 bg-[#101116]"
+                class="pointer-events-none absolute h-4 w-4 rotate-45 bg-[#07090e]"
                 data-admin-popout-arrow
                 style="top: var(--admin-popout-arrow-top, 36px);"
               ></span>
-              <div class="rounded-[22px] border border-white/10 bg-[rgba(16,17,22,0.88)] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
+              <div class="rounded-[8px] border border-white/10 bg-[#07090e] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
                 <div class="flex items-center gap-3">
                   <span class="shrink-0">
                     ${BuildAvatarMarkup(Row, "h-10 w-10")}
@@ -483,7 +483,7 @@
                 >
                   <input
                     autocomplete="off"
-                    class="h-10 min-w-0 flex-1 rounded-[12px] border border-white/10 bg-white/[0.03] px-3 text-sm text-white outline-none transition placeholder:text-white/26 focus:border-white/18 focus:bg-white/[0.05]"
+                    class="h-10 min-w-0 flex-1 rounded-[8px] border border-white/10 bg-white/[0.03] px-3 text-sm text-white outline-none transition placeholder:text-white/26 focus:border-white/18 focus:bg-white/[0.05]"
                     inputmode="decimal"
                     name="amount"
                     placeholder="+200 / -200"
@@ -491,7 +491,7 @@
                     type="number"
                   >
                   <button
-                    class="inline-flex h-10 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08] disabled:cursor-default disabled:opacity-45"
+                    class="inline-flex h-10 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08] disabled:cursor-default disabled:opacity-45"
                     type="submit"
                   >
                     Apply
@@ -511,7 +511,7 @@
         const CancelMarkup = Row.can_cancel
             ? `
                 <button
-                  class="inline-flex h-10 items-center justify-center rounded-[12px] border border-red-400/14 bg-red-500/10 px-3 text-sm font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
+                  class="inline-flex h-10 items-center justify-center rounded-[8px] border border-red-400/14 bg-red-500/10 px-3 text-sm font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
                   data-admin-cancel-session
                   data-url="${EscapeHtml(Row.cancel_url || "")}"
                   type="button"
@@ -536,11 +536,11 @@
               data-session-id="${EscapeHtml(Row.id)}"
             >
               <span
-                class="pointer-events-none absolute h-4 w-4 rotate-45 bg-[#101116]"
+                class="pointer-events-none absolute h-4 w-4 rotate-45 bg-[#07090e]"
                 data-admin-popout-arrow
                 style="top: var(--admin-popout-arrow-top, 36px);"
               ></span>
-              <div class="rounded-[22px] border border-white/10 bg-[rgba(16,17,22,0.88)] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
+              <div class="rounded-[8px] border border-white/10 bg-[#07090e] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     ${StatusBadgeMarkup ? `<div class="flex flex-wrap items-center gap-2">${StatusBadgeMarkup}</div>` : ""}
@@ -556,7 +556,7 @@
 
                 <div class="mt-3 grid gap-2 ${ActionGridClass}">
                   <a
-                    class="inline-flex h-10 items-center justify-center rounded-[12px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
+                    class="inline-flex h-10 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
                     data-admin-open-session
                     href="${EscapeHtml(Row.view_url || "#")}"
                   >
@@ -1008,8 +1008,8 @@
             }
 
             ArrowNode.className = Side === "left"
-                ? "pointer-events-none absolute right-0 h-4 w-4 translate-x-1/2 rotate-45 border-r border-t border-white/10 bg-[#101116]"
-                : "pointer-events-none absolute left-0 h-4 w-4 -translate-x-1/2 rotate-45 border-l border-b border-white/10 bg-[#101116]";
+                ? "pointer-events-none absolute right-0 h-4 w-4 translate-x-1/2 rotate-45 border-r border-t border-white/10 bg-[#07090e]"
+                : "pointer-events-none absolute left-0 h-4 w-4 -translate-x-1/2 rotate-45 border-l border-b border-white/10 bg-[#07090e]";
         };
 
         const PositionPopout = (Selection, Options = {}) =>

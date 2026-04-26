@@ -1059,6 +1059,7 @@ const BuildAuthorBadgeMarkup = (User) =>
         }
 
         const StatusLabel = Share.status === "countdown" ? "live" : (Share.status || "session");
+        const DetailCopy = Share.detail_copy || `${Share.label} - Bet ${Share.bet_display} - Pot ${Share.pot_display}`;
 
         const JoinActionMarkup = Share.is_joinable && Share.join_url
             ? `
@@ -1074,7 +1075,7 @@ const BuildAuthorBadgeMarkup = (User) =>
                 <div>
                   <div data-chat-session-share-title>${EscapeHtml(Share.title)}</div>
                   <div data-chat-session-share-copy>
-                    ${EscapeHtml(Share.label)} · Bet ${EscapeHtml(Share.bet_display)} · Pot ${EscapeHtml(Share.pot_display)}
+                    ${EscapeHtml(DetailCopy)}
                   </div>
                 </div>
                 <span data-chat-session-share-status>${EscapeHtml(StatusLabel)}</span>
@@ -1096,6 +1097,7 @@ const BuildAuthorBadgeMarkup = (User) =>
         }
 
         const StatusLabel = Share.status === "countdown" ? "live" : (Share.status || "session");
+        const DetailCopy = Share.detail_copy || `${Share.label} - Bet ${Share.bet_display} - Pot ${Share.pot_display}`;
 
         const JoinActionMarkup = Share.is_joinable && Share.join_url
             ? `
@@ -1111,7 +1113,7 @@ const BuildAuthorBadgeMarkup = (User) =>
                 <div>
                   <div data-chat-session-share-title>${EscapeHtml(Share.title)}</div>
                   <div data-chat-session-share-copy>
-                    ${EscapeHtml(Share.label)} &middot; Bet ${EscapeHtml(Share.bet_display)} &middot; Pot ${EscapeHtml(Share.pot_display)}
+                    ${EscapeHtml(DetailCopy)}
                   </div>
                 </div>
                 <span data-chat-session-share-status>${EscapeHtml(StatusLabel)}</span>

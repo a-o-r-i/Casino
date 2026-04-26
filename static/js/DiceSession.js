@@ -285,6 +285,34 @@ const RenderViewerState = (Main, State) =>
     }
 };
 
+const RenderFairnessState = (Main, State) =>
+{
+    const SeedHashNode = Main.querySelector("[data-fairness-seed-hash]");
+    const NonceNode = Main.querySelector("[data-fairness-nonce]");
+    const SeedRow = Main.querySelector("[data-fairness-seed-row]");
+    const SeedNode = Main.querySelector("[data-fairness-seed]");
+    const PendingNode = Main.querySelector("[data-fairness-pending]");
+    const Fairness = State?.fairness || {};
+
+    if (SeedHashNode && Fairness.server_seed_hash)
+    {
+        SeedHashNode.textContent = Fairness.server_seed_hash;
+    }
+
+    if (NonceNode && Fairness.nonce !== undefined)
+    {
+        NonceNode.textContent = Fairness.nonce;
+    }
+
+    if (SeedNode)
+    {
+        SeedNode.textContent = Fairness.server_seed || "";
+    }
+
+    SeedRow?.classList.toggle("hidden", !Fairness.server_seed);
+    PendingNode?.classList.toggle("hidden", Boolean(Fairness.server_seed));
+};
+
 const TextTransition = {
     enterMs: 220,
     exitMs: 110,
@@ -1694,10 +1722,12 @@ const InitializeDiceSessionPage = ({ main }) =>
             return;
         }
 
-        const UiState = BuildUiState(LastState);
-        const IsRevealUiLocked = Boolean(PendingRevealState && !HasRevealCompletion(LastState));
+            const UiState = BuildUiState(LastState);
+            const IsRevealUiLocked = Boolean(PendingRevealState && !HasRevealCompletion(LastState));
 
-        if (LastState.status !== "resolved")
+            RenderFairnessState(main, LastState);
+
+            if (LastState.status !== "resolved")
         {
             ClearRevealCompletion(LastState.id);
         }

@@ -9,7 +9,7 @@
       <h1 class="text-4xl font-semibold tracking-[-0.05em] text-white">Rewards</h1>
     </div>
 
-    <section class="mt-6 rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+    <section class="mt-6 rounded-[8px] border border-white/8 bg-[#07090e] p-6" data-route-card>
       <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-3">
@@ -87,7 +87,7 @@
             <div class="mt-3 flex flex-wrap gap-1.5">
               {% for tier in rank.tiers %}
                 <span class="group relative">
-                  <span class="inline-flex rounded-[8px] border px-2 py-1 text-xs transition {% if rewards_page.reward_progress.badge == tier.badge %}{% if rank.tone == 'bronze' %}border-[#f7d2bc]/60 bg-[#f7d2bc] text-[#1b0f09]{% elif rank.tone == 'silver' %}border-[#eef4fb]/60 bg-[#eef4fb] text-[#10141a]{% elif rank.tone == 'gold' %}border-[#fde8a2]/60 bg-[#fde8a2] text-[#1c1605]{% elif rank.tone == 'platinum' %}border-[#d7ffff]/60 bg-[#d7ffff] text-[#062326]{% else %}border-[#dbe7ff]/60 bg-[#dbe7ff] text-[#081629]{% endif %}{% else %}border-white/10 bg-black/20 text-white/66 hover:border-white/16 hover:text-white{% endif %}">
+                  <span class="inline-flex rounded-[8px] border px-2 py-1 text-xs transition {% if rewards_page.reward_progress.badge == tier.badge %}{% if rank.tone == 'bronze' %}border-[#f7d2bc]/60 bg-[#f7d2bc] text-[#1b0f09]{% elif rank.tone == 'silver' %}border-[#eef4fb]/60 bg-[#eef4fb] text-[#10141a]{% elif rank.tone == 'gold' %}border-[#fde8a2]/60 bg-[#fde8a2] text-[#1c1605]{% elif rank.tone == 'platinum' %}border-[#d7ffff]/60 bg-[#d7ffff] text-[#062326]{% else %}border-[#dbe7ff]/60 bg-[#dbe7ff] text-[#081629]{% endif %}{% else %}border-white/10 bg-white/[0.03] text-white/66 hover:border-white/16 hover:text-white{% endif %}">
                     {{ tier.badge | replace(rank.title ~ ' ', '') }}
                   </span>
                   <span class="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 w-max min-w-[92px] -translate-x-1/2 translate-y-1.5 scale-[0.96] rounded-[8px] border border-white/12 bg-[#07090e] px-3 py-2 text-center opacity-0 shadow-[0_18px_50px_rgba(0,0,0,0.46)] transition group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100">
@@ -102,7 +102,7 @@
       </div>
     </section>
 
-    <section class="mt-6 rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+    <section class="mt-6 rounded-[8px] border border-white/8 bg-[#07090e] p-6" data-route-card>
       <h2 class="text-2xl font-semibold tracking-[-0.05em] text-white">Claimable Rewards</h2>
 
       <div class="mt-5 grid gap-4 lg:grid-cols-3">
@@ -203,7 +203,7 @@
       <p class="mt-4 hidden text-sm text-white/46" data-reward-claim-message></p>
     </section>
 
-    <section class="mt-6 rounded-3xl border border-white/8 bg-black/35 p-6" data-route-card>
+    <section class="mt-6 rounded-[8px] border border-white/8 bg-[#07090e] p-6" data-route-card>
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h2 class="text-2xl font-semibold tracking-[-0.05em] text-white">Leader Rewards</h2>

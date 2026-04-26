@@ -22,7 +22,7 @@
       {% if messages %}
         <div class="mb-6 space-y-3">
           {% for category, message in messages %}
-            <div class="break-words rounded-2xl border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+            <div class="break-words rounded-[8px] border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
               {{ message }}
             </div>
           {% endfor %}
@@ -31,7 +31,7 @@
     {% endwith %}
 
     <section
-      class="rounded-3xl border border-white/8 bg-black/35 p-6"
+      class="rounded-[8px] border border-white/8 bg-[#07090e] p-6"
       data-blackjack-lobby
       data-route-card
       data-state-url="{{ url_for('blackjack_lobby_state') }}"
@@ -54,7 +54,7 @@
         {% if blackjack_sessions %}
           {% for blackjack_session in blackjack_sessions %}
             <a
-              class="flex flex-col gap-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.05] md:flex-row md:items-center md:justify-between"
+              class="flex flex-col gap-4 rounded-[8px] border border-white/8 bg-white/[0.03] px-4 py-4 transition hover:bg-white/[0.05] md:flex-row md:items-center md:justify-between"
               data-route-card
               href="{{ blackjack_session.view_url }}"
             >
@@ -66,7 +66,7 @@
                   </span>
                 </div>
                 <p class="mt-1 text-sm text-white/55">
-                  {{ blackjack_session.creator_name }} &middot; {{ blackjack_session.seat_count }} seats
+                  {{ blackjack_session.creator_name }} &middot; {{ blackjack_session.seat_count }} seats &middot; Main {{ blackjack_session.limits_display }}
                 </p>
                 <p class="mt-1 text-sm text-white/40">
                   {{ blackjack_session.occupancy_text }}
@@ -74,13 +74,13 @@
                 </p>
               </div>
 
-              <span class="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10">
+              <span class="inline-flex h-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10">
                 Open session
               </span>
             </a>
           {% endfor %}
         {% else %}
-          <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
+          <div class="rounded-[8px] border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45" data-route-card>
             No sessions yet. Create the first one.
           </div>
         {% endif %}
@@ -103,7 +103,7 @@
     ></div>
 
     <section
-      class="relative z-10 w-full max-w-[420px] translate-y-6 scale-[0.96] rounded-3xl border border-white/8 bg-[#0b0c10] p-6 opacity-0 shadow-[0_28px_80px_rgba(0,0,0,0.48)]"
+      class="relative z-10 w-full max-w-[420px] translate-y-6 scale-[0.96] rounded-[8px] border border-white/8 bg-[#07090e] p-6 opacity-0 shadow-[0_28px_80px_rgba(0,0,0,0.48)]"
       data-modal-panel
     >
       <div>
@@ -116,7 +116,7 @@
             Table name
           </label>
           <input
-            class="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+            class="h-12 w-full rounded-[8px] border border-white/10 bg-white/[0.03] px-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
             id="table_name"
             maxlength="48"
             name="table_name"
@@ -128,8 +128,43 @@
           </p>
         </div>
 
-          <button
-          class="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-white/80" for="min_bet">
+              Minimum main bet
+            </label>
+            <input
+              class="h-12 w-full rounded-[8px] border border-white/10 bg-white/[0.03] px-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+              id="min_bet"
+              min="1"
+              name="min_bet"
+              placeholder="{{ '%.2f' | format(default_min_bet_amount) }}"
+              step="0.01"
+              type="number"
+            >
+          </div>
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-white/80" for="max_bet">
+              Maximum main bet
+            </label>
+            <input
+              class="h-12 w-full rounded-[8px] border border-white/10 bg-white/[0.03] px-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/20"
+              id="max_bet"
+              min="1"
+              name="max_bet"
+              placeholder="{{ '%.2f' | format(default_max_bet_amount) }}"
+              step="0.01"
+              type="number"
+            >
+          </div>
+        </div>
+
+        <p class="text-xs leading-6 text-white/38">
+          Limits apply to main bets only. Side bets can use any available chip.
+        </p>
+
+        <button
+          class="inline-flex h-12 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10"
           type="submit"
         >
           Create session
