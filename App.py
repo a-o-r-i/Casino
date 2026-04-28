@@ -3618,6 +3618,25 @@ def cleanup_blackjack_pending_bets_for_claims(blackjack_session):
         clear_blackjack_betting_timer(table_state)
 
 
+def blackjack_seat_has_locked_bet_state(table_state, seat_id, user_id):
+    if not seat_id or not user_id:
+        return False
+
+    if any(
+        chip.get("seat_id") == seat_id and chip.get("user_id") == user_id
+        for chip in table_state.get("pending_bet_chips") or []
+    ):
+        return True
+
+    if any(
+        hand.get("seat_id") == seat_id and hand.get("user_id") == user_id
+        for hand in table_state.get("hands") or []
+    ):
+        return True
+
+    return False
+
+
 def get_blackjack_seat_hand_indexes(table_state, seat_id):
     seat_hands = [
         (index, hand)
@@ -5942,6 +5961,7 @@ def touch_blackjack_session_presence(session_id, user_profile=None):
 
 def sync_blackjack_session_seat_claims(blackjack_session):
     session_path = normalize_presence_path(get_blackjack_session_path(blackjack_session["id"]))
+    table_state = ensure_blackjack_table_state(blackjack_session)
     seat_claims = blackjack_session.setdefault("seat_claims", {})
     stale_seat_ids = []
 
@@ -5955,6 +5975,8 @@ def sync_blackjack_session_seat_claims(blackjack_session):
             not user_presence_is_online(presence)
             or normalize_presence_path(presence.get("current_path")) != session_path
         ):
+            if blackjack_seat_has_locked_bet_state(table_state, seat_id, user_id):
+                continue
             stale_seat_ids.append(seat_id)
             continue
 
