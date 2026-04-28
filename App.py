@@ -2511,9 +2511,6 @@ def build_chat_message_author_payload(user_profile):
 
     if author_snapshot["id"] == BOT_PROFILE["id"]:
         author_snapshot["is_house_bot"] = True
-        author_snapshot["reward_badge"] = "Official"
-        author_snapshot["reward_badge_tone"] = "house"
-        author_snapshot["reward_level"] = 1
         return author_snapshot
 
     reward_state = build_reward_state(author_snapshot["id"])
