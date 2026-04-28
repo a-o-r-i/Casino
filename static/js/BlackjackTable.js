@@ -108,6 +108,9 @@ function GetActiveHand(State) {
 function ClonePayload(Payload) {
   return typeof structuredClone === "function" ? structuredClone(Payload) : JSON.parse(JSON.stringify(Payload));
 }
+function GetPayloadUpdatedAt(Payload) {
+  return Number(Payload?.table_state?.updated_at) || 0;
+}
 function ClonePayloadForOpeningAnimation(Payload) {
   const NextPayload = ClonePayload(Payload);
   const Table = NextPayload.table_state || {};
@@ -162,6 +165,9 @@ class NetworkBlackjackTable {
     this.isAnimatingPayload = false;
     this.animatingPayloadUpdatedAt = 0;
     this.queuedAnimationPayload = null;
+    this.deferredPollPayload = null;
+    this.lastAppliedPayloadUpdatedAt = 0;
+    this.pendingOptimisticChipActions = 0;
     this.hasAppliedPayloadSnapshot = false;
     this.playedBustSoundSignatures = new Set();
     this.playedWinSoundSignatures = new Set();
@@ -178,15 +184,27 @@ class NetworkBlackjackTable {
     return Boolean(RoundId && !this.animatedRoundIds.has(RoundId) && Array.isArray(Table.hands) && Table.hands.some(Hand => Array.isArray(Hand.cards) && Hand.cards.length > 0));
   }
   async ApplyPayload(Payload, {
-    animate: Animate = true
+    animate: Animate = true,
+    source: Source = "poll"
   } = {}) {
     if (!Payload) {
-      return;
+      return false;
     }
     const Table = Payload.table_state || {};
+    const PayloadUpdatedAt = GetPayloadUpdatedAt(Payload);
+    if (PayloadUpdatedAt > 0 && PayloadUpdatedAt < this.lastAppliedPayloadUpdatedAt) {
+      return false;
+    }
+    if (Source === "poll" && this.pendingOptimisticChipActions > 0) {
+      const DeferredUpdatedAt = GetPayloadUpdatedAt(this.deferredPollPayload);
+      if (!this.deferredPollPayload || PayloadUpdatedAt >= DeferredUpdatedAt) {
+        this.deferredPollPayload = Payload;
+      }
+      return false;
+    }
     if (Animate && this.isAnimatingPayload) {
       this.QueueAnimationPayload(Payload);
-      return;
+      return false;
     }
     if (Animate && this.ShouldAnimateCollect(Table)) {
       this.isAnimatingPayload = true;
@@ -198,8 +216,8 @@ class NetworkBlackjackTable {
         this.animatingPayloadUpdatedAt = 0;
       }
       this.ApplyPayloadSnapshot(Payload);
-      await this.FlushQueuedAnimationPayload(Animate);
-      return;
+      await this.FlushQueuedAnimationPayload(Animate, Source);
+      return true;
     }
     if (Animate && this.ShouldAnimateOpeningDeal(Table)) {
       this.isAnimatingPayload = true;
@@ -214,8 +232,8 @@ class NetworkBlackjackTable {
         this.animatingPayloadUpdatedAt = 0;
       }
       this.ApplyPayloadSnapshot(Payload);
-      await this.FlushQueuedAnimationPayload(Animate);
-      return;
+      await this.FlushQueuedAnimationPayload(Animate, Source);
+      return true;
     }
     if (Animate && this.ShouldAnimateCardChanges(Table)) {
       this.isAnimatingPayload = true;
@@ -227,10 +245,11 @@ class NetworkBlackjackTable {
         this.animatingPayloadUpdatedAt = 0;
       }
       this.ApplyPayloadSnapshot(Payload);
-      await this.FlushQueuedAnimationPayload(Animate);
-      return;
+      await this.FlushQueuedAnimationPayload(Animate, Source);
+      return true;
     }
     this.ApplyPayloadSnapshot(Payload);
+    return true;
   }
   QueueAnimationPayload(Payload) {
     const NextUpdatedAt = Number(Payload?.table_state?.updated_at) || 0;
@@ -243,14 +262,27 @@ class NetworkBlackjackTable {
       this.queuedAnimationPayload = Payload;
     }
   }
-  async FlushQueuedAnimationPayload(Animate = true) {
+  async FlushQueuedAnimationPayload(Animate = true, Source = "poll") {
     const QueuedPayload = this.queuedAnimationPayload;
     this.queuedAnimationPayload = null;
     if (QueuedPayload) {
-      await this.ApplyPayload(QueuedPayload, {
-        animate: Animate
+      return this.ApplyPayload(QueuedPayload, {
+        animate: Animate,
+        source: Source
       });
     }
+    return false;
+  }
+  async FlushDeferredPollPayload() {
+    if (this.pendingOptimisticChipActions > 0 || !this.deferredPollPayload) {
+      return false;
+    }
+    const DeferredPayload = this.deferredPollPayload;
+    this.deferredPollPayload = null;
+    return this.ApplyPayload(DeferredPayload, {
+      animate: true,
+      source: "poll"
+    });
   }
   HasRenderedCards() {
     return Boolean(this.state.hands.some(Hand => Hand.cards.length > 0) || this.state.dealer.cards.length > 0 || this.state.dealer.holeCard);
@@ -369,6 +401,7 @@ class NetworkBlackjackTable {
   }
   ApplyPayloadSnapshot(Payload) {
     const Table = Payload.table_state || {};
+    const PayloadUpdatedAt = GetPayloadUpdatedAt(Payload);
     const SelfSeatIds = Array.isArray(Payload.self_seat_ids) ? Payload.self_seat_ids : [];
     const InsuranceOfferSeatIds = Array.isArray(Table.insurance_offer_seat_ids) ? Table.insurance_offer_seat_ids.filter(SeatId => SelfSeatIds.includes(SeatId)) : [];
     const NextHands = Array.isArray(Table.hands) ? Table.hands.map(NormalizeHand) : [];
@@ -418,6 +451,9 @@ class NetworkBlackjackTable {
     this.state.message = this.localMessage || Table.message || "";
     this.PlayPayloadOutcomeSounds(Table, NextHands, NextSeatSideBets, SelfSeatIds);
     this.hasAppliedPayloadSnapshot = true;
+    if (PayloadUpdatedAt > 0) {
+      this.lastAppliedPayloadUpdatedAt = Math.max(this.lastAppliedPayloadUpdatedAt, PayloadUpdatedAt);
+    }
     this.Render();
     this.localMessage = "";
   }
@@ -1171,6 +1207,7 @@ class NetworkBlackjackTable {
   }
   CreateOptimisticSnapshot() {
     return {
+      lastAppliedPayloadUpdatedAt: this.lastAppliedPayloadUpdatedAt,
       localMessage: this.localMessage,
       state: ClonePayload(this.state),
       tableState: ClonePayload(this.tableState)
@@ -1178,12 +1215,16 @@ class NetworkBlackjackTable {
   }
   RestoreOptimisticSnapshot(Snapshot) {
     if (!Snapshot) {
-      return;
+      return false;
+    }
+    if (this.lastAppliedPayloadUpdatedAt > (Number(Snapshot.lastAppliedPayloadUpdatedAt) || 0)) {
+      return false;
     }
     this.localMessage = Snapshot.localMessage || "";
     this.state = Snapshot.state;
     this.tableState = Snapshot.tableState;
     this.Render();
+    return true;
   }
   AddChipToLocalState(SeatId, ChipValue, BetType = BET_TYPES.MAIN) {
     const NormalizedChipValue = Number(ChipValue) || 0;
@@ -1252,7 +1293,9 @@ class NetworkBlackjackTable {
         })
       });
       const Payload = await Response.json().catch(() => ({}));
-      await this.ApplyPayload(Payload);
+      await this.ApplyPayload(Payload, {
+        source: "action"
+      });
       if (!Response.ok) {
         this.SetLocalMessage(Payload?.error || "Seat update failed.");
         return false;
@@ -1296,17 +1339,19 @@ class NetworkBlackjackTable {
           console.error(Error);
         }
       }
-      await this.ApplyPayload(Payload);
+      const Applied = await this.ApplyPayload(Payload, {
+        source: "action"
+      });
       ApplyParentBalanceDisplay(Payload.current_balance_display);
       if (!Response.ok) {
         this.SetLocalMessage(Payload?.error || "Blackjack action failed.");
         return BuildResult(false, {
-          appliedPayload: true,
+          appliedPayload: Applied !== false,
           payload: Payload
         });
       }
       return BuildResult(true, {
-        appliedPayload: true,
+        appliedPayload: Applied !== false,
         payload: Payload
       });
     } catch (Error) {
@@ -1386,16 +1431,25 @@ class NetworkBlackjackTable {
     if (!this.AddChipToLocalState(SeatId, ChipValue, BetType)) {
       return;
     }
-    const Result = await this.PostTableAction("add_chip", {
-      bet_type: BetType,
-      chip_value_cents: Math.round(ChipValue * 100),
-      seat_id: SeatId
-    }, {
-      returnDetails: true
-    });
-    if (!Result.ok && !Result.appliedPayload) {
-      this.RestoreOptimisticSnapshot(Snapshot);
-      this.SetLocalMessage("Chip was not placed. Try again.");
+    this.pendingOptimisticChipActions += 1;
+    try {
+      const Result = await this.PostTableAction("add_chip", {
+        bet_type: BetType,
+        chip_value_cents: Math.round(ChipValue * 100),
+        seat_id: SeatId
+      }, {
+        returnDetails: true
+      });
+      if (!Result.ok && !Result.appliedPayload) {
+        if (this.RestoreOptimisticSnapshot(Snapshot)) {
+          this.SetLocalMessage("Chip was not placed. Try again.");
+        }
+      }
+    } finally {
+      this.pendingOptimisticChipActions = Math.max(0, this.pendingOptimisticChipActions - 1);
+      if (this.pendingOptimisticChipActions <= 0) {
+        await this.FlushDeferredPollPayload();
+      }
     }
   }
   SelectChip(Value) {
@@ -1489,16 +1543,22 @@ export async function InitializeBlackjackTable({
   let ActiveSideBetDrag = null;
   let StageResizeObserver = null;
   async function ApplyTableState(Payload, {
-    animate: Animate = true
+    animate: Animate = true,
+    source: Source = "poll"
   } = {}) {
     if (!Payload) {
-      return;
+      return false;
+    }
+    const Applied = await Table.ApplyPayload(Payload, {
+      animate: Animate,
+      source: Source
+    });
+    if (Applied === false) {
+      return false;
     }
     LatestTableState = Payload;
-    await Table.ApplyPayload(Payload, {
-      animate: Animate
-    });
     ApplyParentBalanceDisplay(Payload.current_balance_display);
+    return true;
   }
   async function FetchTableState(Version = "") {
     if (!Config?.state_url) {
