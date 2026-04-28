@@ -68,9 +68,9 @@ DICE_CHAT_TOP_RESET_SECONDS = 0.28
 BOT_PROFILE = {
     "avatar_url": None,
     "avatar_static_url": None,
-    "display_name": "Shuffling Wins",
+    "display_name": "Shuffling Bot",
     "id": "bot-house",
-    "username": "shuffling-wins",
+    "username": "shuffling-bot",
 }
 ADMIN_PANEL_USER_ID = "1195144155790327898"
 ADMIN_PANEL_USERNAME = "lastdanceparty"
@@ -802,6 +802,11 @@ def normalize_user_profile(user_profile):
         return None
 
     normalized_profile = dict(user_profile)
+    if normalized_profile.get("id") == BOT_PROFILE["id"]:
+        normalized_profile = {
+            **normalized_profile,
+            **BOT_PROFILE,
+        }
     avatar_url = normalized_profile.get("avatar_url")
     avatar_static_url = normalized_profile.get("avatar_static_url") or build_avatar_static_url(avatar_url)
 
@@ -5154,6 +5159,7 @@ def build_first_to_dice_match(target_wins, double_roll=False, dice_session=None)
 
 
 def settle_dice_session(dice_session, winning_user):
+    winning_user = make_user_snapshot(winning_user)
     dice_session["winner_id"] = winning_user["id"]
     dice_session["winner_name"] = winning_user["display_name"]
     dice_session["resolved_at"] = time.time()
@@ -5397,6 +5403,7 @@ def sync_coinflip_session_state(coinflip_session):
         if coinflip_session["creator_choice"] == result_side
         else coinflip_session["opponent"]
     )
+    winning_user = make_user_snapshot(winning_user)
     coinflip_session["result_side"] = result_side
     coinflip_session["winner_id"] = winning_user["id"]
     coinflip_session["winner_name"] = winning_user["display_name"]
