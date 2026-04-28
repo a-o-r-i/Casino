@@ -929,6 +929,9 @@ class NetworkBlackjackTable {
     const LocalPendingBet = (this.state.pendingBetChips || []).reduce((Total, Chip) => Total + (Number(Chip.value) || 0), 0);
     return LocalPendingBet || Number(this.tableState?.self_pending_bet_amount) || 0;
   }
+  GetSelfRoundBet(SelfPendingBet = this.GetSelfPendingBet()) {
+    return Math.max(Number(SelfPendingBet) || 0, Number(this.tableState?.self_round_bet_amount) || 0);
+  }
   CanUseBettingControls() {
     return [ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState) && this.state.selectedSeatIds.length > 0;
   }
@@ -1040,6 +1043,7 @@ class NetworkBlackjackTable {
   }
   GetViewModel() {
     const SelfPendingBet = this.GetSelfPendingBet();
+    const SelfRoundBet = this.GetSelfRoundBet(SelfPendingBet);
     const BalanceAfterPending = Math.max(0, this.state.balance - SelfPendingBet);
     const ActiveHand = GetActiveHand(this.state);
     const ActiveHandValue = ActiveHand ? HandValue(ActiveHand.cards).total : 0;
@@ -1061,7 +1065,7 @@ class NetworkBlackjackTable {
       balanceLabel: Money(BalanceAfterPending),
       countdownLabel: this.GetCountdownLabel(),
       insuranceDecision: this.BuildInsuranceDecision(),
-      pendingBetLabel: Money(SelfPendingBet),
+      pendingBetLabel: Money(SelfRoundBet),
       seatBetAmounts: this.GetSeatBetAmounts(),
       seatSideBetSpots: this.BuildSeatSideBetSpots(),
       selectedChipValue: this.state.selectedChipValue,

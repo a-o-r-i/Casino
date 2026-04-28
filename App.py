@@ -3382,6 +3382,27 @@ def get_blackjack_pending_total_for_user(table_state, user_id, bet_types=None):
     )
 
 
+def get_blackjack_round_total_for_user(table_state, seat_claims, user_id):
+    if not user_id:
+        return 0
+
+    total_cents = sum(
+        int(hand.get("bet_cents") or 0)
+        for hand in table_state.get("hands") or []
+        if hand.get("user_id") == user_id
+    )
+
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+    for seat_id, owner_user_id in (seat_claims or {}).items():
+        if owner_user_id != user_id:
+            continue
+
+        for side_bet in (seat_side_bets.get(seat_id) or {}).values():
+            total_cents += int(side_bet.get("bet_cents") or 0)
+
+    return total_cents
+
+
 def ensure_blackjack_pending_bet_action_history(table_state):
     action_history = table_state.setdefault("pending_bet_action_history", [])
 
@@ -6078,6 +6099,7 @@ def build_public_blackjack_table_state(blackjack_session, current_user_id):
 
     active_hand = get_blackjack_active_hand(table_state)
     self_pending_bet_cents = get_blackjack_pending_total_for_user(table_state, current_user_id)
+    self_round_bet_cents = get_blackjack_round_total_for_user(table_state, seat_claims, current_user_id)
     self_last_bet_cents = get_blackjack_last_bet_total_for_user(table_state, current_user_id)
     self_last_bet_snapshot = get_blackjack_last_bet_snapshot_for_user(table_state, current_user_id)
     self_last_bet_seat_ids = {
@@ -6204,6 +6226,8 @@ def build_public_blackjack_table_state(blackjack_session, current_user_id):
         "self_last_bet_cents": self_last_bet_cents,
         "self_pending_bet_amount": self_pending_bet_cents / 100,
         "self_pending_bet_cents": self_pending_bet_cents,
+        "self_round_bet_amount": self_round_bet_cents / 100,
+        "self_round_bet_cents": self_round_bet_cents,
         "self_ready": current_user_id in ready_user_ids,
         "settled_at": table_state.get("settled_at"),
         "shoe": {
