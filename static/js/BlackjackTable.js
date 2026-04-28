@@ -372,25 +372,13 @@ class NetworkBlackjackTable {
           ShouldPlayBust = true;
         }
       }
-      if (Hand.isSelf && ["win", "blackjack"].includes(Hand.result)) {
+      if (Hand.isSelf && Hand.result === "win") {
         const WinSignature = `${RoundId}:${Hand.id}:${Hand.result}`;
         if (!this.playedWinSoundSignatures.has(WinSignature)) {
           this.playedWinSoundSignatures.add(WinSignature);
           ShouldPlayWin = true;
         }
       }
-    });
-    SelfSeatIds.forEach(SeatId => {
-      Object.values(SeatSideBets[SeatId] || {}).forEach(SideBet => {
-        if ((Number(SideBet?.payout) || 0) <= 0) {
-          return;
-        }
-        const WinSignature = `${RoundId}:${SeatId}:${SideBet.betType || "side"}:side-win`;
-        if (!this.playedWinSoundSignatures.has(WinSignature)) {
-          this.playedWinSoundSignatures.add(WinSignature);
-          ShouldPlayWin = true;
-        }
-      });
     });
     if (ShouldPlayBust) {
       PlayBlackjackSound("bust");
