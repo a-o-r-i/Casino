@@ -224,6 +224,7 @@ CHAT_MENTION_SUGGESTION_LIMIT = 6
 CHAT_REPLY_PREVIEW_MAX_LENGTH = 90
 CHAT_TYPING_WINDOW_SECONDS = 5
 NEXT_CHAT_MESSAGE_ID = 1
+CHAT_BIG_WIN_ANNOUNCEMENT_PATTERN = re.compile(r"^(.+?) just won (.+?) on (.+?)\.$")
 CHAT_MENTION_PATTERN = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]{2,32})")
 CHAT_EMOJI_SHORTCODE_PATTERN = re.compile(r":([A-Za-z0-9_+\-]{2,32}):")
 CHAT_EMOJI_ALIASES = {
@@ -2128,6 +2129,65 @@ def parse_chat_mentions(body, author_user_id):
     return list(mentions_by_user_id.values())
 
 
+def find_chat_profile_by_display_label(label):
+    normalized_label = normalize_chat_mention_name(label)
+
+    if not normalized_label:
+        return None
+
+    for user_profile in USER_PROFILES.values():
+        if not user_profile or user_profile.get("id") == BOT_PROFILE["id"]:
+            continue
+
+        profile_names = {
+            normalize_chat_mention_name(user_profile.get("display_name")),
+            normalize_chat_mention_name(user_profile.get("username")),
+        }
+        if normalized_label in profile_names:
+            return user_profile
+
+    return None
+
+
+def build_chat_announcement_mention_for_profile(user_profile):
+    if not user_profile or user_profile.get("id") == BOT_PROFILE["id"]:
+        return None
+
+    mention_name = str(user_profile.get("username") or user_profile.get("id") or "").strip()
+
+    if not mention_name:
+        return None
+
+    return {
+        "display_name": user_profile.get("display_name") or mention_name,
+        "id": user_profile["id"],
+        "tokens": [f"@{mention_name}"],
+        "username": user_profile.get("username"),
+    }
+
+
+def normalize_big_win_chat_announcement(chat_message, body, mentions):
+    if chat_message.get("author_id") != BOT_PROFILE["id"] or body.startswith("@"):
+        return body, mentions
+
+    match = CHAT_BIG_WIN_ANNOUNCEMENT_PATTERN.match(body)
+
+    if not match:
+        return body, mentions
+
+    winner_profile = find_chat_profile_by_display_label(match.group(1))
+    mention_record = build_chat_announcement_mention_for_profile(winner_profile)
+
+    if not mention_record:
+        return body, mentions
+
+    next_mentions = list(mentions or [])
+    if not any(mention.get("id") == mention_record["id"] for mention in next_mentions):
+        next_mentions.append(mention_record)
+
+    return f"{mention_record['tokens'][0]} just won {match.group(2)} on {match.group(3)}.", next_mentions
+
+
 def can_send_chat_mention_notification(author_user_id, recipient_user_id, now=None):
     if not author_user_id or not recipient_user_id or author_user_id == recipient_user_id:
         return False
@@ -2469,7 +2529,9 @@ def serialize_chat_message(chat_message, current_user_id):
     if not author_profile:
         return None
 
+    body = chat_message["body"]
     mention_records = chat_message.get("mentions") or []
+    body, mention_records = normalize_big_win_chat_announcement(chat_message, body, mention_records)
     mention_tokens = []
 
     for mention in mention_records:
@@ -2481,7 +2543,7 @@ def serialize_chat_message(chat_message, current_user_id):
 
     return {
         "author": build_chat_message_author_payload(author_profile),
-        "body": chat_message["body"],
+        "body": body,
         "id": chat_message["id"],
         "is_current_user_mentioned": any(
             mention.get("id") == current_user_id
@@ -2489,6 +2551,7 @@ def serialize_chat_message(chat_message, current_user_id):
         ) or (chat_message.get("reply_to") or {}).get("author", {}).get("id") == current_user_id,
         "is_self": chat_message["author_id"] == current_user_id,
         "mention_tokens": mention_tokens,
+        "mentions": mention_records,
         "reply_to": chat_message.get("reply_to"),
         "session_share": (
             build_chat_session_share_payload(
@@ -2504,7 +2567,7 @@ def serialize_chat_message(chat_message, current_user_id):
     }
 
 
-def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=None, reply_to_message_id=None, message_type="message"):
+def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=None, reply_to_message_id=None, message_type="message", forced_mentions=None):
     global NEXT_CHAT_MESSAGE_ID
 
     author_snapshot = remember_user_profile(author_user)
@@ -2550,7 +2613,27 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
     if len(normalized_body) > CHAT_MAX_MESSAGE_LENGTH:
         raise ValueError(f"Messages can be up to {CHAT_MAX_MESSAGE_LENGTH} characters.")
 
-    mentions = parse_chat_mentions(normalized_body, author_snapshot["id"])
+    mentions_by_user_id = {
+        mention.get("id"): dict(mention)
+        for mention in parse_chat_mentions(normalized_body, author_snapshot["id"])
+        if mention.get("id")
+    }
+    for mention in forced_mentions or []:
+        mention_id = mention.get("id")
+        if not mention_id or mention_id in {author_snapshot["id"], BOT_PROFILE["id"]}:
+            continue
+
+        existing_mention = mentions_by_user_id.setdefault(mention_id, {
+            "display_name": mention.get("display_name") or mention.get("username") or mention_id,
+            "id": mention_id,
+            "tokens": [],
+            "username": mention.get("username"),
+        })
+        for mention_token in mention.get("tokens") or []:
+            if mention_token and mention_token not in existing_mention["tokens"]:
+                existing_mention["tokens"].append(mention_token)
+
+    mentions = list(mentions_by_user_id.values())[:CHAT_MAX_MENTIONS]
 
     message = {
         "author_id": author_snapshot["id"],
@@ -2595,9 +2678,16 @@ def maybe_add_big_win_chat_announcement(session_record, winner_user, game_label,
     if announcement_key in announced_keys:
         return False
 
+    winner_mention = str(winner_snapshot.get("username") or winner_snapshot["id"]).strip()
     add_chat_message(
         BOT_PROFILE,
-        f"{winner_snapshot['display_name']} just won {format_money(payout_cents)} on {game_label}.",
+        f"@{winner_mention} just won {format_money(payout_cents)} on {game_label}.",
+        forced_mentions=[{
+            "display_name": winner_snapshot.get("display_name") or winner_snapshot.get("username"),
+            "id": winner_snapshot["id"],
+            "tokens": [f"@{winner_mention}"],
+            "username": winner_snapshot.get("username"),
+        }],
         message_type="big_win",
     )
     announced_keys.add(announcement_key)
@@ -2656,31 +2746,7 @@ def build_chat_user_profile_payload(user_id, current_user_id=None):
         return None
 
     if user_id == BOT_PROFILE["id"]:
-        return {
-            "avatar_static_url": user_profile.get("avatar_static_url"),
-            "avatar_url": user_profile.get("avatar_url"),
-            "bets_lost": 0,
-            "bets_won": 0,
-            "can_tip": False,
-            "connected_since": None,
-            "display_name": BOT_PROFILE["display_name"],
-            "id": BOT_PROFILE["id"],
-            "is_house_bot": True,
-            "is_online": True,
-            "last_seen": None,
-            "registered_at": user_profile.get("registered_at"),
-            "reward_badge": "Official",
-            "reward_badge_tone": "house",
-            "reward_level": 1,
-            "tip_url": None,
-            "total_bets": 0,
-            "total_deposited_cents": 0,
-            "total_deposited_display": "$0",
-            "total_wagered_cents": 0,
-            "total_wagered_display": "$0",
-            "username": BOT_PROFILE["username"],
-            "win_rate": 0,
-        }
+        return None
 
     stats = get_user_stats(user_id)
     presence = USER_PRESENCE.get(user_id)

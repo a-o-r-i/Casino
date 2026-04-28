@@ -1018,9 +1018,23 @@ const BuildAuthorBadgeMarkup = (User) =>
     const BuildHighlightedBodyMarkup = (Message) =>
     {
         const BodyValue = String(Message?.body ?? "");
+        const MentionEntries = [];
+        (Array.isArray(Message?.mentions) ? Message.mentions : []).forEach((Mention) =>
+        {
+            (Mention?.tokens || []).forEach((Token) =>
+            {
+                if (typeof Token === "string" && Token.trim() && Mention?.id)
+                {
+                    MentionEntries.push({
+                        token: Token,
+                        userId: Mention.id,
+                    });
+                }
+            });
+        });
+        const MentionByToken = new Map(MentionEntries.map((Entry) => [Entry.token, Entry.userId]));
         const MentionTokens = Array.from(new Set(
-            (Array.isArray(Message?.mention_tokens) ? Message.mention_tokens : [])
-                .filter((Token) => typeof Token === "string" && Token.trim()),
+            MentionEntries.map((Entry) => Entry.token),
         )).sort((Left, Right) => Right.length - Left.length);
 
         if (!MentionTokens.length)
@@ -1039,7 +1053,7 @@ const BuildAuthorBadgeMarkup = (User) =>
 
             if (MentionTokens.includes(Segment))
             {
-                return `<mark data-chat-mention>${EscapeHtml(Segment)}</mark>`;
+                return `<button data-chat-mention data-user-id="${EscapeHtml(MentionByToken.get(Segment) || "")}" type="button">${EscapeHtml(Segment)}</button>`;
             }
 
             return EscapeHtml(Segment);
@@ -1152,7 +1166,7 @@ const BuildAuthorBadgeMarkup = (User) =>
         const AuthorMarkup = IsGrouped
             ? ""
             : `
-                <div data-chat-author data-user-id="${EscapeHtml(Message.author.id)}">
+                <div data-chat-author data-profile-disabled="${IsHouseBot ? "true" : "false"}" data-user-id="${EscapeHtml(Message.author.id)}">
                   <span data-chat-avatar>${BuildAvatarMarkup(Message.author)}</span>
                   <span data-chat-author-copy>
                     <span data-chat-author-heading>
@@ -1338,6 +1352,7 @@ const BuildAuthorBadgeMarkup = (User) =>
             is_current_user_mentioned: Message.is_current_user_mentioned,
             is_self: Message.is_self,
             mention_tokens: Message.mention_tokens,
+            mentions: Message.mentions,
             reply_to: Message.reply_to,
             session_share: Message.session_share,
             timestamp: Message.timestamp,
@@ -2501,6 +2516,30 @@ const BuildAuthorBadgeMarkup = (User) =>
 
     ChatMessages?.addEventListener("click", (EventValue) =>
     {
+        const MentionTrigger = EventValue.target.closest("[data-chat-mention][data-user-id]");
+
+        if (MentionTrigger && ChatMessages.contains(MentionTrigger))
+        {
+            EventValue.preventDefault();
+            EventValue.stopPropagation();
+            const UserId = MentionTrigger.dataset.userId || "";
+
+            if (UserId && UserId !== CurrentUserId)
+            {
+                ShowProfileCard(UserId, MentionTrigger).catch((ErrorValue) =>
+                {
+                    console.error(ErrorValue);
+                });
+            }
+            else
+            {
+                HideProfileCard();
+            }
+
+            HideComposerSuggestions();
+            return;
+        }
+
         const ReplyTrigger = EventValue.target.closest("[data-chat-reply-trigger]");
 
         if (!ReplyTrigger || !ChatMessages.contains(ReplyTrigger))
@@ -2539,7 +2578,7 @@ const BuildAuthorBadgeMarkup = (User) =>
 
         const UserId = Trigger.dataset.userId || "";
 
-        if (UserId === CurrentUserId)
+        if (Trigger.dataset.profileDisabled === "true" || UserId === CurrentUserId)
         {
             HideProfileCard();
             return;
