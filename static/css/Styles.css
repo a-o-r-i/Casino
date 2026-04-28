@@ -1083,6 +1083,9 @@ body {
   font-size: 0.82rem;
   font-weight: 900;
   letter-spacing: 0.05em;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
   text-transform: uppercase;
   transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease;
@@ -1233,6 +1236,9 @@ body {
   font: inherit;
   font-size: 0.68rem;
   font-weight: 900;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
   transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease;
 }
 
@@ -1291,6 +1297,9 @@ body {
   font-size: 0.76rem;
   font-weight: 900;
   letter-spacing: 0.04em;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
   text-transform: uppercase;
   transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease;
@@ -1302,6 +1311,7 @@ body {
   inset: 5px;
   border: 1px solid rgba(255, 246, 214, 0.34);
   border-radius: var(--app-radius);
+  pointer-events: none;
 }
 
 .DecisionButton:hover,
