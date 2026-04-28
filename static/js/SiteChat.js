@@ -29,6 +29,7 @@
     const MentionSuggestionsUrl = Body.dataset.chatMentionQueryUrl || "";
     const PresenceHeartbeatUrl = Body.dataset.presenceHeartbeatUrl || "";
     const PresenceOfflineUrl = Body.dataset.presenceOfflineUrl || "";
+    const RainCreateUrl = Body.dataset.chatRainCreateUrl || "";
     const SendUrl = Body.dataset.chatSendUrl || "";
     const StateUrl = Body.dataset.chatStateUrl || "";
     const UserProfileUrlTemplate = Body.dataset.chatUserProfileUrl || "";
@@ -40,6 +41,15 @@
     const ChatOnlineCount = ChatShell.querySelector("[data-chat-online-count]");
     const ChatPanel = ChatShell.querySelector("[data-site-chat]");
     const ChatProfileCard = ChatShell.querySelector("[data-chat-profile-card]");
+    const ChatRainAmountInput = ChatShell.querySelector("[data-chat-rain-amount]");
+    const ChatRainCloseButton = ChatShell.querySelector("[data-chat-rain-close]");
+    const ChatRainDurationInput = ChatShell.querySelector("[data-chat-rain-duration]");
+    const ChatRainForm = ChatShell.querySelector("[data-chat-rain-form]");
+    const ChatRainMessage = ChatShell.querySelector("[data-chat-rain-message]");
+    const ChatRainOpenButton = ChatShell.querySelector("[data-chat-rain-open]");
+    const ChatRainPopup = ChatShell.querySelector("[data-chat-rain-popup]");
+    const ChatRains = ChatShell.querySelector("[data-chat-rains]");
+    const ChatRainSubmitButton = ChatShell.querySelector("[data-chat-rain-submit]");
     const ChatReplyBanner = ChatShell.querySelector("[data-chat-reply]");
     const ChatReplyName = ChatShell.querySelector("[data-chat-reply-name]");
     const ChatReplyPreview = ChatShell.querySelector("[data-chat-reply-preview]");
@@ -88,8 +98,10 @@
     let HoverAnchor = null;
     let HoverHideTimeout = 0;
     let HoverRequestToken = 0;
+    let IsCreatingRain = false;
     let IsTyping = false;
     let IsSending = false;
+    let JoiningRainIds = new Set();
     let LastStatePayload = null;
     let LastTypingInputAt = 0;
     let LatestMessageId = 0;
@@ -98,6 +110,8 @@
     let PollTimeout = 0;
     let RelativeTimeInterval = 0;
     let RenderedProfileUserId = "";
+    let RainState = null;
+    let RainCountdownInterval = 0;
     let SentOfflinePresence = false;
     let FocusedMessageElement = null;
     let TypingResetTimeout = 0;
@@ -158,6 +172,33 @@
         }
 
         return `${Math.floor(Delta / 86400)}d ago`;
+    };
+
+    const FormatRainRemaining = (Seconds) =>
+    {
+        const NormalizedSeconds = Math.max(0, Math.ceil(Number(Seconds) || 0));
+
+        if (NormalizedSeconds <= 0)
+        {
+            return "Ending";
+        }
+
+        if (NormalizedSeconds < 60)
+        {
+            return `${NormalizedSeconds}s`;
+        }
+
+        const Minutes = Math.floor(NormalizedSeconds / 60);
+        const RemainingSeconds = NormalizedSeconds % 60;
+
+        if (Minutes < 60)
+        {
+            return RemainingSeconds ? `${Minutes}m ${RemainingSeconds}s` : `${Minutes}m`;
+        }
+
+        const Hours = Math.floor(Minutes / 60);
+        const RemainingMinutes = Minutes % 60;
+        return RemainingMinutes ? `${Hours}h ${RemainingMinutes}m` : `${Hours}h`;
     };
 
     const Clamp = (Value, Min, Max) =>
@@ -1150,7 +1191,7 @@ const BuildAuthorBadgeMarkup = (User) =>
     {
         const IsHouseBot = Boolean(Message.author?.is_house_bot);
         const MessageType = String(Message.type || "message").trim().toLowerCase() || "message";
-        const MessageKind = IsHouseBot ? "big-win" : MessageType;
+        const MessageKind = MessageType === "rain" ? "rain" : (IsHouseBot ? "big-win" : MessageType);
         const IsGrouped = Boolean(
             PreviousMessage &&
             PreviousMessage.author?.id &&
@@ -1284,6 +1325,172 @@ const BuildAuthorBadgeMarkup = (User) =>
         ChatError.textContent = Message || "";
     };
 
+    const SetRainMessage = (Message, Tone = "neutral") =>
+    {
+        if (!ChatRainMessage)
+        {
+            return;
+        }
+
+        ChatRainMessage.textContent = Message || "";
+        ChatRainMessage.dataset.tone = Tone;
+    };
+
+    const SetRainPopupOpen = (ShouldOpen) =>
+    {
+        if (!ChatRainPopup)
+        {
+            return;
+        }
+
+        ChatRainPopup.dataset.open = ShouldOpen ? "true" : "false";
+        ChatRainPopup.setAttribute("aria-hidden", ShouldOpen ? "false" : "true");
+
+        if (!ShouldOpen)
+        {
+            SetRainMessage("");
+            return;
+        }
+
+        SetChatOpen(true, {
+            FocusComposer: false,
+        });
+
+        window.requestAnimationFrame(() =>
+        {
+            ChatRainAmountInput?.focus();
+            ChatRainAmountInput?.select?.();
+        });
+    };
+
+    const BuildRainMarkup = (Rain) =>
+    {
+        const RainId = String(Rain?.id || "");
+        const HasJoined = Boolean(Rain?.has_joined);
+        const IsCreator = Boolean(Rain?.is_creator);
+        const CanJoin = Boolean(Rain?.can_join) && !JoiningRainIds.has(RainId);
+        const JoinLabel = JoiningRainIds.has(RainId)
+            ? "Joining..."
+            : HasJoined
+                ? "Joined"
+                : IsCreator
+                    ? "Created"
+                    : "Join";
+        const ParticipantCount = Number.parseInt(Rain?.participant_count || "0", 10) || 0;
+        const ParticipantLabel = ParticipantCount === 1 ? "1 joined" : `${ParticipantCount} joined`;
+
+        return `
+            <section data-chat-rain data-rain-id="${EscapeHtml(RainId)}" data-rain-ends-at="${EscapeHtml(Rain?.ends_at || "")}">
+              <div data-chat-rain-copy>
+                <span data-chat-rain-title>${EscapeHtml(Rain?.amount_display || "$0")} rain</span>
+                <span data-chat-rain-meta>${EscapeHtml(Rain?.creator_name || "A player")} - ${EscapeHtml(ParticipantLabel)}</span>
+              </div>
+              <div data-chat-rain-actions>
+                <span data-chat-rain-time>${EscapeHtml(FormatRainRemaining(Rain?.seconds_remaining))}</span>
+                <button
+                  data-chat-rain-join
+                  data-rain-id="${EscapeHtml(RainId)}"
+                  data-rain-join-url="${EscapeHtml(Rain?.join_url || "")}"
+                  ${CanJoin ? "" : "disabled"}
+                  type="button"
+                >
+                  ${EscapeHtml(JoinLabel)}
+                </button>
+              </div>
+            </section>
+        `;
+    };
+
+    const SyncRainCountdownInterval = () =>
+    {
+        if (!ChatRains || !ChatRains.querySelector("[data-chat-rain]"))
+        {
+            if (RainCountdownInterval)
+            {
+                window.clearInterval(RainCountdownInterval);
+                RainCountdownInterval = 0;
+            }
+
+            return;
+        }
+
+        if (!RainCountdownInterval)
+        {
+            RainCountdownInterval = window.setInterval(UpdateRainCountdowns, 1000);
+        }
+    };
+
+    const UpdateRainCountdowns = () =>
+    {
+        if (!ChatRains)
+        {
+            return;
+        }
+
+        ChatRains.querySelectorAll("[data-chat-rain]").forEach((RainNode) =>
+        {
+            const EndsAt = Number.parseFloat(RainNode.dataset.rainEndsAt || "0");
+            const TimeNode = RainNode.querySelector("[data-chat-rain-time]");
+
+            if (!TimeNode || !EndsAt)
+            {
+                return;
+            }
+
+            TimeNode.textContent = FormatRainRemaining((EndsAt * 1000 - Date.now()) / 1000);
+        });
+    };
+
+    const RenderRains = () =>
+    {
+        if (!ChatRains)
+        {
+            return;
+        }
+
+        const ActiveRains = Array.isArray(RainState?.active) ? RainState.active : [];
+
+        if (!ActiveRains.length)
+        {
+            ChatRains.hidden = true;
+            ChatRains.innerHTML = "";
+            SyncRainCountdownInterval();
+            return;
+        }
+
+        ChatRains.hidden = false;
+        ChatRains.innerHTML = ActiveRains.map(BuildRainMarkup).join("");
+        UpdateRainCountdowns();
+        SyncRainCountdownInterval();
+    };
+
+    const ApplyRainState = (NextRainState) =>
+    {
+        if (!NextRainState)
+        {
+            return;
+        }
+
+        RainState = NextRainState;
+
+        if (ChatRainOpenButton)
+        {
+            const CanCreate = Boolean(RainState.can_create && RainCreateUrl);
+            ChatRainOpenButton.hidden = !CanCreate;
+            ChatRainOpenButton.disabled = !CanCreate;
+            ChatRainOpenButton.title = CanCreate
+                ? "Create rain"
+                : `Requires ${RainState.min_create_balance_display || "$2,500"}`;
+
+            if (!CanCreate)
+            {
+                SetRainPopupOpen(false);
+            }
+        }
+
+        RenderRains();
+    };
+
     const UpdateRelativeTimes = () =>
     {
         ChatShell.querySelectorAll("[data-chat-message-time]").forEach((Node) =>
@@ -1406,6 +1613,8 @@ const BuildAuthorBadgeMarkup = (User) =>
     {
         LastStatePayload = Payload;
         ApplyOnlineCount(Payload.online_count);
+        SetBalanceDisplay(Payload.current_balance_display);
+        ApplyRainState(Payload.rains);
         SetTypingSummary(Payload.typing_users);
 
         if (Number.isFinite(Payload.latest_message_id))
@@ -2103,6 +2312,151 @@ const BuildAuthorBadgeMarkup = (User) =>
         }
     };
 
+    const CreateRain = async () =>
+    {
+        if (IsCreatingRain || !RainCreateUrl)
+        {
+            return;
+        }
+
+        const Amount = ChatRainAmountInput?.value.trim() || "";
+        const DurationMinutes = ChatRainDurationInput?.value.trim() || "";
+
+        if (!Amount || !DurationMinutes)
+        {
+            SetRainMessage("Enter amount and minutes.", "error");
+            return;
+        }
+
+        IsCreatingRain = true;
+        SetRainMessage("Creating...");
+
+        if (ChatRainSubmitButton)
+        {
+            ChatRainSubmitButton.disabled = true;
+        }
+
+        try
+        {
+            const Response = await fetch(RainCreateUrl, {
+                body: JSON.stringify({
+                    amount: Amount,
+                    duration_minutes: DurationMinutes,
+                }),
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                method: "POST",
+            });
+            const Payload = await Response.json().catch(() => ({}));
+
+            SetBalanceDisplay(Payload.current_balance_display);
+            ApplyRainState(Payload.rains);
+
+            if (!Response.ok)
+            {
+                SetRainMessage(Payload.error || "Rain could not be created.", "error");
+                return;
+            }
+
+            if (Payload.message)
+            {
+                AppendMessage(Payload.message);
+            }
+
+            LatestMessageId = Math.max(LatestMessageId, Payload.latest_message_id || 0);
+            if (ChatRainAmountInput)
+            {
+                ChatRainAmountInput.value = "";
+            }
+
+            if (ChatRainDurationInput)
+            {
+                ChatRainDurationInput.value = "";
+            }
+            SetRainPopupOpen(false);
+            window.GamblingApp?.showToast?.({
+                message: "Rain created.",
+                title: "Rain",
+                tone: "success",
+            });
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+            SetRainMessage("Rain could not be created.", "error");
+        }
+        finally
+        {
+            IsCreatingRain = false;
+
+            if (ChatRainSubmitButton)
+            {
+                ChatRainSubmitButton.disabled = false;
+            }
+        }
+    };
+
+    const JoinRain = async (JoinButton) =>
+    {
+        const RainId = JoinButton?.dataset.rainId || "";
+        const JoinUrl = JoinButton?.dataset.rainJoinUrl || "";
+
+        if (!RainId || !JoinUrl || JoiningRainIds.has(RainId))
+        {
+            return;
+        }
+
+        JoiningRainIds.add(RainId);
+        RenderRains();
+
+        try
+        {
+            const Response = await fetch(JoinUrl, {
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                method: "POST",
+            });
+            const Payload = await Response.json().catch(() => ({}));
+
+            SetBalanceDisplay(Payload.current_balance_display);
+            ApplyRainState(Payload.rains);
+
+            if (!Response.ok)
+            {
+                window.GamblingApp?.showToast?.({
+                    message: Payload.error || "Rain could not be joined.",
+                    title: "Rain",
+                    tone: "error",
+                });
+                return;
+            }
+
+            window.GamblingApp?.showToast?.({
+                message: "Joined rain.",
+                title: "Rain",
+                tone: "success",
+            });
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+            window.GamblingApp?.showToast?.({
+                message: "Rain could not be joined.",
+                title: "Rain",
+                tone: "error",
+            });
+        }
+        finally
+        {
+            JoiningRainIds.delete(RainId);
+            RenderRains();
+        }
+    };
+
     const HideProfileCard = () =>
     {
         if (HoverHideTimeout)
@@ -2355,6 +2709,41 @@ const BuildAuthorBadgeMarkup = (User) =>
     ChatCloseButton?.addEventListener("click", () =>
     {
         SetChatOpen(false);
+    });
+
+    ChatRainOpenButton?.addEventListener("click", () =>
+    {
+        SetRainPopupOpen(ChatRainPopup?.dataset.open !== "true");
+    });
+
+    ChatRainCloseButton?.addEventListener("click", () =>
+    {
+        SetRainPopupOpen(false);
+    });
+
+    ChatRainForm?.addEventListener("submit", (EventValue) =>
+    {
+        EventValue.preventDefault();
+        CreateRain().catch((ErrorValue) =>
+        {
+            console.error(ErrorValue);
+        });
+    });
+
+    ChatRains?.addEventListener("click", (EventValue) =>
+    {
+        const JoinButton = EventValue.target.closest("[data-chat-rain-join]");
+
+        if (!JoinButton || !ChatRains.contains(JoinButton))
+        {
+            return;
+        }
+
+        EventValue.preventDefault();
+        JoinRain(JoinButton).catch((ErrorValue) =>
+        {
+            console.error(ErrorValue);
+        });
     });
 
     ChatComposer?.addEventListener("submit", (EventValue) =>

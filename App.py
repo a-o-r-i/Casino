@@ -85,6 +85,12 @@ BLACKJACK_DEFAULT_MIN_BET_CENTS = 100
 BLACKJACK_DEFAULT_MAX_BET_CENTS = 100000
 BLACKJACK_TABLE_LIMIT_CAP_CENTS = 100000000
 BIG_WIN_CHAT_THRESHOLD_CENTS = 1000000
+RAIN_CREATE_MIN_BALANCE_CENTS = 250000
+RAIN_MIN_AMOUNT_CENTS = 100
+RAIN_MIN_DURATION_SECONDS = 60
+RAIN_MAX_DURATION_SECONDS = 24 * 60 * 60
+RAIN_SETTLED_TTL_SECONDS = 60 * 60
+MAX_STORED_RAINS = 80
 BLACKJACK_CHIP_VALUES_CENTS = (
     100,
     200,
@@ -200,6 +206,7 @@ USER_PROFILES = {
 COINFLIP_SESSIONS = {}
 DICE_SESSIONS = {}
 BLACKJACK_SESSIONS = {}
+SITE_RAINS = {}
 CANCELED_COINFLIP_SESSIONS = {}
 CANCELED_DICE_SESSIONS = {}
 CANCELED_BLACKJACK_SESSIONS = {}
@@ -224,6 +231,7 @@ CHAT_MENTION_SUGGESTION_LIMIT = 6
 CHAT_REPLY_PREVIEW_MAX_LENGTH = 90
 CHAT_TYPING_WINDOW_SECONDS = 5
 NEXT_CHAT_MESSAGE_ID = 1
+NEXT_RAIN_ID = 1
 CHAT_BIG_WIN_ANNOUNCEMENT_PATTERN = re.compile(r"^(.+?) just won (.+?) on (.+?)\.$")
 CHAT_MENTION_PATTERN = re.compile(r"(?<![\w@])@([A-Za-z0-9_.-]{2,32})")
 CHAT_EMOJI_SHORTCODE_PATTERN = re.compile(r":([A-Za-z0-9_+\-]{2,32}):")
@@ -362,11 +370,13 @@ def build_persistent_state_payload():
         "schema_version": PERSISTENT_STATE_SCHEMA_VERSION,
         "next_chat_message_id": NEXT_CHAT_MESSAGE_ID,
         "next_notification_id": NEXT_NOTIFICATION_ID,
+        "next_rain_id": NEXT_RAIN_ID,
         "user_balances": USER_BALANCES,
         "user_profiles": USER_PROFILES,
         "coinflip_sessions": COINFLIP_SESSIONS,
         "dice_sessions": DICE_SESSIONS,
         "blackjack_sessions": BLACKJACK_SESSIONS,
+        "site_rains": SITE_RAINS,
         "user_stats": USER_STATS,
         "user_bet_history": USER_BET_HISTORY,
         "app_notifications": APP_NOTIFICATIONS,
@@ -387,6 +397,7 @@ def build_persistent_state_json():
 def load_persistent_state():
     global NEXT_CHAT_MESSAGE_ID
     global NEXT_NOTIFICATION_ID
+    global NEXT_RAIN_ID
     global LAST_PERSISTED_STATE_DIGEST
 
     if not APP_STATE_PATH.exists():
@@ -408,6 +419,7 @@ def load_persistent_state():
     coinflip_sessions = payload.get("coinflip_sessions")
     dice_sessions = payload.get("dice_sessions")
     blackjack_sessions = payload.get("blackjack_sessions")
+    site_rains = payload.get("site_rains")
     user_stats = payload.get("user_stats")
     user_bet_history = payload.get("user_bet_history")
     app_notifications = payload.get("app_notifications")
@@ -440,6 +452,12 @@ def load_persistent_state():
         if isinstance(blackjack_sessions, dict):
             BLACKJACK_SESSIONS.update(blackjack_sessions)
 
+        SITE_RAINS.clear()
+        if isinstance(site_rains, dict):
+            for rain_id, rain_record in site_rains.items():
+                if isinstance(rain_record, dict):
+                    SITE_RAINS[str(rain_id)] = rain_record
+
         USER_STATS.clear()
         if isinstance(user_stats, dict):
             USER_STATS.update(user_stats)
@@ -467,6 +485,10 @@ def load_persistent_state():
             (safe_int(chat_message.get("id"), 0) for chat_message in CHAT_MESSAGES if isinstance(chat_message, dict)),
             default=0,
         )
+        latest_rain_id = max(
+            (safe_int(rain_id, 0) for rain_id in SITE_RAINS.keys()),
+            default=0,
+        )
 
         NEXT_NOTIFICATION_ID = max(
             latest_notification_id + 1,
@@ -475,6 +497,10 @@ def load_persistent_state():
         NEXT_CHAT_MESSAGE_ID = max(
             latest_chat_message_id + 1,
             safe_int(payload.get("next_chat_message_id"), 1),
+        )
+        NEXT_RAIN_ID = max(
+            latest_rain_id + 1,
+            safe_int(payload.get("next_rain_id"), 1),
         )
 
         LAST_PERSISTED_STATE_DIGEST = build_persistent_state_digest(build_persistent_state_json())
@@ -2705,9 +2731,11 @@ def get_latest_chat_message_id():
 
 
 def build_chat_state_payload(current_user_id, since_id):
+    sync_site_rains()
     latest_message_id = get_latest_chat_message_id()
     oldest_message_id = CHAT_MESSAGES[0]["id"] if CHAT_MESSAGES else 0
     should_reset = bool(since_id and oldest_message_id and since_id < oldest_message_id - 1)
+    current_balance_cents = get_user_balance(current_user_id) if current_user_id else None
 
     if since_id <= 0 or should_reset:
         candidate_messages = CHAT_MESSAGES[-CHAT_INITIAL_MESSAGE_LIMIT:]
@@ -2737,7 +2765,14 @@ def build_chat_state_payload(current_user_id, since_id):
         "online_count": get_online_player_count(),
         "poll_interval_ms": CHAT_POLL_INTERVAL_MS,
         "reset": should_reset or since_id <= 0,
+        "rains": build_chat_rains_state_payload(current_user_id),
         "typing_users": build_chat_typing_users(current_user_id),
+        "current_balance_cents": current_balance_cents,
+        "current_balance_display": (
+            format_money(current_balance_cents)
+            if current_balance_cents is not None
+            else None
+        ),
     }
 
 
@@ -2838,6 +2873,268 @@ def send_user_tip(sender_user, recipient_user_id, raw_amount):
         "recipient_id": recipient_user_id,
         "recipient_name": recipient_name,
     }
+
+
+def parse_rain_amount_to_cents(raw_value):
+    try:
+        parsed_value = Decimal(str(raw_value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Enter a valid rain amount.")
+
+    amount_cents = int(parsed_value * 100)
+
+    if amount_cents < RAIN_MIN_AMOUNT_CENTS:
+        raise ValueError(f"The minimum rain is {format_money(RAIN_MIN_AMOUNT_CENTS)}.")
+
+    return amount_cents
+
+
+def parse_rain_duration_to_seconds(raw_minutes=None, raw_seconds=None):
+    raw_value = raw_seconds if raw_seconds is not None else raw_minutes
+    multiplier = Decimal("1") if raw_seconds is not None else Decimal("60")
+
+    try:
+        parsed_value = Decimal(str(raw_value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Enter a valid rain duration.")
+
+    duration_seconds = int(parsed_value * multiplier)
+
+    if duration_seconds < RAIN_MIN_DURATION_SECONDS:
+        raise ValueError("Rain duration must be at least 1 minute.")
+
+    if duration_seconds > RAIN_MAX_DURATION_SECONDS:
+        raise ValueError("Rain duration cannot be longer than 1 day.")
+
+    return duration_seconds
+
+
+def normalize_rain_participant_ids(rain_record):
+    participant_ids = []
+    seen_ids = set()
+
+    for raw_user_id in rain_record.get("participant_ids") or []:
+        user_id = str(raw_user_id or "").strip()
+
+        if not user_id or user_id in seen_ids:
+            continue
+
+        seen_ids.add(user_id)
+        participant_ids.append(user_id)
+
+    rain_record["participant_ids"] = participant_ids
+    return participant_ids
+
+
+def build_rain_id():
+    global NEXT_RAIN_ID
+
+    rain_id = str(NEXT_RAIN_ID)
+    NEXT_RAIN_ID += 1
+    return rain_id
+
+
+def settle_site_rain(rain_record, now=None):
+    current_time = now or time.time()
+
+    if rain_record.get("settled_at"):
+        return False
+
+    participant_ids = normalize_rain_participant_ids(rain_record)
+    amount_cents = max(safe_int(rain_record.get("amount_cents"), 0), 0)
+    creator = rain_record.get("creator") or {}
+    creator_id = str(rain_record.get("creator_id") or creator.get("id") or "").strip()
+    creator_name = creator.get("display_name") or creator.get("username") or "A player"
+
+    rain_record["settled_at"] = current_time
+
+    if not participant_ids:
+        if creator_id and amount_cents > 0:
+            set_user_balance(creator_id, get_user_balance(creator_id) + amount_cents)
+
+        rain_record["payout_cents"] = 0
+        rain_record["remainder_cents"] = amount_cents
+        add_chat_message(
+            BOT_PROFILE,
+            f"{creator_name}'s {format_money(amount_cents)} rain ended with no entries and was refunded.",
+            message_type="rain",
+        )
+        return True
+
+    base_payout_cents, remainder_cents = divmod(amount_cents, len(participant_ids))
+
+    for index, participant_id in enumerate(participant_ids):
+        payout_cents = base_payout_cents + (1 if index < remainder_cents else 0)
+
+        if payout_cents > 0:
+            set_user_balance(participant_id, get_user_balance(participant_id) + payout_cents)
+
+    rain_record["payout_cents"] = base_payout_cents
+    rain_record["remainder_cents"] = remainder_cents
+    add_chat_message(
+        BOT_PROFILE,
+        f"{len(participant_ids)} players split {format_money(amount_cents)} from {creator_name}'s rain.",
+        message_type="rain",
+    )
+    return True
+
+
+def sync_site_rains(now=None):
+    current_time = now or time.time()
+    changed = False
+
+    for rain_record in list(SITE_RAINS.values()):
+        if not isinstance(rain_record, dict):
+            continue
+
+        if not rain_record.get("settled_at") and safe_int(rain_record.get("ends_at"), 0) <= current_time:
+            changed = settle_site_rain(rain_record, current_time) or changed
+
+    stale_rain_ids = [
+        rain_id
+        for rain_id, rain_record in SITE_RAINS.items()
+        if isinstance(rain_record, dict)
+        and rain_record.get("settled_at")
+        and current_time - float(rain_record.get("settled_at") or current_time) > RAIN_SETTLED_TTL_SECONDS
+    ]
+
+    for rain_id in stale_rain_ids:
+        del SITE_RAINS[rain_id]
+        changed = True
+
+    if len(SITE_RAINS) > MAX_STORED_RAINS:
+        sorted_rain_ids = sorted(
+            SITE_RAINS.keys(),
+            key=lambda rain_id: float((SITE_RAINS.get(rain_id) or {}).get("created_at") or 0),
+        )
+
+        for rain_id in sorted_rain_ids[:len(SITE_RAINS) - MAX_STORED_RAINS]:
+            if (SITE_RAINS.get(rain_id) or {}).get("settled_at"):
+                del SITE_RAINS[rain_id]
+                changed = True
+
+    return changed
+
+
+def build_chat_rain_payload(rain_id, rain_record, current_user_id, now=None):
+    current_time = now or time.time()
+    participant_ids = normalize_rain_participant_ids(rain_record)
+    creator = rain_record.get("creator") or {}
+    creator_id = str(rain_record.get("creator_id") or creator.get("id") or "").strip()
+    ends_at = float(rain_record.get("ends_at") or current_time)
+    amount_cents = safe_int(rain_record.get("amount_cents"), 0)
+    is_active = not rain_record.get("settled_at") and ends_at > current_time
+    has_joined = current_user_id in participant_ids if current_user_id else False
+    is_creator = current_user_id == creator_id if current_user_id else False
+
+    return {
+        "amount_cents": amount_cents,
+        "amount_display": format_money(amount_cents),
+        "can_join": bool(is_active and current_user_id and not has_joined and not is_creator),
+        "created_at": rain_record.get("created_at"),
+        "creator_id": creator_id,
+        "creator_name": creator.get("display_name") or creator.get("username") or "A player",
+        "duration_seconds": safe_int(rain_record.get("duration_seconds"), RAIN_MIN_DURATION_SECONDS),
+        "ends_at": ends_at,
+        "has_joined": has_joined,
+        "id": str(rain_id),
+        "is_creator": is_creator,
+        "join_url": url_for("join_chat_rain", rain_id=rain_id) if has_request_context() else None,
+        "participant_count": len(participant_ids),
+        "seconds_remaining": max(int(math.ceil(ends_at - current_time)), 0),
+    }
+
+
+def build_chat_rains_state_payload(current_user_id, now=None):
+    current_time = now or time.time()
+    sync_site_rains(current_time)
+    active_rains = [
+        build_chat_rain_payload(rain_id, rain_record, current_user_id, current_time)
+        for rain_id, rain_record in sorted(
+            SITE_RAINS.items(),
+            key=lambda item: float((item[1] or {}).get("ends_at") or 0),
+        )
+        if isinstance(rain_record, dict)
+        and not rain_record.get("settled_at")
+        and float(rain_record.get("ends_at") or 0) > current_time
+    ]
+    current_balance_cents = get_user_balance(current_user_id) if current_user_id else 0
+
+    return {
+        "active": active_rains,
+        "can_create": bool(current_user_id and current_balance_cents >= RAIN_CREATE_MIN_BALANCE_CENTS),
+        "max_duration_minutes": RAIN_MAX_DURATION_SECONDS // 60,
+        "min_create_balance_cents": RAIN_CREATE_MIN_BALANCE_CENTS,
+        "min_create_balance_display": format_money(RAIN_CREATE_MIN_BALANCE_CENTS),
+        "min_duration_minutes": RAIN_MIN_DURATION_SECONDS // 60,
+    }
+
+
+def create_site_rain(creator_user, raw_amount, raw_duration_minutes):
+    creator_snapshot = remember_user_profile(creator_user)
+    creator_id = creator_snapshot["id"]
+    current_balance_cents = get_user_balance(creator_id)
+
+    if current_balance_cents < RAIN_CREATE_MIN_BALANCE_CENTS:
+        raise ValueError(f"You need at least {format_money(RAIN_CREATE_MIN_BALANCE_CENTS)} to create a rain.")
+
+    amount_cents = parse_rain_amount_to_cents(raw_amount)
+
+    if amount_cents > current_balance_cents:
+        raise ValueError("You do not have enough balance for that rain.")
+
+    duration_seconds = parse_rain_duration_to_seconds(raw_minutes=raw_duration_minutes)
+    created_at = time.time()
+    rain_id = build_rain_id()
+    rain_record = {
+        "amount_cents": amount_cents,
+        "created_at": created_at,
+        "creator": creator_snapshot,
+        "creator_id": creator_id,
+        "duration_seconds": duration_seconds,
+        "ends_at": created_at + duration_seconds,
+        "id": rain_id,
+        "participant_ids": [],
+        "settled_at": None,
+    }
+
+    set_user_balance(creator_id, current_balance_cents - amount_cents)
+    SITE_RAINS[rain_id] = rain_record
+    message = add_chat_message(
+        BOT_PROFILE,
+        f"{creator_snapshot['display_name']} started a {format_money(amount_cents)} rain for {format_duration(duration_seconds)}.",
+        message_type="rain",
+    )
+
+    return rain_record, message
+
+
+def join_site_rain(joining_user, rain_id):
+    current_time = time.time()
+    sync_site_rains(current_time)
+    normalized_rain_id = str(rain_id or "").strip()
+    rain_record = SITE_RAINS.get(normalized_rain_id)
+
+    if not isinstance(rain_record, dict) or rain_record.get("settled_at"):
+        raise ValueError("That rain has ended.")
+
+    if float(rain_record.get("ends_at") or 0) <= current_time:
+        settle_site_rain(rain_record, current_time)
+        raise ValueError("That rain has ended.")
+
+    joining_snapshot = remember_user_profile(joining_user)
+    joining_user_id = joining_snapshot["id"]
+
+    if joining_user_id == rain_record.get("creator_id"):
+        raise ValueError("You cannot join your own rain.")
+
+    participant_ids = normalize_rain_participant_ids(rain_record)
+
+    if joining_user_id not in participant_ids:
+        participant_ids.append(joining_user_id)
+        rain_record["participant_ids"] = participant_ids
+
+    return rain_record
 
 
 def parse_bet_amount_to_cents(raw_value):
@@ -7228,6 +7525,7 @@ def inject_auth_state():
     return {
         "asset_url": build_static_asset_url,
         "chat_current_user_id": discord_user["id"] if discord_user else None,
+        "chat_rain_create_url": url_for("chat_rains") if discord_user else None,
         "chat_send_url": url_for("chat_messages") if discord_user else None,
         "chat_state_url": url_for("chat_state") if discord_user else None,
         "chat_mention_query_url": url_for("chat_mention_suggestions") if discord_user else None,
@@ -7243,6 +7541,9 @@ def inject_auth_state():
         "pending_level_reward_count": pending_level_reward_count,
         "presence_heartbeat_url": url_for("presence_heartbeat") if discord_user else None,
         "presence_offline_url": url_for("presence_offline") if discord_user else None,
+        "rain_max_duration_minutes": RAIN_MAX_DURATION_SECONDS // 60,
+        "rain_min_create_balance_cents": RAIN_CREATE_MIN_BALANCE_CENTS,
+        "rain_min_duration_minutes": RAIN_MIN_DURATION_SECONDS // 60,
     }
 
 
@@ -7373,6 +7674,70 @@ def chat_messages():
         return jsonify({"error": str(exc)}), 400
 
     return jsonify(response_payload), 201
+
+
+@app.route("/chat/rains", methods=["POST"])
+@login_required
+def chat_rains():
+    payload = request.get_json(silent=True) or {}
+    raw_amount = payload.get("amount") if isinstance(payload, dict) else None
+    raw_duration_minutes = payload.get("duration_minutes") if isinstance(payload, dict) else None
+    current_user = make_user_snapshot(get_current_user())
+
+    try:
+        with STATE_LOCK:
+            _rain_record, message = create_site_rain(current_user, raw_amount, raw_duration_minutes)
+            current_balance_cents = get_user_balance(current_user["id"])
+            response_payload = {
+                "current_balance_cents": current_balance_cents,
+                "current_balance_display": format_money(current_balance_cents),
+                "latest_message_id": get_latest_chat_message_id(),
+                "message": serialize_chat_message(message, current_user["id"]),
+                "online_count": get_online_player_count(),
+                "rains": build_chat_rains_state_payload(current_user["id"]),
+            }
+    except ValueError as exc:
+        with STATE_LOCK:
+            current_balance_cents = get_user_balance(current_user["id"])
+            rains_payload = build_chat_rains_state_payload(current_user["id"])
+
+        return jsonify({
+            "current_balance_cents": current_balance_cents,
+            "current_balance_display": format_money(current_balance_cents),
+            "error": str(exc),
+            "rains": rains_payload,
+        }), 400
+
+    return jsonify(response_payload), 201
+
+
+@app.route("/chat/rains/<rain_id>/join", methods=["POST"])
+@login_required
+def join_chat_rain(rain_id):
+    current_user = make_user_snapshot(get_current_user())
+
+    try:
+        with STATE_LOCK:
+            join_site_rain(current_user, rain_id)
+            current_balance_cents = get_user_balance(current_user["id"])
+            response_payload = {
+                "current_balance_cents": current_balance_cents,
+                "current_balance_display": format_money(current_balance_cents),
+                "rains": build_chat_rains_state_payload(current_user["id"]),
+            }
+    except ValueError as exc:
+        with STATE_LOCK:
+            current_balance_cents = get_user_balance(current_user["id"])
+            rains_payload = build_chat_rains_state_payload(current_user["id"])
+
+        return jsonify({
+            "current_balance_cents": current_balance_cents,
+            "current_balance_display": format_money(current_balance_cents),
+            "error": str(exc),
+            "rains": rains_payload,
+        }), 400
+
+    return jsonify(response_payload)
 
 
 @app.route("/chat/users/<user_id>")
