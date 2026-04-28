@@ -773,7 +773,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.16rem 0.42rem;
+  padding: 0.18rem 0.48rem;
   border-radius: 999px;
   background: rgba(4, 16, 14, 0.88);
   border: 1px solid rgba(243, 225, 172, 0.18);
@@ -781,29 +781,29 @@ body {
 }
 
 .HandGroupTotal {
-  min-width: 42px;
-  font-size: 0.68rem;
+  min-width: 48px;
+  font-size: 0.74rem;
   font-weight: 800;
 }
 
 .HandGroupDealerResult {
-  min-width: 48px;
-  font-size: 0.68rem;
+  min-width: 54px;
+  font-size: 0.74rem;
   font-weight: 800;
 }
 
 .HandGroupTurn {
-  min-width: 78px;
+  min-width: 88px;
   color: #fff0bf;
-  font-size: 0.58rem;
+  font-size: 0.64rem;
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .HandGroupResult {
-  min-width: 66px;
-  font-size: 0.6rem;
+  min-width: 74px;
+  font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.04em;
 }
@@ -1559,28 +1559,28 @@ body {
   .HandGroupDealerResult,
   .HandGroupTurn,
   .HandGroupResult {
-    padding: 0.1rem 0.3rem;
+    padding: 0.12rem 0.34rem;
   }
 
   .HandGroupTotal {
-    min-width: 28px;
-    font-size: 0.5rem;
+    min-width: 32px;
+    font-size: 0.56rem;
   }
 
   .HandGroupDealerResult {
-    min-width: 32px;
-    font-size: 0.5rem;
+    min-width: 36px;
+    font-size: 0.56rem;
   }
 
   .HandGroupTurn {
-    min-width: 56px;
-    font-size: 0.42rem;
+    min-width: 64px;
+    font-size: 0.48rem;
     letter-spacing: 0.04em;
   }
 
   .HandGroupResult {
-    min-width: 44px;
-    font-size: 0.44rem;
+    min-width: 50px;
+    font-size: 0.5rem;
     letter-spacing: 0.03em;
   }
 

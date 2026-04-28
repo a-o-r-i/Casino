@@ -3,6 +3,7 @@ import { CloneHandSlots, NormalizeHandSlots } from "./HandSlots.js";
 import { SideBetKey, NormalizeSideBets, SideBetMap } from "./SideBets.js";
 import { CardLabel, Money, HandTotalLabel } from "./TableRules.js";
 const CARD_STACK_STEP_X_RATIO = 0.88;
+const PLAYER_CARD_SCALE = 0.75;
 const BET_TARGET_LABELS = Object.freeze({
   main: "Main",
   perfect_pairs: "Pairs",
@@ -18,6 +19,12 @@ function GetDealerStackStep(Metrics) {
   return {
     x: Clamp(Metrics.width * CARD_STACK_STEP_X_RATIO, 36, 44),
     y: -Clamp(Metrics.height * 0.16, 8, 12)
+  };
+}
+function ScaleCardMetrics(Metrics, Scale) {
+  return {
+    width: Metrics.width * Scale,
+    height: Metrics.height * Scale
   };
 }
 function GetRelativeRect(Node, StageRect) {
@@ -146,10 +153,10 @@ export function CreateTableRenderer({
     const Slot = GetPlayerSlot(SeatId);
     if (Slot) {
       const UseSharedMetrics = UsesSharedCardMetrics();
-      const Metrics = UseSharedMetrics ? GetCardMetrics() : {
+      const Metrics = ScaleCardMetrics(UseSharedMetrics ? GetCardMetrics() : {
         width: ParsePercent(Slot.width, StageRect.width) * TABLE_LAYOUT.cardScale,
         height: ParsePercent(Slot.height, StageRect.height) * TABLE_LAYOUT.cardScale
-      };
+      }, PLAYER_CARD_SCALE);
       const CenterOffset = HandCount === 1 ? 0 : HandIndex - (HandCount - 1) / 2;
       const SplitGap = HandCount > 1 ? Math.max(Metrics.width * 1.52, 100) : Math.max(Metrics.width * 0.92, 64);
       const SplitLift = HandCount > 1 ? Math.max(Metrics.height * 0.06, 10) : 0;
@@ -165,7 +172,7 @@ export function CreateTableRenderer({
     }
     const Seat = FindSeat(SeatId);
     if (!Seat) {
-      const FallbackMetrics = GetCardMetrics();
+      const FallbackMetrics = ScaleCardMetrics(GetCardMetrics(), PLAYER_CARD_SCALE);
       return {
         anchor: {
           x: StageRect.width / 2,
@@ -177,7 +184,7 @@ export function CreateTableRenderer({
       };
     }
     const CenterOffset = HandCount === 1 ? 0 : HandIndex - (HandCount - 1) / 2;
-    const FallbackMetrics = GetCardMetrics();
+    const FallbackMetrics = ScaleCardMetrics(GetCardMetrics(), PLAYER_CARD_SCALE);
     const SplitGap = HandCount > 1 ? Math.max(TABLE_LAYOUT.splitGapPx, FallbackMetrics.width * 1.52, 100) : TABLE_LAYOUT.splitGapPx;
     const SplitLift = HandCount > 1 ? Math.max(FallbackMetrics.height * 0.06, 10) : 0;
     return {
@@ -192,8 +199,8 @@ export function CreateTableRenderer({
   }
   function GetPlayerStackStep(Slot, StageRect, Metrics, HandCount = 1) {
     const BaseStep = Slot ? {
-      x: ParsePercent(Slot.stackOffsetX, StageRect.width),
-      y: ParsePercent(Slot.stackOffsetY, StageRect.height)
+      x: ParsePercent(Slot.stackOffsetX, StageRect.width) * PLAYER_CARD_SCALE,
+      y: ParsePercent(Slot.stackOffsetY, StageRect.height) * PLAYER_CARD_SCALE
     } : {
       x: Clamp(Metrics.width * CARD_STACK_STEP_X_RATIO, 36, 44),
       y: Clamp(Metrics.height * 0.16, 8, 12)
