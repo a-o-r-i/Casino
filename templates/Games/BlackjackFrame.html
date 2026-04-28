@@ -10,7 +10,21 @@
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ asset_url('css/Styles.css') }}">
 </head>
-<body class="BlackjackFramePage">
+<body
+  class="BlackjackFramePage"
+  data-sfx-blackjack-bust-url="{{ asset_url('assets/sfx/Blackjack/bust.mp3') }}"
+  data-sfx-blackjack-deal-card-url="{{ asset_url('assets/sfx/Blackjack/deal_card.mp3') }}"
+  data-sfx-blackjack-dealer-reveal-card-url="{{ asset_url('assets/sfx/Blackjack/dealer_reveal_card.mp3') }}"
+  data-sfx-blackjack-double-url="{{ asset_url('assets/sfx/Blackjack/double.mp3') }}"
+  data-sfx-blackjack-hit-url="{{ asset_url('assets/sfx/Blackjack/hit.mp3') }}"
+  data-sfx-blackjack-place-chip-url="{{ asset_url('assets/sfx/Blackjack/place_chip.mp3') }}"
+  data-sfx-blackjack-rebet-url="{{ asset_url('assets/sfx/Blackjack/rebet.mp3') }}"
+  data-sfx-blackjack-select-chip-url="{{ asset_url('assets/sfx/Blackjack/select_chip.mp3') }}"
+  data-sfx-blackjack-stand-url="{{ asset_url('assets/sfx/Blackjack/stand.mp3') }}"
+  data-sfx-blackjack-undo-chip-url="{{ asset_url('assets/sfx/Blackjack/undo_chip.mp3') }}"
+  data-sfx-blackjack-win-url="{{ asset_url('assets/sfx/Blackjack/win.mp3') }}"
+  data-sfx-blackjack-x2-bet-url="{{ asset_url('assets/sfx/Blackjack/x2_bet.mp3') }}"
+>
   {% include "Games/_BlackjackTableStage.html" %}
 
   <script data-blackjack-table-config type="application/json">{{ blackjack_table_config | tojson }}</script>

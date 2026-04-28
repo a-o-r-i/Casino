@@ -7,3 +7,4 @@ data/app-state.json.tmp
 data/flask-secret.key
 data/devserver.err
 data/devserver.out
+*.sfk

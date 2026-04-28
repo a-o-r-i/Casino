@@ -448,7 +448,9 @@ export function CreateTableRenderer({
     if (!Elements.seatBetLayer) {
       return;
     }
-    Elements.seatBetLayer.innerHTML = SEAT_POSITIONS.map(Seat => {
+    const PreviousBetNodes = new Map(Array.from(Elements.seatBetLayer.querySelectorAll(".SeatBet:not(.IsExiting)")).map(Node => [Node.dataset.betKey || "", Node]).filter(([Key]) => Key));
+    const NextBetKeys = new Set();
+    const NextMarkup = SEAT_POSITIONS.map(Seat => {
       return [{
         amount: View.seatBetAmounts[Seat.id],
         betType: "main",
@@ -469,10 +471,12 @@ export function CreateTableRenderer({
         if (!Amount) {
           return "";
         }
+        const BetKey = `${Seat.id}:${BetType}`;
         const Anchor = GetSeatBetAnchor(Seat.id, BetType);
         if (!Anchor) {
           return "";
         }
+        NextBetKeys.add(BetKey);
         const DisplayChipValue = GetDisplayChipValue(Amount);
         const ChipColor = CHIP_STYLES[DisplayChipValue];
         const Chips = `
@@ -489,12 +493,26 @@ export function CreateTableRenderer({
           </div>
         `;
         return `
-          <div class="SeatBet${SideClass}" data-bet-type="${BetType}" style="left: ${Anchor.x}px; top: ${Anchor.y}px;">
+          <div class="SeatBet${SideClass}" data-bet-key="${BetKey}" data-bet-type="${BetType}" data-seat-id="${Seat.id}" style="left: ${Anchor.x}px; top: ${Anchor.y}px;">
             ${Chips}
           </div>
         `;
       }).join("");
     }).join("");
+    Elements.seatBetLayer.innerHTML = NextMarkup;
+    PreviousBetNodes.forEach((Node, BetKey) => {
+      if (NextBetKeys.has(BetKey)) {
+        return;
+      }
+      const ExitNode = Node.cloneNode(true);
+      ExitNode.classList.add("IsExiting");
+      ExitNode.addEventListener("animationend", () => {
+        ExitNode.remove();
+      }, {
+        once: true
+      });
+      Elements.seatBetLayer.append(ExitNode);
+    });
   }
   function RenderDealerHand(State) {
     const DealerCards = GetRenderedDealerCards(State);

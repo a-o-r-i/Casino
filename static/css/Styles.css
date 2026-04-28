@@ -631,6 +631,34 @@
   pointer-events: none;
 }
 
+.SeatBet.IsExiting {
+  z-index: 6;
+}
+
+.SeatBet.IsExiting .SeatBetChip {
+  animation: SeatBetChipExit 480ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes SeatBetChipExit {
+  from {
+    opacity: 1;
+    transform:
+      translate(-50%, -50%)
+      translateX(var(--ChipShift, 0px))
+      translateY(calc(var(--ChipIndex, 0) * -3px))
+      scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform:
+      translate(-50%, -50%)
+      translateX(var(--ChipShift, 0px))
+      translateY(calc((var(--ChipIndex, 0) * -3px) + 36px))
+      scale(0.9);
+  }
+}
+
 .SeatBetSide .SeatBetChip {
   width: 34px;
 }

@@ -3315,7 +3315,13 @@ def get_blackjack_live_bets_by_seat(table_state):
         if not seat_id:
             continue
 
-        bets_by_seat[seat_id] = bets_by_seat.get(seat_id, 0) + int(hand.get("bet_cents") or 0)
+        hand_result = hand.get("result")
+        amount_cents = int(hand.get("payout_cents") or 0) if hand_result else int(hand.get("bet_cents") or 0)
+
+        if amount_cents <= 0:
+            continue
+
+        bets_by_seat[seat_id] = bets_by_seat.get(seat_id, 0) + amount_cents
 
     return bets_by_seat
 
@@ -3901,6 +3907,82 @@ def get_blackjack_insurance_offer_seat_ids(table_state):
     ]
 
 
+def get_blackjack_hand_user_id_for_seat(table_state, seat_id):
+    for hand in table_state.get("hands") or []:
+        if hand.get("seat_id") == seat_id:
+            return hand.get("user_id")
+
+    return None
+
+
+def blackjack_insurance_offer_has_live_owner(blackjack_session, table_state, seat_id):
+    user_id = get_blackjack_hand_user_id_for_seat(table_state, seat_id)
+
+    if not user_id or user_id == BOT_PROFILE["id"] or user_id not in USER_PROFILES:
+        return False
+
+    presence = USER_PRESENCE.get(user_id)
+    session_path = normalize_presence_path(get_blackjack_session_path(blackjack_session["id"]))
+
+    return (
+        user_presence_is_online(presence)
+        and normalize_presence_path(presence.get("current_path")) == session_path
+    )
+
+
+def resolve_blackjack_stale_insurance_offers(blackjack_session):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+
+    if table_state.get("round_state") != BLACKJACK_ROUND_INSURANCE:
+        return False
+
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+    has_insurance_bets = False
+    changed = False
+
+    for seat_id, seat_bets in list(seat_side_bets.items()):
+        insurance_bet = (seat_bets or {}).get(BLACKJACK_BET_TYPE_INSURANCE)
+
+        if not insurance_bet:
+            continue
+
+        has_insurance_bets = True
+
+        if insurance_bet.get("status") != "offered":
+            continue
+
+        if blackjack_insurance_offer_has_live_owner(blackjack_session, table_state, seat_id):
+            continue
+
+        insurance_bet["bet_cents"] = 0
+        insurance_bet["result"] = "declined"
+        insurance_bet["result_label"] = "Declined"
+        insurance_bet["status"] = "declined"
+        changed = True
+
+    if get_blackjack_insurance_offer_seat_ids(table_state):
+        if changed:
+            table_state["message"] = "Dealer shows an Ace. Insurance?"
+            table_state["updated_at"] = time.time()
+        return False
+
+    if not has_insurance_bets:
+        continue_blackjack_round_after_initial_deal(blackjack_session, allow_insurance_offer=False)
+        return True
+
+    dealer_has_blackjack, insurance_result_labels = settle_blackjack_insurance_bets(blackjack_session)
+
+    if insurance_result_labels:
+        table_state["message"] = " | ".join(insurance_result_labels)
+
+    if dealer_has_blackjack:
+        finish_blackjack_dealer_turn(blackjack_session)
+        return True
+
+    continue_blackjack_round_after_initial_deal(blackjack_session, allow_insurance_offer=False)
+    return True
+
+
 def maybe_offer_blackjack_insurance(table_state):
     dealer_upcard = (table_state.get("dealer") or {}).get("cards", [None])[0]
 
@@ -4129,6 +4211,10 @@ def sync_blackjack_table_lifecycle(blackjack_session):
         table_state = ensure_blackjack_table_state(blackjack_session)
     else:
         clear_blackjack_betting_timer(table_state)
+
+    if table_state.get("round_state") == BLACKJACK_ROUND_INSURANCE:
+        if resolve_blackjack_stale_insurance_offers(blackjack_session):
+            table_state = ensure_blackjack_table_state(blackjack_session)
 
     return table_state
 
@@ -4415,8 +4501,12 @@ def handle_blackjack_insurance_decision(blackjack_session, current_user_id, seat
         raise ValueError("Insurance is not available right now.")
 
     seat_claims = blackjack_session.get("seat_claims") or {}
+    seat_hand_user_id = get_blackjack_hand_user_id_for_seat(table_state, seat_id)
 
-    if seat_id not in HAND_SLOT_SEAT_IDS or seat_claims.get(seat_id) != current_user_id:
+    if (
+        seat_id not in HAND_SLOT_SEAT_IDS
+        or current_user_id not in {seat_claims.get(seat_id), seat_hand_user_id}
+    ):
         raise ValueError("Choose one of your seats for insurance.")
 
     seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
@@ -6154,6 +6244,11 @@ def build_blackjack_table_payload(blackjack_session, current_user_id):
                 "user": owner_snapshot,
             }
         )
+
+    for hand in (public_table_state.get("hands") or []):
+        seat_id = hand.get("seatId")
+        if hand.get("isSelf") and seat_id in HAND_SLOT_SEAT_IDS and seat_id not in self_seat_ids:
+            self_seat_ids.append(seat_id)
 
     current_balance_cents = get_user_balance(current_user_id) if current_user_id else 0
     version_payload = {

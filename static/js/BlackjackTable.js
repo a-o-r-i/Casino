@@ -5,6 +5,7 @@ import { LoadHandSlots } from "./BlackjackTable/HandSlots.js";
 import { CreateTableRenderer } from "./BlackjackTable/TableRenderer.js";
 import { Money, HandValue } from "./BlackjackTable/TableRules.js";
 import { SameSideBetLayout, SideBetKey, LoadSideBets, NormalizeSideBets, SaveSideBets } from "./BlackjackTable/SideBets.js";
+import { PlayBlackjackSound, RegisterBlackjackSounds } from "./BlackjackTable/Sounds.js";
 import { CreateInitialState } from "./BlackjackTable/TableState.js";
 const BET_TYPES = Object.freeze({
   MAIN: "main",
@@ -161,6 +162,9 @@ class NetworkBlackjackTable {
     this.isAnimatingPayload = false;
     this.animatingPayloadUpdatedAt = 0;
     this.queuedAnimationPayload = null;
+    this.hasAppliedPayloadSnapshot = false;
+    this.playedBustSoundSignatures = new Set();
+    this.playedWinSoundSignatures = new Set();
     this.sideBetEditor = {
       active: false,
       applyDisabled: true,
@@ -321,10 +325,54 @@ class NetworkBlackjackTable {
   ShouldAnimateCollect(NextTable) {
     return Boolean(this.state.roundState === ROUND_STATES.SETTLING && this.HasRenderedCards() && !this.TableHasCards(NextTable) && [ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(NextTable?.round_state));
   }
+  PlayPayloadOutcomeSounds(Table, Hands, SeatSideBets, SelfSeatIds) {
+    if (!this.hasAppliedPayloadSnapshot) {
+      return;
+    }
+    const RoundId = Table.round_id || "round";
+    let ShouldPlayBust = false;
+    let ShouldPlayWin = false;
+    Hands.forEach(Hand => {
+      if (Hand.bust) {
+        const BustSignature = `${RoundId}:${Hand.id}:bust`;
+        if (!this.playedBustSoundSignatures.has(BustSignature)) {
+          this.playedBustSoundSignatures.add(BustSignature);
+          ShouldPlayBust = true;
+        }
+      }
+      if (Hand.isSelf && ["win", "blackjack"].includes(Hand.result)) {
+        const WinSignature = `${RoundId}:${Hand.id}:${Hand.result}`;
+        if (!this.playedWinSoundSignatures.has(WinSignature)) {
+          this.playedWinSoundSignatures.add(WinSignature);
+          ShouldPlayWin = true;
+        }
+      }
+    });
+    SelfSeatIds.forEach(SeatId => {
+      Object.values(SeatSideBets[SeatId] || {}).forEach(SideBet => {
+        if ((Number(SideBet?.payout) || 0) <= 0) {
+          return;
+        }
+        const WinSignature = `${RoundId}:${SeatId}:${SideBet.betType || "side"}:side-win`;
+        if (!this.playedWinSoundSignatures.has(WinSignature)) {
+          this.playedWinSoundSignatures.add(WinSignature);
+          ShouldPlayWin = true;
+        }
+      });
+    });
+    if (ShouldPlayBust) {
+      PlayBlackjackSound("bust");
+    }
+    if (ShouldPlayWin) {
+      PlayBlackjackSound("win");
+    }
+  }
   ApplyPayloadSnapshot(Payload) {
     const Table = Payload.table_state || {};
     const SelfSeatIds = Array.isArray(Payload.self_seat_ids) ? Payload.self_seat_ids : [];
     const InsuranceOfferSeatIds = Array.isArray(Table.insurance_offer_seat_ids) ? Table.insurance_offer_seat_ids.filter(SeatId => SelfSeatIds.includes(SeatId)) : [];
+    const NextHands = Array.isArray(Table.hands) ? Table.hands.map(NormalizeHand) : [];
+    const NextSeatSideBets = NormalizeSeatSideBets(Table.seat_side_bets);
     let ActiveSeatId = Table.active_seat_id || this.state.activeSeatId;
     const ExternalSeatClaims = {};
     (Payload.seat_claims || []).forEach(Claim => {
@@ -346,7 +394,7 @@ class NetworkBlackjackTable {
       remaining: 0
     };
     this.state.dealer = NormalizeDealer(Table.dealer);
-    this.state.hands = Array.isArray(Table.hands) ? Table.hands.map(NormalizeHand) : [];
+    this.state.hands = NextHands;
     this.state.activeHandIndex = Number(Table.active_hand_index) || 0;
     this.state.selectedSeatIds = SelfSeatIds;
     if (Table.round_state === ROUND_STATES.INSURANCE && InsuranceOfferSeatIds.length && !InsuranceOfferSeatIds.includes(ActiveSeatId)) {
@@ -362,12 +410,14 @@ class NetworkBlackjackTable {
       seatId: Chip.seatId,
       value: Number(Chip.value) || 0
     }));
-    this.state.seatSideBets = NormalizeSeatSideBets(Table.seat_side_bets);
+    this.state.seatSideBets = NextSeatSideBets;
     this.state.insuranceOfferSeatIds = InsuranceOfferSeatIds;
     this.state.lockedInputs = false;
     this.state.isAnimating = false;
     this.SyncCountdownState();
     this.state.message = this.localMessage || Table.message || "";
+    this.PlayPayloadOutcomeSounds(Table, NextHands, NextSeatSideBets, SelfSeatIds);
+    this.hasAppliedPayloadSnapshot = true;
     this.Render();
     this.localMessage = "";
   }
@@ -491,6 +541,7 @@ class NetworkBlackjackTable {
         cardIndex: 0,
         cardCount: Math.max(Hand.cards.length, 1)
       });
+      PlayBlackjackSound("dealCard");
       await this.animator.AnimateDeal({
         sourceRect: SourceRect,
         targetRect: TargetRect,
@@ -506,6 +557,7 @@ class NetworkBlackjackTable {
         cardIndex: 0,
         cardCount: Math.max(DealerDisplayCount, 1)
       });
+      PlayBlackjackSound("dealCard");
       await this.animator.AnimateDeal({
         sourceRect: SourceRect,
         targetRect: TargetRect,
@@ -530,6 +582,7 @@ class NetworkBlackjackTable {
         cardIndex: 1,
         cardCount: Math.max(Hand.cards.length, 2)
       });
+      PlayBlackjackSound("dealCard");
       await this.animator.AnimateDeal({
         sourceRect: SourceRect,
         targetRect: TargetRect,
@@ -552,6 +605,7 @@ class NetworkBlackjackTable {
         RevealNode.style.visibility = "hidden";
       }
       try {
+        PlayBlackjackSound("dealerRevealCard");
         await this.animator.AnimateReveal({
           targetRect: TargetRect,
           card: DealerUpcard,
@@ -571,6 +625,7 @@ class NetworkBlackjackTable {
         cardIndex: 1,
         cardCount: Math.max(DealerDisplayCount, 2)
       });
+      PlayBlackjackSound("dealCard");
       await this.animator.AnimateDeal({
         sourceRect: SourceRect,
         targetRect: TargetRect,
@@ -588,6 +643,7 @@ class NetworkBlackjackTable {
         cardIndex: CardIndex,
         cardCount: Math.max(DealerDisplayCount, CardIndex + 1)
       });
+      PlayBlackjackSound("dealCard");
       await this.animator.AnimateDeal({
         sourceRect: SourceRect,
         targetRect: TargetRect,
@@ -684,6 +740,7 @@ class NetworkBlackjackTable {
           cardIndex: CardIndex,
           cardCount: NextHand.cards.length
         });
+        PlayBlackjackSound("dealCard");
         await this.animator.AnimateDeal({
           sourceRect: SourceRect,
           targetRect: TargetRect,
@@ -737,6 +794,7 @@ class NetworkBlackjackTable {
           cardIndex: CardIndex,
           cardCount: NextHand.cards.length
         });
+        PlayBlackjackSound("dealCard");
         await this.animator.AnimateDeal({
           sourceRect: SourceRect,
           targetRect: TargetRect,
@@ -768,6 +826,7 @@ class NetworkBlackjackTable {
         RevealNode.style.visibility = "hidden";
       }
       try {
+        PlayBlackjackSound("dealerRevealCard");
         await this.animator.AnimateReveal({
           targetRect: TargetRect,
           card: RevealCard,
@@ -791,6 +850,7 @@ class NetworkBlackjackTable {
         cardIndex: CardIndex,
         cardCount: NextDealer.cards.length
       });
+      PlayBlackjackSound("dealCard");
       await this.animator.AnimateDeal({
         sourceRect: SourceRect,
         targetRect: TargetRect,
@@ -929,7 +989,7 @@ class NetworkBlackjackTable {
     if (this.state.roundState !== ROUND_STATES.INSURANCE) {
       return null;
     }
-    const SeatId = this.state.activeSeatId || this.state.insuranceOfferSeatIds[0] || "";
+    const SeatId = this.state.insuranceOfferSeatIds.includes(this.state.activeSeatId) ? this.state.activeSeatId : this.state.insuranceOfferSeatIds[0] || this.state.activeSeatId || "";
     const InsuranceBet = this.GetSeatResolvedSideBet(SeatId, BET_TYPES.INSURANCE);
     if (!SeatId || !InsuranceBet) {
       return {
@@ -1172,6 +1232,7 @@ class NetworkBlackjackTable {
     this.localMessage = "";
     this.state.message = "";
     this.Render();
+    PlayBlackjackSound("placeChip");
     return true;
   }
   async PostSeatAction(Action, SeatId) {
@@ -1228,6 +1289,13 @@ class NetworkBlackjackTable {
         })
       });
       const Payload = await Response.json().catch(() => ({}));
+      if (Response.ok && typeof Options.beforeApply === "function") {
+        try {
+          Options.beforeApply(Payload);
+        } catch (Error) {
+          console.error(Error);
+        }
+      }
       await this.ApplyPayload(Payload);
       ApplyParentBalanceDisplay(Payload.current_balance_display);
       if (!Response.ok) {
@@ -1339,6 +1407,17 @@ class NetworkBlackjackTable {
     }
     this.state.selectedChipValue = this.state.selectedChipValue === ChipValue ? 0 : ChipValue;
     this.Render();
+    PlayBlackjackSound("selectChip");
+  }
+  async UndoChip() {
+    await this.PostTableAction("undo_chip", {}, {
+      beforeApply: () => PlayBlackjackSound("undoChip")
+    });
+  }
+  async DoublePendingBet() {
+    await this.PostTableAction("double_pending", {}, {
+      beforeApply: () => PlayBlackjackSound("x2Bet")
+    });
   }
   async SubmitInsuranceDecision(AcceptInsurance) {
     if (this.state.roundState !== ROUND_STATES.INSURANCE || !this.state.activeSeatId) {
@@ -1348,9 +1427,26 @@ class NetworkBlackjackTable {
       seat_id: this.state.activeSeatId
     });
   }
+  async SubmitPlayerAction(Action) {
+    const SoundByAction = {
+      double: "double",
+      hit: "hit",
+      stand: "stand"
+    };
+    await this.PostTableAction(Action, {}, {
+      beforeApply: () => {
+        const SoundName = SoundByAction[Action];
+        if (SoundName) {
+          PlayBlackjackSound(SoundName);
+        }
+      }
+    });
+  }
   async OnPrimaryBetAction() {
     if (Boolean(this.tableState?.self_can_rebet) && this.GetSelfPendingBet() <= 0) {
-      await this.PostTableAction("rebet");
+      await this.PostTableAction("rebet", {}, {
+        beforeApply: () => PlayBlackjackSound("rebet")
+      });
       return;
     }
     await this.PostTableAction("ready");
@@ -1365,6 +1461,9 @@ export async function InitializeBlackjackTable({
   if (!Scope.querySelector("[data-blackjack-table-config]") || !Scope.querySelector("#TableStage")) {
     return () => {};
   }
+  RegisterBlackjackSounds({
+    root: Scope
+  });
   const Config = ParseTableConfig(Scope);
   const InitialTableState = Config?.initial_state || {};
   const [InitialHandSlotLayout, InitialSideBetLayout] = await Promise.all([LoadHandSlots(), LoadSideBets()]);
@@ -1549,13 +1648,13 @@ export async function InitializeBlackjackTable({
     },
     onChipClick: Value => Table.SelectChip(Value),
     onUndoChip: () => {
-      void Table.PostTableAction("undo_chip");
+      void Table.UndoChip();
     },
     onPrimaryBet: () => {
       void Table.OnPrimaryBetAction();
     },
     onDoubleBet: () => {
-      void Table.PostTableAction("double_pending");
+      void Table.DoublePendingBet();
     },
     onToggleSideBetEditor: () => {
       Table.ToggleSideBetEditor();
@@ -1567,7 +1666,7 @@ export async function InitializeBlackjackTable({
       void Table.SubmitInsuranceDecision(AcceptInsurance);
     },
     onAction: Action => {
-      void Table.PostTableAction(Action);
+      void Table.SubmitPlayerAction(Action);
     }
   });
   Renderer.elements.sideBetSpotLayer?.addEventListener("pointerdown", HandleSideBetPointerDown);
