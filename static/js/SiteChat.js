@@ -905,6 +905,11 @@
 
 const BuildAvatarMarkup = (User) =>
 {
+        if (User?.is_house_bot)
+        {
+            return `<span data-chat-house-mark>SW</span>`;
+        }
+
         const FallbackUrl = User?.avatar_static_url || User?.avatar_url || "";
         const AvatarUrl = FallbackUrl || User?.avatar_url || "";
 
@@ -1129,6 +1134,9 @@ const BuildAuthorBadgeMarkup = (User) =>
 
     const BuildMessageMarkup = (Message, PreviousMessage = null) =>
     {
+        const IsHouseBot = Boolean(Message.author?.is_house_bot);
+        const MessageType = String(Message.type || "message").trim().toLowerCase() || "message";
+        const MessageKind = IsHouseBot ? "big-win" : MessageType;
         const IsGrouped = Boolean(
             PreviousMessage &&
             PreviousMessage.author?.id &&
@@ -1169,6 +1177,7 @@ const BuildAuthorBadgeMarkup = (User) =>
               <article
                 data-chat-message
                 data-focused="false"
+                data-message-kind="${EscapeHtml(MessageKind)}"
                 data-message-id="${EscapeHtml(Message.id)}"
                 data-mentioned="${Message.is_current_user_mentioned ? "true" : "false"}"
                 data-replying-to-current-user="${IsReplyToCurrentUser ? "true" : "false"}"
@@ -1332,6 +1341,7 @@ const BuildAuthorBadgeMarkup = (User) =>
             reply_to: Message.reply_to,
             session_share: Message.session_share,
             timestamp: Message.timestamp,
+            type: Message.type,
         });
     };
 
@@ -2150,6 +2160,7 @@ const BuildAuthorBadgeMarkup = (User) =>
         }
 
         ChatProfileCard.innerHTML = BuildProfileMarkup(Profile);
+        ChatProfileCard.dataset.profileKind = Profile.is_house_bot ? "house" : "user";
         RenderedProfileUserId = UserId;
         ChatProfileCard.dataset.open = "true";
         ChatProfileCard.setAttribute("aria-hidden", "false");

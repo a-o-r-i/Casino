@@ -150,6 +150,11 @@
 
     const BuildUserProfileAvatarMarkup = (Profile) =>
     {
+        if (Profile?.is_house_bot)
+        {
+            return `<span data-chat-house-mark>SW</span>`;
+        }
+
         const FallbackUrl = Profile?.avatar_static_url || Profile?.avatar_url || "";
         const AvatarUrl = Profile?.avatar_url || FallbackUrl;
 
@@ -222,11 +227,14 @@
     const BuildUserProfileCardMarkup = (Profile, Options = {}) =>
     {
         const IncludeTipControls = Options.includeTipControls === true;
+        const IsHouseBot = Boolean(Profile.is_house_bot);
         const BadgeMarkup = Profile.reward_badge
-            ? `<div data-chat-profile-badge data-tone="${EscapeHtml(GetRewardBadgeTone(Profile))}">Lvl ${EscapeHtml(Profile.reward_level)} &middot; ${EscapeHtml(Profile.reward_badge)}</div>`
+            ? `<div data-chat-profile-badge data-tone="${EscapeHtml(GetRewardBadgeTone(Profile))}">${IsHouseBot ? "" : `Lvl ${EscapeHtml(Profile.reward_level)} &middot; `}${EscapeHtml(Profile.reward_badge)}</div>`
             : "";
-        const StatusLabel = Profile.is_online ? "Online" : "Offline";
-        const ActivityLabel = Profile.is_online
+        const StatusLabel = IsHouseBot ? "Official" : Profile.is_online ? "Online" : "Offline";
+        const ActivityLabel = IsHouseBot
+            ? "Automated win announcements"
+            : Profile.is_online
             ? (
                 Profile.connected_since
                     ? `Here since ${FormatRelativeTime(Profile.connected_since)}`
@@ -237,7 +245,7 @@
                     ? `Last seen ${FormatRelativeTime(Profile.last_seen)}`
                     : "Last seen unknown"
             );
-        const CanTip = Boolean(IncludeTipControls && Profile.can_tip && Profile.tip_url);
+        const CanTip = Boolean(!IsHouseBot && IncludeTipControls && Profile.can_tip && Profile.tip_url);
         const TipButtonMarkup = CanTip
             ? `
                 <button
@@ -287,6 +295,28 @@
                 </div>
             `
             : "";
+        const HouseSummaryMarkup = IsHouseBot
+            ? `
+                <div data-chat-profile-summary>
+                  <div data-chat-profile-summary-label>Profile</div>
+                  <div data-chat-profile-summary-value>Official Shuffling win feed</div>
+                </div>
+            `
+            : "";
+        const ProfileStatsMarkup = IsHouseBot
+            ? HouseSummaryMarkup
+            : `
+            <div data-chat-profile-grid>
+              <div data-chat-profile-stat>
+                <div data-chat-profile-stat-label>Registered</div>
+                <div data-chat-profile-stat-value>${EscapeHtml(FormatRelativeTime(Profile.registered_at))}</div>
+              </div>
+              <div data-chat-profile-stat>
+                <div data-chat-profile-stat-label>Wagered</div>
+                <div data-chat-profile-stat-value>${EscapeHtml(Profile.total_wagered_display || "$0")}</div>
+              </div>
+            </div>
+            `;
 
         return `
             <div data-chat-profile-head>
@@ -307,16 +337,7 @@
               </div>
             </div>
             ${ProfileBadgesMarkup}
-            <div data-chat-profile-grid>
-              <div data-chat-profile-stat>
-                <div data-chat-profile-stat-label>Registered</div>
-                <div data-chat-profile-stat-value>${EscapeHtml(FormatRelativeTime(Profile.registered_at))}</div>
-              </div>
-              <div data-chat-profile-stat>
-                <div data-chat-profile-stat-label>Wagered</div>
-                <div data-chat-profile-stat-value>${EscapeHtml(Profile.total_wagered_display || "$0")}</div>
-              </div>
-            </div>
+            ${ProfileStatsMarkup}
             ${TipFormMarkup}
         `;
     };

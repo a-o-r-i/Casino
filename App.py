@@ -68,9 +68,9 @@ DICE_CHAT_TOP_RESET_SECONDS = 0.28
 BOT_PROFILE = {
     "avatar_url": None,
     "avatar_static_url": None,
-    "display_name": "House Bot",
+    "display_name": "Shuffling Wins",
     "id": "bot-house",
-    "username": "house-bot",
+    "username": "shuffling-wins",
 }
 ADMIN_PANEL_USER_ID = "1195144155790327898"
 ADMIN_PANEL_USERNAME = "lastdanceparty"
@@ -2450,7 +2450,10 @@ def build_chat_message_author_payload(user_profile):
     author_snapshot = make_user_snapshot(user_profile)
 
     if author_snapshot["id"] == BOT_PROFILE["id"]:
-        author_snapshot["reward_badge_tone"] = "unranked"
+        author_snapshot["is_house_bot"] = True
+        author_snapshot["reward_badge"] = "Official"
+        author_snapshot["reward_badge_tone"] = "house"
+        author_snapshot["reward_level"] = 1
         return author_snapshot
 
     reward_state = build_reward_state(author_snapshot["id"])
@@ -2497,10 +2500,11 @@ def serialize_chat_message(chat_message, current_user_id):
             else None
         ),
         "timestamp": chat_message["timestamp"],
+        "type": chat_message.get("type") or "message",
     }
 
 
-def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=None, reply_to_message_id=None):
+def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=None, reply_to_message_id=None, message_type="message"):
     global NEXT_CHAT_MESSAGE_ID
 
     author_snapshot = remember_user_profile(author_user)
@@ -2563,6 +2567,7 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
             else None
         ),
         "timestamp": time.time(),
+        "type": str(message_type or "message").strip().lower() or "message",
     }
     CHAT_MESSAGES.append(message)
     NEXT_CHAT_MESSAGE_ID += 1
@@ -2593,6 +2598,7 @@ def maybe_add_big_win_chat_announcement(session_record, winner_user, game_label,
     add_chat_message(
         BOT_PROFILE,
         f"{winner_snapshot['display_name']} just won {format_money(payout_cents)} on {game_label}.",
+        message_type="big_win",
     )
     announced_keys.add(announcement_key)
     session_record["big_win_announced_keys"] = sorted(announced_keys)
@@ -2648,6 +2654,33 @@ def build_chat_user_profile_payload(user_id, current_user_id=None):
 
     if not user_profile:
         return None
+
+    if user_id == BOT_PROFILE["id"]:
+        return {
+            "avatar_static_url": user_profile.get("avatar_static_url"),
+            "avatar_url": user_profile.get("avatar_url"),
+            "bets_lost": 0,
+            "bets_won": 0,
+            "can_tip": False,
+            "connected_since": None,
+            "display_name": BOT_PROFILE["display_name"],
+            "id": BOT_PROFILE["id"],
+            "is_house_bot": True,
+            "is_online": True,
+            "last_seen": None,
+            "registered_at": user_profile.get("registered_at"),
+            "reward_badge": "Official",
+            "reward_badge_tone": "house",
+            "reward_level": 1,
+            "tip_url": None,
+            "total_bets": 0,
+            "total_deposited_cents": 0,
+            "total_deposited_display": "$0",
+            "total_wagered_cents": 0,
+            "total_wagered_display": "$0",
+            "username": BOT_PROFILE["username"],
+            "win_rate": 0,
+        }
 
     stats = get_user_stats(user_id)
     presence = USER_PRESENCE.get(user_id)
