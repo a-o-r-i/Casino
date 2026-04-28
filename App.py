@@ -517,16 +517,16 @@ BLACKJACK_SIDE_BET_LAYOUT_LABELS = {
     BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE: "21+3",
 }
 DEFAULT_BLACKJACK_SIDE_BET_LAYOUT = (
-    {"seatId": "seat-1", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 20.8, "y": 50.5},
-    {"seatId": "seat-1", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 27.6, "y": 51.4},
-    {"seatId": "seat-2", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 31.8, "y": 58.4},
-    {"seatId": "seat-2", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 38.2, "y": 59.6},
-    {"seatId": "seat-3", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 44.4, "y": 63.0},
-    {"seatId": "seat-3", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 55.6, "y": 63.0},
-    {"seatId": "seat-4", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 61.8, "y": 59.6},
-    {"seatId": "seat-4", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 68.2, "y": 58.4},
-    {"seatId": "seat-5", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 72.4, "y": 51.4},
-    {"seatId": "seat-5", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 79.2, "y": 50.5},
+    {"seatId": "seat-1", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 18.438002572498924, "y": 53.9175702688751},
+    {"seatId": "seat-1", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 25.201285524116358, "y": 62.13013527048291},
+    {"seatId": "seat-2", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 30.917873135519887, "y": 64.90791138969676},
+    {"seatId": "seat-2", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 38.64734252510911, "y": 69.6180537933314},
+    {"seatId": "seat-3", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 45.81320094779628, "y": 70.70501024295905},
+    {"seatId": "seat-3", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 54.025763556371395, "y": 70.22191701328994},
+    {"seatId": "seat-4", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 61.07099879663056, "y": 68.59205776173285},
+    {"seatId": "seat-4", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 68.7725631768953, "y": 64.86161251504213},
+    {"seatId": "seat-5", "betType": BLACKJACK_BET_TYPE_PERFECT_PAIRS, "label": "Pairs", "x": 74.30806257521058, "y": 61.01083032490975},
+    {"seatId": "seat-5", "betType": BLACKJACK_BET_TYPE_TWENTY_ONE_PLUS_THREE, "label": "21+3", "x": 81.6425063297432, "y": 55.00452671850275},
 )
 load_persistent_state()
 

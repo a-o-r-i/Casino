@@ -30,6 +30,13 @@ export function HandValue(Cards) {
     isBust: Total > 21
   };
 }
+export function HandTotalLabel(Cards) {
+  const Summary = HandValue(Cards);
+  if (!Summary.isSoft || Summary.isBust) {
+    return String(Summary.total);
+  }
+  return `${Summary.total - 10}/${Summary.total}`;
+}
 export function SoftHand(Cards) {
   return HandValue(Cards).isSoft;
 }

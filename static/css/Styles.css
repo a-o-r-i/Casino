@@ -21,6 +21,19 @@
   --app-shadow-soft: 0 18px 54px rgba(0, 0, 0, 0.42);
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+@supports not (overflow-x: clip) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
 .BlackjackTableRoot {
   color-scheme: dark;
   --CardBackImage: none;
@@ -237,10 +250,15 @@
 .PlayerHandsLayer,
 .SideBetSpotLayer,
 .SeatBetLayer,
-.AnimationLayer {
+.AnimationLayer,
+.HandIndicatorLayer {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.HandIndicatorLayer {
+  z-index: 90;
 }
 
 .HandSlotLayer {
@@ -527,6 +545,11 @@
   color: #ffb7b1;
 }
 
+.SeatBetSpot.HasBet .SeatBetSpotLabel,
+.SeatBetSpot.HasBet .SeatBetSpotValue {
+  visibility: hidden;
+}
+
 .SeatBetSpotLabel {
   position: relative;
   z-index: 1;
@@ -730,16 +753,16 @@
 .HandGroupIndicators {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 6px);
   transform: translateX(-50%);
   display: grid;
   justify-items: center;
-  gap: 6px;
-  z-index: 3;
+  gap: 4px;
+  z-index: 10;
 }
 
 .HandGroupSplit .HandGroupIndicators {
-  bottom: calc(100% + 12px);
+  bottom: calc(100% + 8px);
 }
 
 .HandGroupTotal,
@@ -750,7 +773,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.22rem 0.62rem;
+  padding: 0.16rem 0.42rem;
   border-radius: 999px;
   background: rgba(4, 16, 14, 0.88);
   border: 1px solid rgba(243, 225, 172, 0.18);
@@ -758,31 +781,31 @@
 }
 
 .HandGroupTotal {
-  min-width: 56px;
-  font-size: 0.82rem;
+  min-width: 42px;
+  font-size: 0.68rem;
   font-weight: 800;
 }
 
 .HandGroupDealerResult {
-  min-width: 96px;
-  font-size: 0.82rem;
+  min-width: 48px;
+  font-size: 0.68rem;
   font-weight: 800;
 }
 
 .HandGroupTurn {
-  min-width: 108px;
+  min-width: 78px;
   color: #fff0bf;
-  font-size: 0.72rem;
+  font-size: 0.58rem;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .HandGroupResult {
-  min-width: 92px;
-  font-size: 0.74rem;
+  min-width: 66px;
+  font-size: 0.6rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
 }
 
 .HandGroupResult[data-result="win"],
@@ -800,6 +823,7 @@
 
 .HandGroupCards {
   position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
 }
@@ -1358,48 +1382,89 @@
 }
 
 @media (max-width: 760px) {
+  .BlackjackTableRoot {
+    --SeatHitSize: clamp(50px, 7.2vw, 62px);
+    --SeatVisualInset: 7px;
+    --SideBetHitSize: clamp(25px, 6.5vw, 32px);
+    --SideBetVisualInset: 4px;
+    align-content: start;
+  }
+
+  .TableStage {
+    margin-bottom: 178px;
+  }
+
   .TableStageHud {
-    left: 12px;
-    bottom: 12px;
+    top: calc(100% + 12px);
+    right: 14px;
+    bottom: auto;
+    left: 14px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 0.88fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: stretch;
-    gap: 6px;
-    width: min(186px, calc(100% - 24px));
+    gap: 8px;
+    width: auto;
   }
 
   .TableReadout,
   .TableReadoutBalance {
     min-width: 0;
-    padding: 0.36rem 0.46rem;
+    padding: 0.5rem 0.58rem;
     border-radius: var(--app-radius);
+    box-shadow: none;
   }
 
   .TableReadoutBalance {
     grid-row: auto;
-    padding: 0.4rem 0.54rem;
+    padding: 0.5rem 0.58rem;
   }
 
   .TableReadoutStack {
-    gap: 6px;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .TableReadoutStack .TableReadout {
+    width: 100%;
   }
 
   .TableReadoutLabel {
-    font-size: 0.42rem;
+    font-size: 0.48rem;
   }
 
   .TableReadoutValue {
-    font-size: 0.62rem;
+    font-size: 0.78rem;
   }
 
   .TableReadoutBalance .TableReadoutValue {
-    font-size: 0.88rem;
+    font-size: 1rem;
   }
 
   .TableStageBettingDock,
   .TableStageDecision {
-    bottom: 4px;
-    width: calc(100% - 18px);
+    top: calc(100% + 76px);
+    right: 16px;
+    bottom: auto;
+    left: 16px;
+    width: auto;
+    transform: none;
+  }
+
+  .TableStageBettingDock {
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--app-border, rgba(255, 255, 255, 0.1));
+    border-radius: var(--app-radius, 8px);
+    background: var(--app-surface-glass, rgba(7, 9, 14, 0.9));
+    box-shadow: var(--app-shadow-soft, 0 18px 54px rgba(0, 0, 0, 0.42));
+    backdrop-filter: blur(14px);
+  }
+
+  .TableStageDecision {
+    padding-right: 0;
+    padding-left: 0;
   }
 
   .TableStageDebug {
@@ -1410,7 +1475,22 @@
   }
 
   .BetCluster {
+    width: 100%;
     gap: 10px;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+
+  .SeatLayer {
+    z-index: 2;
+  }
+
+  .SideBetSpotLayer {
+    z-index: 1;
+  }
+
+  .SeatBetLayer {
+    z-index: 3;
   }
 
   .BetTarget {
@@ -1419,11 +1499,18 @@
   }
 
   .ChipTray {
-    gap: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+    padding: 0;
   }
 
   .Chip {
-    width: 34px;
+    width: 32px;
     font-size: 0.52rem;
   }
 
@@ -1438,39 +1525,76 @@
   }
 
   .DecisionPanel {
-    padding: 10px 10px 12px;
+    padding: 12px 12px 14px;
     border-radius: var(--app-radius);
   }
 
   .DecisionPanelRow {
-    gap: 6px;
+    gap: 8px;
   }
 
   .DecisionButton {
-    min-width: 66px;
-    min-height: 48px;
-    padding: 0.62rem 0.58rem;
+    min-width: 74px;
+    min-height: 46px;
+    padding: 0.56rem 0.62rem;
+    font-size: 0.64rem;
+  }
+
+  .DecisionPanelTitle {
     font-size: 0.68rem;
   }
 
-  .BlackjackTableRoot {
-    --SeatHitSize: clamp(54px, 7.8vw, 68px);
-    --SeatVisualInset: 8px;
-    --SideBetHitSize: clamp(38px, 5vw, 46px);
-    --SideBetVisualInset: 6px;
+  .HandGroupIndicators {
+    top: -6px;
+    bottom: auto;
+    gap: 2px;
+  }
+
+  .HandGroupSplit .HandGroupIndicators {
+    top: -9px;
+    bottom: auto;
+  }
+
+  .HandGroupTotal,
+  .HandGroupDealerResult,
+  .HandGroupTurn,
+  .HandGroupResult {
+    padding: 0.1rem 0.3rem;
+  }
+
+  .HandGroupTotal {
+    min-width: 28px;
+    font-size: 0.5rem;
+  }
+
+  .HandGroupDealerResult {
+    min-width: 32px;
+    font-size: 0.5rem;
+  }
+
+  .HandGroupTurn {
+    min-width: 56px;
+    font-size: 0.42rem;
+    letter-spacing: 0.04em;
+  }
+
+  .HandGroupResult {
+    min-width: 44px;
+    font-size: 0.44rem;
+    letter-spacing: 0.03em;
   }
 
   .SeatBetChip {
-    width: 34px;
+    width: 30px;
   }
 
   .SeatBetSpotLabel,
   .SeatBetSpotValue {
-    font-size: 0.42rem;
+    font-size: 0.34rem;
   }
 
   .SeatBetSpotPayout {
-    font-size: 0.46rem;
+    font-size: 0.4rem;
   }
 
   .SeatBetSide .SeatBetChip {
@@ -1493,13 +1617,15 @@
   }
 
   .PacketLeft {
-    left: 10%;
-    top: 24%;
+    left: 12%;
+    top: 26%;
+    width: clamp(40px, 10vw, 48px);
   }
 
   .PacketRight {
-    right: 9%;
-    top: 12%;
+    right: 13%;
+    top: 14%;
+    width: clamp(46px, 11vw, 54px);
   }
 
   .TableDebugLabel {
@@ -1531,18 +1657,88 @@
   }
 
   .TableStageHud {
-    width: min(170px, calc(100% - 24px));
+    top: calc(100% + 10px);
+    right: 10px;
+    left: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 6px;
   }
 
   .BetOrb {
-    width: 50px;
+    width: 46px;
+    font-size: 0.58rem;
   }
 
   .BetOrbPrimary {
-    width: 64px;
+    width: 58px;
+    font-size: 0.68rem;
+  }
+
+  .TableStageBettingDock,
+  .TableStageDecision {
+    top: calc(100% + 72px);
+    right: 14px;
+    left: 14px;
+  }
+
+  .TableStage {
+    margin-bottom: 174px;
+  }
+
+  .PacketLeft {
+    width: 28px;
+  }
+
+  .PacketRight {
+    width: 28px;
   }
 
   .TableDebugLine {
     gap: 6px;
+  }
+}
+
+@media (max-width: 380px) {
+  [data-app-header] {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  [data-app-header] nav {
+    gap: 0.5rem !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  [data-app-header] nav > div:first-child {
+    gap: 0.75rem;
+  }
+
+  [data-app-header] nav > div:last-child {
+    gap: 0.375rem;
+    padding-left: 0.5rem;
+  }
+
+  [data-app-header] div:has(> [data-balance-display]) {
+    padding: 0.45rem 0.55rem;
+  }
+
+  [data-app-header] [data-balance-display] {
+    max-width: 5.1rem;
+    overflow: hidden;
+    font-size: 0.78rem;
+    margin: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-profile-menu-trigger] {
+    padding: 0.35rem !important;
+  }
+
+  [data-profile-menu-trigger] img,
+  [data-profile-menu-trigger] span:first-child {
+    width: 2rem !important;
+    height: 2rem !important;
   }
 }

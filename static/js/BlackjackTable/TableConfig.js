@@ -80,6 +80,67 @@ export const SIDE_BET_LAYOUT_DEFAULTS = [{
   seatId: "seat-1",
   betType: "perfect_pairs",
   label: "Pairs",
+  x: 18.438002572498924,
+  y: 53.9175702688751
+}, {
+  seatId: "seat-1",
+  betType: "twenty_one_plus_three",
+  label: "21+3",
+  x: 25.201285524116358,
+  y: 62.13013527048291
+}, {
+  seatId: "seat-2",
+  betType: "perfect_pairs",
+  label: "Pairs",
+  x: 30.917873135519887,
+  y: 64.90791138969676
+}, {
+  seatId: "seat-2",
+  betType: "twenty_one_plus_three",
+  label: "21+3",
+  x: 38.64734252510911,
+  y: 69.6180537933314
+}, {
+  seatId: "seat-3",
+  betType: "perfect_pairs",
+  label: "Pairs",
+  x: 45.81320094779628,
+  y: 70.70501024295905
+}, {
+  seatId: "seat-3",
+  betType: "twenty_one_plus_three",
+  label: "21+3",
+  x: 54.025763556371395,
+  y: 70.22191701328994
+}, {
+  seatId: "seat-4",
+  betType: "perfect_pairs",
+  label: "Pairs",
+  x: 61.07099879663056,
+  y: 68.59205776173285
+}, {
+  seatId: "seat-4",
+  betType: "twenty_one_plus_three",
+  label: "21+3",
+  x: 68.7725631768953,
+  y: 64.86161251504213
+}, {
+  seatId: "seat-5",
+  betType: "perfect_pairs",
+  label: "Pairs",
+  x: 74.30806257521058,
+  y: 61.01083032490975
+}, {
+  seatId: "seat-5",
+  betType: "twenty_one_plus_three",
+  label: "21+3",
+  x: 81.6425063297432,
+  y: 55.00452671850275
+}];
+export const SIDE_BET_LAYOUT_COMPACT_DEFAULTS = [{
+  seatId: "seat-1",
+  betType: "perfect_pairs",
+  label: "Pairs",
   x: 20.8,
   y: 50.5
 }, {
@@ -104,14 +165,14 @@ export const SIDE_BET_LAYOUT_DEFAULTS = [{
   seatId: "seat-3",
   betType: "perfect_pairs",
   label: "Pairs",
-  x: 44.4,
-  y: 63.0
+  x: 42.8,
+  y: 62.7
 }, {
   seatId: "seat-3",
   betType: "twenty_one_plus_three",
   label: "21+3",
-  x: 55.6,
-  y: 63.0
+  x: 57.2,
+  y: 62.7
 }, {
   seatId: "seat-4",
   betType: "perfect_pairs",

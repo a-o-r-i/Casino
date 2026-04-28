@@ -1,7 +1,7 @@
-import { BETTING_COUNTDOWN_SECONDS, CARD_BACK_IMAGE, CHIP_STYLES, CHIP_VALUES, DEALER_LAYOUT, FindSeat, ROUND_STATES, ROUND_STATE_LABELS, SEAT_POSITIONS, TABLE_LAYOUT } from "./TableConfig.js";
+import { BETTING_COUNTDOWN_SECONDS, CARD_BACK_IMAGE, CHIP_STYLES, CHIP_VALUES, DEALER_LAYOUT, FindSeat, ROUND_STATES, ROUND_STATE_LABELS, SEAT_POSITIONS, SIDE_BET_LAYOUT_COMPACT_DEFAULTS, TABLE_LAYOUT } from "./TableConfig.js";
 import { CloneHandSlots, NormalizeHandSlots } from "./HandSlots.js";
 import { SideBetKey, NormalizeSideBets, SideBetMap } from "./SideBets.js";
-import { CardLabel, Money, HandValue } from "./TableRules.js";
+import { CardLabel, Money, HandTotalLabel } from "./TableRules.js";
 const CARD_STACK_STEP_X_RATIO = 0.88;
 const BET_TARGET_LABELS = Object.freeze({
   main: "Main",
@@ -70,6 +70,7 @@ export function CreateTableRenderer({
     dealerHandLayer: Query("#DealerHandLayer"),
     playerHandsLayer: Query("#PlayerHandsLayer"),
     animationLayer: Query("#AnimationLayer"),
+    handIndicatorLayer: Query("#HandIndicatorLayer"),
     status: Query("#TableStatus"),
     bettingControls: Query("#BettingControls"),
     decisionPanel: Query("#DecisionPanel"),
@@ -95,6 +96,7 @@ export function CreateTableRenderer({
   let CurrentHandSlotLayout = NormalizeHandSlots(HandSlotLayout);
   let CurrentSideBetLayout = NormalizeSideBets(SideBetLayout);
   let CurrentSideBetLayoutMap = SideBetMap(CurrentSideBetLayout);
+  const CompactSideBetLayoutMap = SideBetMap(SIDE_BET_LAYOUT_COMPACT_DEFAULTS);
   let LastRenderedState = null;
   let LastRenderedView = null;
   ScopeDocument.documentElement.style.setProperty("--CardBackImage", `url("${CARD_BACK_IMAGE}")`);
@@ -115,17 +117,25 @@ export function CreateTableRenderer({
   }
   function GetCardMetrics() {
     const StageRect = GetStageRect();
-    const Width = Clamp(StageRect.width * TABLE_LAYOUT.cardWidthRatio, TABLE_LAYOUT.cardWidthMin, TABLE_LAYOUT.cardWidthMax) * TABLE_LAYOUT.cardScale;
+    const IsCompactTable = StageRect.width <= 760;
+    const Width = IsCompactTable ? Clamp(StageRect.width * 0.09, 28, 38) : Clamp(StageRect.width * TABLE_LAYOUT.cardWidthRatio, TABLE_LAYOUT.cardWidthMin, TABLE_LAYOUT.cardWidthMax) * TABLE_LAYOUT.cardScale;
     return {
       width: Width,
       height: Width * TABLE_LAYOUT.cardAspectRatio
     };
   }
+  function UsesSharedCardMetrics() {
+    return GetStageRect().width <= 760;
+  }
+  function GetActiveSideBetLayoutMap() {
+    return UsesSharedCardMetrics() ? CompactSideBetLayoutMap : CurrentSideBetLayoutMap;
+  }
   function GetDealerAnchor() {
     const StageRect = GetStageRect();
+    const IsCompactTable = StageRect.width <= 760;
     return {
       x: ParsePercent(DEALER_LAYOUT.x, StageRect.width),
-      y: ParsePercent(DEALER_LAYOUT.y, StageRect.height)
+      y: ParsePercent(IsCompactTable ? "31%" : DEALER_LAYOUT.y, StageRect.height)
     };
   }
   function GetPlayerSlot(SeatId) {
@@ -135,7 +145,8 @@ export function CreateTableRenderer({
     const StageRect = GetStageRect();
     const Slot = GetPlayerSlot(SeatId);
     if (Slot) {
-      const Metrics = {
+      const UseSharedMetrics = UsesSharedCardMetrics();
+      const Metrics = UseSharedMetrics ? GetCardMetrics() : {
         width: ParsePercent(Slot.width, StageRect.width) * TABLE_LAYOUT.cardScale,
         height: ParsePercent(Slot.height, StageRect.height) * TABLE_LAYOUT.cardScale
       };
@@ -215,7 +226,7 @@ export function CreateTableRenderer({
     if (BetType === "main") {
       return SeatAnchor;
     }
-    const LayoutEntry = CurrentSideBetLayoutMap.get(SideBetKey(SeatId, BetType));
+    const LayoutEntry = GetActiveSideBetLayoutMap().get(SideBetKey(SeatId, BetType));
     if (LayoutEntry) {
       return {
         x: Clamp(LayoutEntry.x / 100 * StageRect.width, 18, StageRect.width - 18),
@@ -235,7 +246,7 @@ export function CreateTableRenderer({
         top: Seat.y
       } : null;
     }
-    const LayoutEntry = CurrentSideBetLayoutMap.get(SideBetKey(SeatId, BetType));
+    const LayoutEntry = GetActiveSideBetLayoutMap().get(SideBetKey(SeatId, BetType));
     if (LayoutEntry) {
       return {
         left: `${LayoutEntry.x}%`,
@@ -418,7 +429,7 @@ export function CreateTableRenderer({
         const PayoutNode = Node.querySelector(".SeatBetSpotPayout");
         const LabelNode = Node.querySelector(".SeatBetSpotLabel");
         const ValueNode = Node.querySelector(".SeatBetSpotValue");
-        Node.className = ["SeatBetSpot", IsClaimed ? "IsClaimed" : "", IsActive ? "IsActive" : "", IsOccupied ? "IsOccupied" : "", ShouldShow ? "IsVisible" : "", EditorActive ? "IsEditor" : "", IsEditorSelected ? "IsEditorSelected" : ""].filter(Boolean).join(" ");
+        Node.className = ["SeatBetSpot", IsClaimed ? "IsClaimed" : "", IsActive ? "IsActive" : "", IsOccupied ? "IsOccupied" : "", Number(Spot.amount) > 0 ? "HasBet" : "", ShouldShow ? "IsVisible" : "", EditorActive ? "IsEditor" : "", IsEditorSelected ? "IsEditorSelected" : ""].filter(Boolean).join(" ");
         Node.dataset.status = Spot.status || "idle";
         Node.style.left = PercentPosition?.left || `${Anchor?.x ?? 0}px`;
         Node.style.top = PercentPosition?.top || `${Anchor?.y ?? 0}px`;
@@ -518,7 +529,7 @@ export function CreateTableRenderer({
     const DealerCards = GetRenderedDealerCards(State);
     if (!DealerCards.length) {
       Elements.dealerHandLayer.innerHTML = "";
-      return;
+      return "";
     }
     const Bounds = GetHandBounds({
       owner: "dealer",
@@ -527,9 +538,9 @@ export function CreateTableRenderer({
       handCount: 1,
       cardCount: DealerCards.length
     });
-    const ShowDealerTotal = State.dealer.isHoleRevealed;
-    const DealerTotal = ShowDealerTotal ? HandValue(State.dealer.cards).total : "";
-    const DealerResultLabel = ShowDealerTotal ? `Dealer ${DealerTotal}` : "Dealer";
+    const VisibleDealerValueCards = (State.dealer.cards || []).filter(Card => Card && !Card.isFaceDown && Card.value);
+    const DealerTotal = VisibleDealerValueCards.length ? HandTotalLabel(VisibleDealerValueCards) : "";
+    const DealerResultLabel = DealerTotal || "Dealer";
     const CardsMarkup = DealerCards.map((Card, Index) => {
       const Placement = GetCardPlacement({
         owner: "dealer",
@@ -586,19 +597,27 @@ export function CreateTableRenderer({
         class="HandGroup HandGroupDealer"
         style="left: ${Bounds.left}px; top: ${Bounds.top}px; width: ${Bounds.width}px; height: ${Bounds.height}px;"
       >
-        <div class="HandGroupIndicators">
-          <div class="HandGroupDealerResult">${DealerResultLabel}</div>
-        </div>
         <div class="HandGroupCards">${CardsMarkup}</div>
+      </section>
+    `;
+    return `
+      <section
+        class="HandGroup HandGroupDealer HandGroupIndicatorAnchor"
+        style="left: ${Bounds.left}px; top: ${Bounds.top}px; width: ${Bounds.width}px; height: ${Bounds.height}px;"
+      >
+        <div class="HandGroupIndicators">
+          <div class="HandGroupDealerResult">${EscapeHtml(DealerResultLabel)}</div>
+        </div>
       </section>
     `;
   }
   function RenderPlayerHands(State) {
     if (!State.hands.length) {
       Elements.playerHandsLayer.innerHTML = "";
-      return;
+      return "";
     }
-    const Markup = State.hands.map((Hand, HandIndex) => {
+    const IndicatorMarkup = [];
+    const Markup = State.hands.map(Hand => {
       if (!Hand.cards.length) {
         return "";
       }
@@ -611,7 +630,6 @@ export function CreateTableRenderer({
         handCount: SeatHands.length,
         cardCount: Math.max(Hand.cards.length, 1)
       });
-      const HandSummary = HandValue(Hand.cards);
       const IsActiveHand = State.roundState === ROUND_STATES.PLAYER_TURN && State.hands[State.activeHandIndex]?.id === Hand.id;
       const CardEntries = Hand.cards.map((Card, CardIndex) => {
         const Placement = GetCardPlacement({
@@ -660,10 +678,10 @@ export function CreateTableRenderer({
       const ResultMarkup = Hand.result ? `<div class="HandGroupResult" data-result="${Hand.result}">${Hand.result.toUpperCase()}</div>` : "";
       const TurnLabel = Hand.isSelf ? "Your Turn" : `${EscapeHtml(Hand.ownerName || "Player")} Turn`;
       const TurnMarkup = IsActiveHand ? `<div class="HandGroupTurn">${TurnLabel}</div>` : "";
-      const TotalMarkup = Hand.cards.length ? `<div class="HandGroupTotal">${HandSummary.total}</div>` : "";
-      return `
+      const TotalMarkup = Hand.cards.length ? `<div class="HandGroupTotal">${HandTotalLabel(Hand.cards)}</div>` : "";
+      IndicatorMarkup.push(`
         <section
-          class="HandGroup${SeatHands.length > 1 ? " HandGroupSplit" : ""}"
+          class="HandGroup HandGroupIndicatorAnchor${SeatHands.length > 1 ? " HandGroupSplit" : ""}"
           style="left: ${Bounds.left}px; top: ${Bounds.top}px; width: ${Bounds.width}px; height: ${Bounds.height}px;"
         >
           <div class="HandGroupIndicators">
@@ -671,11 +689,24 @@ export function CreateTableRenderer({
             ${ResultMarkup}
             ${TotalMarkup}
           </div>
+        </section>
+      `);
+      return `
+        <section
+          class="HandGroup${SeatHands.length > 1 ? " HandGroupSplit" : ""}"
+          style="left: ${Bounds.left}px; top: ${Bounds.top}px; width: ${Bounds.width}px; height: ${Bounds.height}px;"
+        >
           <div class="HandGroupCards">${CardsMarkup}</div>
         </section>
       `;
     }).join("");
     Elements.playerHandsLayer.innerHTML = Markup;
+    return IndicatorMarkup.join("");
+  }
+  function RenderHandIndicators(Markup = "") {
+    if (Elements.handIndicatorLayer) {
+      Elements.handIndicatorLayer.innerHTML = Markup;
+    }
   }
   function RenderStats(State, View) {
     if (Elements.stateValue) {
@@ -752,8 +783,9 @@ export function CreateTableRenderer({
     RenderStats(State, View);
     RenderHandSlots();
     RenderSeats(State, View);
-    RenderDealerHand(State);
-    RenderPlayerHands(State);
+    const DealerIndicatorMarkup = RenderDealerHand(State);
+    const PlayerIndicatorMarkup = RenderPlayerHands(State);
+    RenderHandIndicators(`${DealerIndicatorMarkup}${PlayerIndicatorMarkup}`);
     RenderControls(View);
   }
   function BuildStaticControls() {
