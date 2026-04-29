@@ -1584,31 +1584,62 @@ export async function InitializeBlackjackTable({
   let ActiveSideBetDrag = null;
   let StageResizeObserver = null;
   let SeatKickMenuSeatId = "";
+  let SeatKickMenuCloseHandle = 0;
   const SeatKickMenu = ScopeDocument.createElement("div");
   SeatKickMenu.className = "BlackjackSeatKickMenu IsHidden";
+  SeatKickMenu.setAttribute("aria-hidden", "true");
   SeatKickMenu.setAttribute("role", "menu");
   SeatKickMenu.innerHTML = '<button class="BlackjackSeatKickButton" type="button" role="menuitem">Kick</button>';
   ScopeDocument.body.append(SeatKickMenu);
   const SeatKickButton = SeatKickMenu.querySelector(".BlackjackSeatKickButton");
-  const HideSeatKickMenu = () => {
-    SeatKickMenuSeatId = "";
+  const CompleteSeatKickMenuClose = () => {
+    ScopeWindow.clearTimeout(SeatKickMenuCloseHandle);
+    SeatKickMenuCloseHandle = 0;
+    SeatKickMenu.classList.remove("IsOpen", "IsClosing");
     SeatKickMenu.classList.add("IsHidden");
+  };
+  const HideSeatKickMenu = ({ immediate = false } = {}) => {
+    SeatKickMenuSeatId = "";
+    SeatKickMenu.setAttribute("aria-hidden", "true");
+    if (SeatKickMenu.classList.contains("IsHidden")) {
+      SeatKickMenu.classList.remove("IsOpen", "IsClosing");
+      return;
+    }
+    SeatKickMenu.classList.remove("IsOpen");
+    ScopeWindow.clearTimeout(SeatKickMenuCloseHandle);
+    SeatKickMenuCloseHandle = 0;
+    if (immediate) {
+      CompleteSeatKickMenuClose();
+      return;
+    }
+    SeatKickMenu.classList.add("IsClosing");
+    SeatKickMenuCloseHandle = ScopeWindow.setTimeout(CompleteSeatKickMenuClose, 180);
   };
   const ShowSeatKickMenu = (SeatId, Event) => {
     if (!Table.CanAdminKickSeat(SeatId)) {
       return false;
     }
     SeatKickMenuSeatId = SeatId;
-    SeatKickMenu.classList.remove("IsHidden");
-    const MenuRect = SeatKickMenu.getBoundingClientRect();
+    ScopeWindow.clearTimeout(SeatKickMenuCloseHandle);
+    SeatKickMenuCloseHandle = 0;
+    SeatKickMenu.classList.remove("IsHidden", "IsOpen", "IsClosing");
+    SeatKickMenu.setAttribute("aria-hidden", "false");
+    const MenuWidth = SeatKickMenu.offsetWidth;
+    const MenuHeight = SeatKickMenu.offsetHeight;
     const ViewportWidth = ScopeWindow.innerWidth || ScopeDocument.documentElement.clientWidth || 0;
     const ViewportHeight = ScopeWindow.innerHeight || ScopeDocument.documentElement.clientHeight || 0;
-    const Left = Math.min(Math.max(Number(Event?.clientX) || 0, 8), Math.max(ViewportWidth - MenuRect.width - 8, 8));
-    const Top = Math.min(Math.max(Number(Event?.clientY) || 0, 8), Math.max(ViewportHeight - MenuRect.height - 8, 8));
+    const Left = Math.min(Math.max(Number(Event?.clientX) || 0, 8), Math.max(ViewportWidth - MenuWidth - 8, 8));
+    const Top = Math.min(Math.max(Number(Event?.clientY) || 0, 8), Math.max(ViewportHeight - MenuHeight - 8, 8));
     SeatKickMenu.style.left = `${Left}px`;
     SeatKickMenu.style.top = `${Top}px`;
+    SeatKickMenu.classList.add("IsOpen");
     return true;
   };
+  SeatKickMenu.addEventListener("animationend", Event => {
+    if (Event.target === SeatKickMenu && SeatKickMenu.classList.contains("IsClosing")) {
+      CompleteSeatKickMenuClose();
+    }
+  });
   const HandleDocumentPointerDown = Event => {
     if (SeatKickMenu.classList.contains("IsHidden") || SeatKickMenu.contains(Event.target)) {
       return;
@@ -1731,6 +1762,9 @@ export async function InitializeBlackjackTable({
     StageResizeObserver?.disconnect();
     StageResizeObserver = null;
     CleanupControls();
+    HideSeatKickMenu({
+      immediate: true
+    });
     SeatKickMenu.remove();
   };
   const HandleStageLayoutChange = () => {
