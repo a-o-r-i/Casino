@@ -1044,7 +1044,7 @@ class NetworkBlackjackTable {
     const ResolvedBetAmount = Number(ResolvedSideBet?.bet) || 0;
     const ResolvedPayout = Number(ResolvedSideBet?.payout) || 0;
     const HasWinningResolvedBet = ResolvedPayout > 0;
-    const Amount = ResolvedBetAmount > 0 ? ResolvedBetAmount : PendingAmount || 0;
+    const Amount = HasWinningResolvedBet ? ResolvedBetAmount : PendingAmount || 0;
     const Status = ResolvedSideBet?.status || (PendingAmount > 0 ? "pending" : "idle");
     return {
       amount: Amount,
@@ -1052,7 +1052,7 @@ class NetworkBlackjackTable {
       label: GetBetTargetLabel(BetType),
       payout: ResolvedPayout,
       payoutLabel: HasWinningResolvedBet ? `+ ${Money(ResolvedPayout)}` : "",
-      resultLabel: ResolvedSideBet?.resultLabel || "",
+      resultLabel: HasWinningResolvedBet ? ResolvedSideBet?.resultLabel || "" : "",
       status: Status,
       valueLabel: Amount > 0 ? Money(Amount) : ""
     };
