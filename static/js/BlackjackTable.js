@@ -436,6 +436,7 @@ class NetworkBlackjackTable {
     this.state.lockedInputs = false;
     this.state.isAnimating = false;
     this.SyncCountdownState();
+    this.SyncTurnCountdownState();
     this.state.message = this.localMessage || Table.message || "";
     this.PlayPayloadOutcomeSounds(Table, NextHands, NextSeatSideBets, SelfSeatIds);
     this.hasAppliedPayloadSnapshot = true;
@@ -456,20 +457,41 @@ class NetworkBlackjackTable {
     this.state.countdownDeadline = EndsAtSeconds * 1000;
     this.state.countdownSeconds = Math.max(Math.ceil((this.state.countdownDeadline - Date.now()) / 1000), 0);
   }
-  TickCountdown() {
-    if (!this.state.countdownDeadline || ![ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState)) {
-      return {
-        changed: false,
-        expired: false
-      };
+  SyncTurnCountdownState() {
+    const EndsAtSeconds = Number(this.tableState?.turn_ends_at) || 0;
+    const ActiveHand = GetActiveHand(this.state);
+    const HasCountdown = this.state.roundState === ROUND_STATES.PLAYER_TURN && Boolean(ActiveHand?.isSelf) && EndsAtSeconds > 0;
+    if (!HasCountdown) {
+      this.state.turnCountdownDeadline = null;
+      this.state.turnCountdownSeconds = 0;
+      return;
     }
-    const PreviousSeconds = this.state.countdownSeconds;
-    const NextSeconds = Math.max(Math.ceil((this.state.countdownDeadline - Date.now()) / 1000), 0);
-    const Changed = NextSeconds !== PreviousSeconds;
-    this.state.countdownSeconds = NextSeconds;
+    this.state.turnCountdownDeadline = EndsAtSeconds * 1000;
+    this.state.turnCountdownSeconds = Math.max(Math.ceil((this.state.turnCountdownDeadline - Date.now()) / 1000), 0);
+  }
+  TickCountdown() {
+    let Changed = false;
+    let Expired = false;
+
+    if (this.state.countdownDeadline && [ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState)) {
+      const PreviousSeconds = this.state.countdownSeconds;
+      const NextSeconds = Math.max(Math.ceil((this.state.countdownDeadline - Date.now()) / 1000), 0);
+      Changed = Changed || NextSeconds !== PreviousSeconds;
+      Expired = Expired || PreviousSeconds > 0 && NextSeconds === 0;
+      this.state.countdownSeconds = NextSeconds;
+    }
+
+    if (this.state.turnCountdownDeadline && this.state.roundState === ROUND_STATES.PLAYER_TURN) {
+      const PreviousTurnSeconds = this.state.turnCountdownSeconds;
+      const NextTurnSeconds = Math.max(Math.ceil((this.state.turnCountdownDeadline - Date.now()) / 1000), 0);
+      Changed = Changed || NextTurnSeconds !== PreviousTurnSeconds;
+      Expired = Expired || PreviousTurnSeconds > 0 && NextTurnSeconds === 0;
+      this.state.turnCountdownSeconds = NextTurnSeconds;
+    }
+
     return {
       changed: Changed,
-      expired: PreviousSeconds > 0 && NextSeconds === 0
+      expired: Expired
     };
   }
   GetCountdownLabel() {
@@ -477,6 +499,13 @@ class NetworkBlackjackTable {
       return "";
     }
     return `${Math.max(this.state.countdownSeconds, 0)}s`;
+  }
+  GetTurnCountdownLabel() {
+    const ActiveHand = GetActiveHand(this.state);
+    if (!this.state.turnCountdownDeadline || this.state.roundState !== ROUND_STATES.PLAYER_TURN || !ActiveHand?.isSelf) {
+      return "";
+    }
+    return `${Math.max(this.state.turnCountdownSeconds, 0)}s`;
   }
   async AnimateOpeningDeal(Payload) {
     if (!this.animator || !this.renderer?.GetProjectedCardRect) {
@@ -1070,6 +1099,7 @@ class NetworkBlackjackTable {
       seatSideBetSpots: this.BuildSeatSideBetSpots(),
       selectedChipValue: this.state.selectedChipValue,
       shoeLabel: this.state.shoe?.isReady ? `${this.state.shoe.remaining} cards` : "Offline",
+      turnCountdownLabel: this.GetTurnCountdownLabel(),
       sideBetEditor: {
         active: this.IsSideBetEditorActive(),
         applyDisabled: this.sideBetEditor.applyDisabled,

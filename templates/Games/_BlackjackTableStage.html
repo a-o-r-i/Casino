@@ -66,6 +66,10 @@
       </section>
       <section class="DecisionPanel TableStageDecision IsHidden" id="DecisionPanel" aria-label="Player actions">
         <p class="DecisionPanelTitle">Make Your Decision</p>
+        <div class="DecisionTimer IsHidden" id="DecisionTimer" aria-live="polite">
+          <span class="DecisionTimerLabel">Auto Stand</span>
+          <strong class="DecisionTimerValue" id="DecisionTimerValue">30s</strong>
+        </div>
         <div class="DecisionPanelRow">
           <button class="DecisionButton DecisionButtonDouble" id="ActionDouble" type="button">Double</button>
           <button class="DecisionButton DecisionButtonHit" id="ActionHit" type="button">Hit</button>

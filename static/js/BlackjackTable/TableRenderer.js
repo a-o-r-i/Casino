@@ -81,6 +81,8 @@ export function CreateTableRenderer({
     status: Query("#TableStatus"),
     bettingControls: Query("#BettingControls"),
     decisionPanel: Query("#DecisionPanel"),
+    decisionTimer: Query("#DecisionTimer"),
+    decisionTimerValue: Query("#DecisionTimerValue"),
     insurancePanel: Query("#InsurancePanel"),
     insuranceCopy: Query("#InsuranceCopy"),
     stateValue: Query("#StateValue"),
@@ -746,10 +748,20 @@ export function CreateTableRenderer({
       Elements.status.textContent = State.message || "";
     }
   }
+  function RenderDecisionTimer(View) {
+    if (!Elements.decisionTimer || !Elements.decisionTimerValue) {
+      return;
+    }
+    const TimerLabel = View.turnCountdownLabel || "";
+    Elements.decisionTimerValue.textContent = TimerLabel;
+    Elements.decisionTimer.classList.toggle("IsHidden", !TimerLabel);
+    Elements.decisionTimer.setAttribute("aria-label", TimerLabel ? `Auto stand in ${TimerLabel}` : "Auto stand timer");
+  }
   function RenderControls(View) {
     Elements.bettingControls.classList.toggle("IsHidden", !View.showBettingControls);
     Elements.decisionPanel.classList.toggle("IsHidden", !View.showDecisionPanel);
     Elements.insurancePanel.classList.toggle("IsHidden", !View.showInsurancePanel);
+    RenderDecisionTimer(View);
     Elements.undoChipButton.disabled = View.disableUndoChip;
     Elements.doubleBetButton.disabled = View.disableDoubleBet;
     Elements.placeBetButton.disabled = View.primaryBetAction.disabled;

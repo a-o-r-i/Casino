@@ -28,6 +28,8 @@ export function CreateInitialState({
     dealer: CreateDealerState(),
     countdownSeconds: BETTING_COUNTDOWN_SECONDS,
     countdownDeadline: null,
+    turnCountdownSeconds: 0,
+    turnCountdownDeadline: null,
     activeHandIndex: 0,
     lockedInputs: false,
     isAnimating: false,

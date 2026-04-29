@@ -1185,6 +1185,38 @@ body {
   text-transform: uppercase;
 }
 
+.DecisionTimer {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 132px;
+  min-height: 28px;
+  padding: 0.18rem 0.62rem;
+  border: 1px solid rgba(255, 230, 160, 0.28);
+  border-radius: 999px;
+  background: rgba(15, 14, 12, 0.44);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: rgba(255, 246, 220, 0.86);
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.DecisionTimerLabel {
+  color: rgba(255, 246, 220, 0.62);
+}
+
+.DecisionTimerValue {
+  min-width: 3ch;
+  color: #fff0bf;
+  font-size: 0.82rem;
+  line-height: 1;
+  text-align: right;
+}
+
 .DecisionPanelRow {
   position: relative;
   z-index: 1;
@@ -1552,6 +1584,15 @@ body {
 
   .DecisionPanelTitle {
     font-size: 0.68rem;
+  }
+
+  .DecisionTimer {
+    min-height: 26px;
+    font-size: 0.56rem;
+  }
+
+  .DecisionTimerValue {
+    font-size: 0.74rem;
   }
 
   .HandGroupIndicators {
