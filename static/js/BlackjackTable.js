@@ -41,6 +41,19 @@ function ApplyParentBalanceDisplay(BalanceDisplay) {
   }
   window.parent?.GamblingApp?.setGlobalBalanceDisplay?.(BalanceDisplay);
 }
+function HandleCanceledSessionPayload(Payload, ScopeWindow = window) {
+  if (!Payload?.is_canceled || !Payload?.redirect_url) {
+    return false;
+  }
+  const TargetWindow = ScopeWindow.parent && ScopeWindow.parent !== ScopeWindow ? ScopeWindow.parent : ScopeWindow;
+  TargetWindow.GamblingApp?.showToast?.(Payload.toast || {
+    message: Payload.status_text || "Session has been canceled by an admin.",
+    title: "Session canceled",
+    tone: "info"
+  });
+  TargetWindow.location.href = Payload.redirect_url;
+  return true;
+}
 function GetInitialBalanceAmount(InitialState) {
   const ParsedBalance = Number(InitialState?.current_balance_amount);
   return Number.isFinite(ParsedBalance) ? ParsedBalance : 0;
@@ -1318,6 +1331,9 @@ class NetworkBlackjackTable {
         })
       });
       const Payload = await Response.json().catch(() => ({}));
+      if (HandleCanceledSessionPayload(Payload)) {
+        return false;
+      }
       await this.ApplyPayload(Payload, {
         source: "action"
       });
@@ -1372,6 +1388,12 @@ class NetworkBlackjackTable {
         })
       });
       const Payload = await Response.json().catch(() => ({}));
+      if (HandleCanceledSessionPayload(Payload)) {
+        return BuildResult(false, {
+          appliedPayload: false,
+          payload: Payload
+        });
+      }
       if (Response.ok && typeof Options.beforeApply === "function") {
         try {
           Options.beforeApply(Payload);
@@ -1665,6 +1687,9 @@ export async function InitializeBlackjackTable({
     if (!Payload) {
       return false;
     }
+    if (HandleCanceledSessionPayload(Payload, ScopeWindow)) {
+      return false;
+    }
     const Applied = await Table.ApplyPayload(Payload, {
       animate: Animate,
       source: Source
@@ -1695,12 +1720,18 @@ export async function InitializeBlackjackTable({
           changed: false
         };
       }
+      const Payload = await Response.json().catch(() => ({}));
+      if (HandleCanceledSessionPayload(Payload, ScopeWindow)) {
+        return {
+          changed: false
+        };
+      }
       if (!Response.ok) {
         return null;
       }
       return {
         changed: true,
-        payload: await Response.json()
+        payload: Payload
       };
     } catch (Error) {
       console.error(Error);

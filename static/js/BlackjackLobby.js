@@ -32,6 +32,59 @@ const EscapeHtml = (Value) =>
         .replaceAll("'", "&#39;");
 };
 
+const FormatRelativeTime = (Timestamp) =>
+{
+    const NumberValue = Number(Timestamp);
+
+    if (!Number.isFinite(NumberValue) || NumberValue <= 0)
+    {
+        return "--";
+    }
+
+    const Delta = Math.max(0, Math.floor(Date.now() / 1000 - NumberValue));
+
+    if (Delta < 60)
+    {
+        return `${Delta}s ago`;
+    }
+
+    if (Delta < 3600)
+    {
+        return `${Math.floor(Delta / 60)}m ago`;
+    }
+
+    if (Delta < 86400)
+    {
+        return `${Math.floor(Delta / 3600)}h ago`;
+    }
+
+    return `${Math.floor(Delta / 86400)}d ago`;
+};
+
+const FormatDuration = (Value) =>
+{
+    const NumberValue = Number(Value);
+
+    if (!Number.isFinite(NumberValue) || NumberValue <= 0)
+    {
+        return "0s";
+    }
+
+    const Seconds = Math.ceil(NumberValue);
+
+    if (Seconds < 60)
+    {
+        return `${Seconds}s`;
+    }
+
+    if (Seconds < 3600)
+    {
+        return `${Math.ceil(Seconds / 60)}m`;
+    }
+
+    return `${Math.floor(Seconds / 3600)}h ${Math.ceil((Seconds % 3600) / 60)}m`;
+};
+
 const FormatSessionSummary = (Summary) =>
 {
     if (!Summary)
@@ -57,6 +110,9 @@ const BuildSessionCardMarkup = (BlackjackSession) =>
     const WatchingCopy = BlackjackSession.viewer_count
         ? ` &middot; ${EscapeHtml(BlackjackSession.viewer_count)} watching`
         : "";
+    const DeleteCopy = BlackjackSession.status === "live"
+        ? "Deletion paused while seated"
+        : `Deletes in ${FormatDuration(BlackjackSession.delete_remaining)}`;
 
     return `
         <a
@@ -76,6 +132,9 @@ const BuildSessionCardMarkup = (BlackjackSession) =>
             </p>
             <p class="mt-1 text-sm text-white/40">
               ${EscapeHtml(BlackjackSession.occupancy_text)}${WatchingCopy}
+            </p>
+            <p class="mt-1 text-xs text-white/32">
+              Created ${EscapeHtml(FormatRelativeTime(BlackjackSession.created_at))} &middot; ${EscapeHtml(DeleteCopy)}
             </p>
           </div>
 
@@ -106,6 +165,18 @@ const RenderSessionList = (SessionList, Sessions) =>
     SessionList.innerHTML = Sessions.map((BlackjackSession) => BuildSessionCardMarkup(BlackjackSession)).join("");
 };
 
+const RenderStaticTimeNodes = (Main) =>
+{
+    Main.querySelectorAll("[data-blackjack-created-at]").forEach((Node) =>
+    {
+        Node.textContent = FormatRelativeTime(Node.dataset.blackjackCreatedAt);
+    });
+    Main.querySelectorAll("[data-blackjack-delete-remaining]").forEach((Node) =>
+    {
+        Node.textContent = FormatDuration(Node.dataset.blackjackDeleteRemaining);
+    });
+};
+
 const RenderLobbyState = (Main, State, ReplaceList = false) =>
 {
     if (!State)
@@ -124,6 +195,10 @@ const RenderLobbyState = (Main, State, ReplaceList = false) =>
     if (ReplaceList)
     {
         RenderSessionList(SessionList, State.sessions);
+    }
+    else
+    {
+        RenderStaticTimeNodes(Main);
     }
 
     if (typeof State.current_balance_display === "string")

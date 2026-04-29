@@ -82,7 +82,9 @@ BLACKJACK_BETTING_COUNTDOWN_SECONDS = 30
 BLACKJACK_TURN_TIMEOUT_SECONDS = 30
 BLACKJACK_UNBET_SEAT_TIMEOUT_SECONDS = 30
 BLACKJACK_SETTLE_HOLD_SECONDS = 4.0
-BLACKJACK_IDLE_EMPTY_TTL_SECONDS = 60 * 60
+BLACKJACK_IDLE_EMPTY_TTL_SECONDS = 30 * 60
+ADMIN_STAFF_BALANCE_ADJUST_LIMIT_CENTS = 100000
+ADMIN_STAFF_BALANCE_ADJUST_COOLDOWN_SECONDS = 5 * 60
 ONLINE_PLAYER_BONUS_INTERVAL_SECONDS = 20 * 60
 ONLINE_PLAYER_BONUS_CENTS = 50000
 BLACKJACK_DEFAULT_MIN_BET_CENTS = 100
@@ -188,6 +190,13 @@ def safe_int(value, default=0):
         return default
 
 
+def safe_float(value, default=0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def resolve_runtime_path(env_name, default_path):
     raw_path = os.environ.get(env_name)
 
@@ -204,6 +213,7 @@ SESSION_LIFETIME_DAYS = max(env_int("SESSION_LIFETIME_DAYS", 30), 1)
 SESSION_COOKIE_SECURE = env_flag("SESSION_COOKIE_SECURE", default=False)
 
 USER_BALANCES = {}
+USER_VAULTS = {}
 USER_PROFILES = {
     BOT_PROFILE["id"]: BOT_PROFILE.copy(),
 }
@@ -275,6 +285,8 @@ ONLINE_PLAYER_BONUS_STATE = {
 }
 USER_REWARDS = {}
 USER_AUTH_VERSIONS = {}
+ADMIN_PANEL_STAFF = {}
+ADMIN_BALANCE_ADJUSTMENTS = {}
 RAKEBACK_RATE_BPS = 300
 RAKEBACK_CLAIM_COOLDOWN_SECONDS = 60 * 60
 DAILY_RAKEBACK_RATE_BPS = 200
@@ -379,6 +391,7 @@ def build_persistent_state_payload():
         "next_notification_id": NEXT_NOTIFICATION_ID,
         "next_rain_id": NEXT_RAIN_ID,
         "user_balances": USER_BALANCES,
+        "user_vaults": USER_VAULTS,
         "user_profiles": USER_PROFILES,
         "coinflip_sessions": COINFLIP_SESSIONS,
         "dice_sessions": DICE_SESSIONS,
@@ -391,6 +404,8 @@ def build_persistent_state_payload():
         "online_player_bonus_state": ONLINE_PLAYER_BONUS_STATE,
         "user_rewards": USER_REWARDS,
         "user_auth_versions": USER_AUTH_VERSIONS,
+        "admin_panel_staff": ADMIN_PANEL_STAFF,
+        "admin_balance_adjustments": ADMIN_BALANCE_ADJUSTMENTS,
     }
 
 
@@ -423,6 +438,7 @@ def load_persistent_state():
         return
 
     user_balances = payload.get("user_balances")
+    user_vaults = payload.get("user_vaults")
     user_profiles = payload.get("user_profiles")
     coinflip_sessions = payload.get("coinflip_sessions")
     dice_sessions = payload.get("dice_sessions")
@@ -435,11 +451,17 @@ def load_persistent_state():
     online_player_bonus_state = payload.get("online_player_bonus_state")
     user_rewards = payload.get("user_rewards")
     user_auth_versions = payload.get("user_auth_versions")
+    admin_panel_staff = payload.get("admin_panel_staff")
+    admin_balance_adjustments = payload.get("admin_balance_adjustments")
 
     with STATE_LOCK:
         USER_BALANCES.clear()
         if isinstance(user_balances, dict):
             USER_BALANCES.update(user_balances)
+
+        USER_VAULTS.clear()
+        if isinstance(user_vaults, dict):
+            USER_VAULTS.update(user_vaults)
 
         USER_PROFILES.clear()
         USER_PROFILES[BOT_PROFILE["id"]] = BOT_PROFILE.copy()
@@ -490,6 +512,18 @@ def load_persistent_state():
         USER_AUTH_VERSIONS.clear()
         if isinstance(user_auth_versions, dict):
             USER_AUTH_VERSIONS.update(user_auth_versions)
+
+        ADMIN_PANEL_STAFF.clear()
+        if isinstance(admin_panel_staff, dict):
+            for user_id, staff_record in admin_panel_staff.items():
+                if isinstance(staff_record, dict) and str(user_id) != ADMIN_PANEL_USER_ID:
+                    ADMIN_PANEL_STAFF[str(user_id)] = staff_record
+
+        ADMIN_BALANCE_ADJUSTMENTS.clear()
+        if isinstance(admin_balance_adjustments, dict):
+            for user_id, adjustment_record in admin_balance_adjustments.items():
+                if isinstance(adjustment_record, dict):
+                    ADMIN_BALANCE_ADJUSTMENTS[str(user_id)] = adjustment_record
 
         latest_notification_id = max(
             (safe_int(notification.get("id"), 0) for notification in APP_NOTIFICATIONS if isinstance(notification, dict)),
@@ -913,6 +947,14 @@ def get_user_balance(user_id):
 
 def set_user_balance(user_id, amount_cents):
     USER_BALANCES[user_id] = amount_cents
+
+
+def get_user_vault_balance(user_id):
+    return USER_VAULTS.get(user_id, 0)
+
+
+def set_user_vault_balance(user_id, amount_cents):
+    USER_VAULTS[user_id] = max(0, int(amount_cents or 0))
 
 
 def ensure_user_stats(user_profile):
@@ -2887,6 +2929,58 @@ def parse_tip_amount_to_cents(raw_value):
         raise ValueError("The minimum tip is $0.01.")
 
     return int(parsed_value * 100)
+
+
+def parse_vault_amount_to_cents(raw_value):
+    try:
+        parsed_value = Decimal(str(raw_value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Enter a valid vault amount.")
+
+    if parsed_value < Decimal("0.01"):
+        raise ValueError("Enter at least $0.01.")
+
+    return int(parsed_value * 100)
+
+
+def build_vault_payload(user_id):
+    balance_cents = get_user_balance(user_id)
+    vault_cents = get_user_vault_balance(user_id)
+
+    return {
+        "current_balance_cents": balance_cents,
+        "current_balance_display": format_money(balance_cents),
+        "vault_balance_cents": vault_cents,
+        "vault_balance_display": format_money(vault_cents),
+    }
+
+
+def apply_vault_transfer(user_id, action, raw_amount):
+    amount_cents = parse_vault_amount_to_cents(raw_amount)
+    balance_cents = get_user_balance(user_id)
+    vault_cents = get_user_vault_balance(user_id)
+
+    if action == "deposit":
+        if amount_cents > balance_cents:
+            raise ValueError("You do not have enough balance to deposit that amount.")
+
+        set_user_balance(user_id, balance_cents - amount_cents)
+        set_user_vault_balance(user_id, vault_cents + amount_cents)
+    elif action == "withdraw":
+        if amount_cents > vault_cents:
+            raise ValueError("You do not have enough money in your vault.")
+
+        set_user_balance(user_id, balance_cents + amount_cents)
+        set_user_vault_balance(user_id, vault_cents - amount_cents)
+    else:
+        raise ValueError("Choose deposit or withdraw.")
+
+    return {
+        **build_vault_payload(user_id),
+        "action": action,
+        "amount_cents": amount_cents,
+        "amount_display": format_money(amount_cents),
+    }
 
 
 def send_user_tip(sender_user, recipient_user_id, raw_amount):
@@ -5696,6 +5790,31 @@ def is_admin_user(user_profile):
     return bool(normalized_user and normalized_user.get("id") == ADMIN_PANEL_USER_ID)
 
 
+def get_admin_role(user_profile):
+    normalized_user = normalize_user_profile(user_profile)
+
+    if not normalized_user:
+        return None
+
+    user_id = normalized_user.get("id")
+
+    if user_id == ADMIN_PANEL_USER_ID:
+        return "owner"
+
+    if user_id in ADMIN_PANEL_STAFF:
+        return "staff"
+
+    return None
+
+
+def has_admin_panel_access(user_profile):
+    return get_admin_role(user_profile) in {"owner", "staff"}
+
+
+def is_admin_owner(user_profile):
+    return get_admin_role(user_profile) == "owner"
+
+
 def assign_session_auth_version(user_profile):
     normalized_user = normalize_user_profile(user_profile)
 
@@ -5827,7 +5946,18 @@ def login_required(view_function):
 def admin_panel_required(view_function):
     @wraps(view_function)
     def wrapped_view(*args, **kwargs):
-        if is_admin_user(get_current_user()):
+        if has_admin_panel_access(get_current_user()):
+            return view_function(*args, **kwargs)
+
+        return ("", 404)
+
+    return wrapped_view
+
+
+def admin_owner_required(view_function):
+    @wraps(view_function)
+    def wrapped_view(*args, **kwargs):
+        if is_admin_owner(get_current_user()):
             return view_function(*args, **kwargs)
 
         return ("", 404)
@@ -5963,6 +6093,10 @@ def sync_game_session_state(game, session_record):
         sync_dice_session_state(session_record)
         return
 
+    if game == "blackjack":
+        sync_blackjack_table_lifecycle(session_record)
+        return
+
     raise ValueError("Choose a valid game.")
 
 
@@ -5972,6 +6106,9 @@ def game_session_is_resolved(game, session_record):
 
     if game == "dice":
         return dice_session_is_resolved(session_record)
+
+    if game == "blackjack":
+        return False
 
     raise ValueError("Choose a valid game.")
 
@@ -6133,6 +6270,7 @@ def build_coinflip_lobby_sessions(current_user_id):
     }
     status_priority = {
         "countdown": 0,
+        "live": 0,
         "open": 1,
         "resolved": 2,
     }
@@ -6450,6 +6588,9 @@ def build_blackjack_session_state(blackjack_session, current_user_id):
     occupancy_count = len(blackjack_session.get("seat_claims") or {})
     is_live = occupancy_count > 0
     status = "live" if is_live else "open"
+    last_activity_at = blackjack_session.get("last_activity_at") or blackjack_session["created_at"]
+    delete_at = None if is_live else last_activity_at + BLACKJACK_IDLE_EMPTY_TTL_SECONDS
+    delete_remaining = 0 if is_live else max(0, math.ceil(delete_at - time.time()))
     occupancy_text = (
         "Nobody is seated right now."
         if occupancy_count <= 0
@@ -6467,7 +6608,9 @@ def build_blackjack_session_state(blackjack_session, current_user_id):
         ),
         "id": blackjack_session["id"],
         "is_creator": current_user_id == creator["id"],
-        "last_activity_at": blackjack_session.get("last_activity_at") or blackjack_session["created_at"],
+        "last_activity_at": last_activity_at,
+        "delete_at": delete_at,
+        "delete_remaining": delete_remaining,
         "limits_display": format_blackjack_table_limits(min_bet_cents, max_bet_cents),
         "max_bet_cents": max_bet_cents,
         "max_bet_display": format_money(max_bet_cents),
@@ -6486,6 +6629,8 @@ def build_blackjack_session_state(blackjack_session, current_user_id):
         {
             "created_at": session_state["created_at"],
             "creator_name": session_state["creator"]["display_name"],
+            "delete_at": session_state["delete_at"],
+            "delete_remaining": session_state["delete_remaining"],
             "id": session_state["id"],
             "last_activity_at": session_state["last_activity_at"],
             "max_bet_cents": session_state["max_bet_cents"],
@@ -7054,6 +7199,8 @@ def build_blackjack_lobby_sessions(current_user_id):
             {
                 "created_at": session_state["created_at"],
                 "creator_name": session_state["creator"]["display_name"],
+                "delete_at": session_state["delete_at"],
+                "delete_remaining": session_state["delete_remaining"],
                 "id": session_state["id"],
                 "limits_display": session_state["limits_display"],
                 "max_bet_cents": session_state["max_bet_cents"],
@@ -7085,6 +7232,8 @@ def build_blackjack_lobby_payload(current_user_id):
         "sessions": [
             {
                 "created_at": blackjack_session["created_at"],
+                "delete_at": blackjack_session["delete_at"],
+                "delete_remaining": blackjack_session["delete_remaining"],
                 "id": blackjack_session["id"],
                 "max_bet_cents": blackjack_session["max_bet_cents"],
                 "min_bet_cents": blackjack_session["min_bet_cents"],
@@ -7338,6 +7487,179 @@ def parse_balance_adjustment_to_cents(raw_value):
     return int(parsed_value * 100)
 
 
+def get_admin_balance_adjustment_record(actor_user_id):
+    record = ADMIN_BALANCE_ADJUSTMENTS.setdefault(str(actor_user_id), {})
+    window_started_at = safe_float(record.get("window_started_at"), 0)
+    adjusted_cents = safe_int(record.get("adjusted_cents"), 0)
+    current_time = time.time()
+
+    if (
+        window_started_at <= 0
+        or current_time >= window_started_at + ADMIN_STAFF_BALANCE_ADJUST_COOLDOWN_SECONDS
+    ):
+        window_started_at = current_time
+        adjusted_cents = 0
+        record["window_started_at"] = window_started_at
+        record["adjusted_cents"] = adjusted_cents
+
+    return record
+
+
+def build_admin_balance_limit_state(actor_user_id):
+    if not actor_user_id or actor_user_id == ADMIN_PANEL_USER_ID:
+        return {
+            "cooldown_remaining": 0,
+            "limit_cents": None,
+            "limit_display": None,
+            "remaining_cents": None,
+            "remaining_display": None,
+        }
+
+    record = get_admin_balance_adjustment_record(actor_user_id)
+    adjusted_cents = abs(safe_int(record.get("adjusted_cents"), 0))
+    remaining_cents = max(ADMIN_STAFF_BALANCE_ADJUST_LIMIT_CENTS - adjusted_cents, 0)
+    window_started_at = safe_float(record.get("window_started_at"), time.time())
+    cooldown_remaining = max(
+        0,
+        math.ceil(window_started_at + ADMIN_STAFF_BALANCE_ADJUST_COOLDOWN_SECONDS - time.time()),
+    )
+
+    if remaining_cents > 0:
+        cooldown_remaining = 0
+
+    return {
+        "cooldown_remaining": cooldown_remaining,
+        "limit_cents": ADMIN_STAFF_BALANCE_ADJUST_LIMIT_CENTS,
+        "limit_display": format_money(ADMIN_STAFF_BALANCE_ADJUST_LIMIT_CENTS),
+        "remaining_cents": remaining_cents,
+        "remaining_display": format_money(remaining_cents),
+    }
+
+
+def validate_admin_balance_adjustment(actor_user, adjustment_cents):
+    actor_snapshot = make_user_snapshot(actor_user)
+
+    if actor_snapshot["id"] == ADMIN_PANEL_USER_ID:
+        return
+
+    if actor_snapshot["id"] not in ADMIN_PANEL_STAFF:
+        raise ValueError("Admin access required.")
+
+    adjustment_abs_cents = abs(adjustment_cents)
+
+    if adjustment_abs_cents > ADMIN_STAFF_BALANCE_ADJUST_LIMIT_CENTS:
+        raise ValueError(
+            f"Staff adjustments are capped at {format_money(ADMIN_STAFF_BALANCE_ADJUST_LIMIT_CENTS)}."
+        )
+
+    record = get_admin_balance_adjustment_record(actor_snapshot["id"])
+    adjusted_cents = abs(safe_int(record.get("adjusted_cents"), 0))
+    remaining_cents = max(ADMIN_STAFF_BALANCE_ADJUST_LIMIT_CENTS - adjusted_cents, 0)
+
+    if adjustment_abs_cents > remaining_cents:
+        cooldown_remaining = max(
+            0,
+            math.ceil(
+                safe_float(record.get("window_started_at"), time.time())
+                + ADMIN_STAFF_BALANCE_ADJUST_COOLDOWN_SECONDS
+                - time.time()
+            ),
+        )
+        raise ValueError(
+            f"Staff cooldown active. {format_money(remaining_cents)} left now; try again in {cooldown_remaining}s."
+        )
+
+    record["adjusted_cents"] = adjusted_cents + adjustment_abs_cents
+
+
+def resolve_admin_staff_target(raw_value):
+    query = str(raw_value or "").strip()
+
+    if not query:
+        raise ValueError("Enter a player id or username.")
+
+    normalized_query = query[1:].strip().lower() if query.startswith("@") else query.lower()
+
+    for user_id, user_profile in USER_PROFILES.items():
+        if user_id == BOT_PROFILE["id"]:
+            continue
+
+        profile = normalize_user_profile(user_profile)
+
+        if not profile:
+            continue
+
+        if (
+            user_id.lower() == normalized_query
+            or str(profile.get("username") or "").lower() == normalized_query
+            or str(profile.get("display_name") or "").lower() == normalized_query
+        ):
+            return profile
+
+    raise ValueError("That player could not be found.")
+
+
+def build_admin_staff_rows():
+    staff_rows = []
+
+    for user_id, staff_record in ADMIN_PANEL_STAFF.items():
+        user_profile = normalize_user_profile(USER_PROFILES.get(user_id) or {
+            "display_name": user_id,
+            "id": user_id,
+            "username": user_id,
+        })
+
+        staff_rows.append({
+            "added_at": staff_record.get("added_at"),
+            "added_by": staff_record.get("added_by"),
+            "avatar_static_url": user_profile.get("avatar_static_url"),
+            "avatar_url": user_profile.get("avatar_url"),
+            "display_name": user_profile["display_name"],
+            "id": user_id,
+            "remove_url": url_for("admin_remove_staff_user", user_id=user_id) if has_request_context() else None,
+            "username": user_profile["username"],
+        })
+
+    staff_rows.sort(key=lambda row: str(row["display_name"]).lower())
+    return staff_rows
+
+
+def add_admin_staff_member(actor_user, raw_target):
+    actor_snapshot = make_user_snapshot(actor_user)
+    target_profile = resolve_admin_staff_target(raw_target)
+    target_user_id = target_profile["id"]
+
+    if target_user_id == ADMIN_PANEL_USER_ID:
+        raise ValueError("The owner already has full panel access.")
+
+    ADMIN_PANEL_STAFF[target_user_id] = {
+        "added_at": time.time(),
+        "added_by": actor_snapshot["id"],
+    }
+    ADMIN_BALANCE_ADJUSTMENTS.pop(target_user_id, None)
+
+    return {
+        "staff_added": True,
+        "user_id": target_user_id,
+    }
+
+
+def remove_admin_staff_member(actor_user, target_user_id):
+    if target_user_id == ADMIN_PANEL_USER_ID:
+        raise ValueError("The owner cannot be removed.")
+
+    if target_user_id not in ADMIN_PANEL_STAFF:
+        raise ValueError("That player is not panel staff.")
+
+    ADMIN_PANEL_STAFF.pop(target_user_id, None)
+    ADMIN_BALANCE_ADJUSTMENTS.pop(target_user_id, None)
+
+    return {
+        "staff_removed": True,
+        "user_id": target_user_id,
+    }
+
+
 def build_admin_location_label(path_value):
     normalized_path = normalize_presence_path(path_value)
 
@@ -7353,6 +7675,7 @@ def build_admin_location_label(path_value):
         "/settings": "Settings",
         "/games/coinflip": "Coinflip lobby",
         "/games/dice": "Dice lobby",
+        "/games/blackjack": "Blackjack lobby",
     }
 
     if normalized_path in static_labels:
@@ -7367,6 +7690,11 @@ def build_admin_location_label(path_value):
 
     if dice_match:
         return f"Dice {dice_match.group(1)[:8]}"
+
+    blackjack_match = re.match(r"^/games/blackjack/sessions/([^/]+)", normalized_path)
+
+    if blackjack_match:
+        return f"Blackjack {blackjack_match.group(1)[:8]}"
 
     return normalized_path
 
@@ -7406,6 +7734,7 @@ def build_admin_player_rows(current_user_id):
                 "balance_cents": balance_cents,
                 "balance_display": format_money(balance_cents),
                 "can_force_logout": user_id != current_user_id,
+                "can_adjust_balance": True,
                 "connected_since": presence.get("connected_at"),
                 "current_path": current_path,
                 "current_path_label": build_admin_location_label(current_path),
@@ -7417,7 +7746,9 @@ def build_admin_player_rows(current_user_id):
                 ),
                 "id": user_id,
                 "is_active": is_online,
-                "is_admin": user_id == ADMIN_PANEL_USER_ID,
+                "is_admin": user_id == ADMIN_PANEL_USER_ID or user_id in ADMIN_PANEL_STAFF,
+                "is_owner": user_id == ADMIN_PANEL_USER_ID,
+                "is_staff": user_id in ADMIN_PANEL_STAFF,
                 "is_current_user": user_id == current_user_id,
                 "is_online": is_online,
                 "last_seen": last_seen,
@@ -7458,6 +7789,11 @@ def build_admin_session_rows(current_user_id):
         },
         "dice": {
             "countdown": 0,
+            "open": 0,
+            "resolved": 0,
+        },
+        "blackjack": {
+            "live": 0,
             "open": 0,
             "resolved": 0,
         },
@@ -7541,10 +7877,39 @@ def build_admin_session_rows(current_user_id):
             }
         )
 
+    for blackjack_session in BLACKJACK_SESSIONS.values():
+        session_state = build_blackjack_session_state(blackjack_session, current_user_id)
+        session_summary["blackjack"][session_state["status"]] += 1
+        session_rows.append(
+            {
+                "bet_display": session_state["min_bet_display"],
+                "can_cancel": True,
+                "cancel_url": url_for("admin_cancel_game_session", game="blackjack", session_id=session_state["id"]),
+                "created_at": session_state["created_at"],
+                "creator_name": session_state["creator"]["display_name"],
+                "creator_user_id": session_state["creator"]["id"],
+                "delete_remaining": session_state["delete_remaining"],
+                "delete_at": session_state["delete_at"],
+                "game": "blackjack",
+                "game_label": "Blackjack",
+                "id": session_state["id"],
+                "limits_display": session_state["limits_display"],
+                "mode_label": f"{session_state['occupancy_count']} / {session_state['seat_count']} seats",
+                "occupancy_count": session_state["occupancy_count"],
+                "participants_display": session_state["table_name"],
+                "pot_display": session_state["limits_display"],
+                "status": session_state["status"],
+                "status_text": session_state["status_text"],
+                "table_name": session_state["table_name"],
+                "view_url": url_for("blackjack_session", session_id=session_state["id"]),
+                "viewer_count": session_state["viewer_count"],
+            }
+        )
+
     session_rows.sort(
         key=lambda row: (
             status_priority.get(row["status"], 9),
-            row["game"] != "coinflip",
+            {"coinflip": 0, "dice": 1, "blackjack": 2}.get(row["game"], 9),
             -row["created_at"],
         )
     )
@@ -7555,7 +7920,11 @@ def build_admin_panel_payload(current_user_id):
     player_rows = build_admin_player_rows(current_user_id)
     session_rows, session_summary = build_admin_session_rows(current_user_id)
     current_balance_cents = get_user_balance(current_user_id) if current_user_id else None
+    current_user_role = "owner" if current_user_id == ADMIN_PANEL_USER_ID else ("staff" if current_user_id in ADMIN_PANEL_STAFF else None)
     summary = {
+        "blackjack_live": session_summary["blackjack"]["live"],
+        "blackjack_open": session_summary["blackjack"]["open"],
+        "blackjack_resolved": session_summary["blackjack"]["resolved"],
         "coinflip_live": session_summary["coinflip"]["countdown"],
         "coinflip_open": session_summary["coinflip"]["open"],
         "coinflip_resolved": session_summary["coinflip"]["resolved"],
@@ -7567,7 +7936,10 @@ def build_admin_panel_payload(current_user_id):
         "sessions_live": sum(1 for row in session_rows if row["status"] == "countdown"),
         "sessions_total": len(session_rows),
     }
+    summary["sessions_live"] += summary["blackjack_live"]
     version_payload = {
+        "admin_role": current_user_role,
+        "balance_limit": build_admin_balance_limit_state(current_user_id),
         "players": [
             {
                 "balance_cents": row["balance_cents"],
@@ -7583,15 +7955,22 @@ def build_admin_panel_payload(current_user_id):
             for row in player_rows
         ],
         "sessions": [dict(row) for row in session_rows],
+        "staff": build_admin_staff_rows(),
         "summary": summary,
     }
 
     return {
+        "admin_role": current_user_role,
+        "balance_limit": build_admin_balance_limit_state(current_user_id),
+        "can_manage_staff": current_user_role == "owner",
+        "can_reset_database": current_user_role == "owner",
         "current_balance_cents": current_balance_cents,
         "current_balance_display": format_money(current_balance_cents) if current_balance_cents is not None else None,
         "players": player_rows,
         "poll_interval_ms": 2400,
         "sessions": session_rows,
+        "staff": build_admin_staff_rows(),
+        "staff_add_url": url_for("admin_add_staff_user") if has_request_context() and current_user_role == "owner" else None,
         "summary": summary,
         "version": build_state_version(version_payload),
     }
@@ -7610,6 +7989,7 @@ def admin_adjust_balance(actor_user, target_user_id, raw_amount):
     if next_balance_cents < 0:
         raise ValueError("Adjustment would make the balance negative.")
 
+    validate_admin_balance_adjustment(actor_user, adjustment_cents)
     set_user_balance(target_user_id, next_balance_cents)
 
     if adjustment_cents > 0:
@@ -7677,6 +8057,44 @@ def admin_cancel_session(actor_user, game, session_id):
     if game_session_is_resolved(game, session_record):
         raise ValueError("Resolved sessions can no longer be canceled.")
 
+    if game == "blackjack":
+        table_state = ensure_blackjack_table_state(session_record)
+        seat_claims = sync_blackjack_session_seat_claims(session_record)
+        claimed_user_ids = sorted(get_blackjack_claimed_user_ids(seat_claims))
+        refunded_user_ids = []
+        refunded_total_cents = 0
+
+        for user_id in claimed_user_ids:
+            refund_cents = get_blackjack_round_total_for_user(table_state, seat_claims, user_id)
+
+            if refund_cents <= 0:
+                continue
+
+            set_user_balance(user_id, get_user_balance(user_id) + refund_cents)
+            refunded_total_cents += refund_cents
+            refunded_user_ids.append(user_id)
+            add_app_notification(
+                actor_user=actor_snapshot,
+                event_type="admin_session_canceled",
+                message=f"Blackjack table has been canceled by an admin. You've been refunded {format_money(refund_cents)}.",
+                recipient_user_id=user_id,
+                title="Session canceled",
+                tone="info",
+            )
+
+        session_store.pop(session_record["id"], None)
+        register_canceled_session_marker(game, session_record, claimed_user_ids)
+
+        return {
+            "canceled": True,
+            "game": game,
+            "game_label": get_game_label(game),
+            "redirect_url": get_game_lobby_url(game),
+            "refund_display": format_money(refunded_total_cents),
+            "refunded_count": len(refunded_user_ids),
+            "session_id": session_record["id"],
+        }
+
     refund_cents = session_record["bet_cents"]
     refund_display = format_money(refund_cents)
     refunded_user_ids = []
@@ -7726,6 +8144,7 @@ def admin_reset_runtime_state(actor_user):
     current_time = time.time()
 
     USER_BALANCES.clear()
+    USER_VAULTS.clear()
     USER_PROFILES.clear()
     USER_PROFILES[BOT_PROFILE["id"]] = BOT_PROFILE.copy()
     COINFLIP_SESSIONS.clear()
@@ -7742,6 +8161,8 @@ def admin_reset_runtime_state(actor_user):
     USER_PRESENCE.clear()
     USER_REWARDS.clear()
     USER_AUTH_VERSIONS.clear()
+    ADMIN_PANEL_STAFF.clear()
+    ADMIN_BALANCE_ADJUSTMENTS.clear()
     NEXT_NOTIFICATION_ID = 1
     NEXT_CHAT_MESSAGE_ID = 1
     LAST_PERSISTED_STATE_DIGEST = None
@@ -7793,10 +8214,15 @@ def get_blackjack_session_or_404(session_id):
     return blackjack_session
 
 
+def get_blackjack_canceled_payload(session_id):
+    return build_canceled_session_payload("blackjack", session_id, get_current_user_id())
+
+
 @app.before_request
 def load_current_user():
     g.discord_user = get_current_user()
-    g.is_admin_user = is_admin_user(g.discord_user)
+    g.admin_role = get_admin_role(g.discord_user)
+    g.is_admin_user = g.admin_role is not None
     g.current_balance_cents = None
 
     if g.discord_user:
@@ -7824,7 +8250,8 @@ def persist_runtime_state(response):
 @app.context_processor
 def inject_auth_state():
     discord_user = g.get("discord_user") or get_current_user()
-    admin_user = is_admin_user(discord_user)
+    admin_role = get_admin_role(discord_user)
+    admin_user = admin_role is not None
     notification_cursor = 0
     pending_level_reward_count = 0
     chat_user_profile_url = url_for("chat_user_state", user_id="__user_id__")
@@ -7845,9 +8272,12 @@ def inject_auth_state():
         "client_lockdown_enabled": bool(discord_user and not admin_user),
         "current_balance_cents": g.current_balance_cents,
         "current_balance_display": format_money(g.current_balance_cents) if g.current_balance_cents is not None else None,
+        "current_vault_cents": get_user_vault_balance(discord_user["id"]) if discord_user else None,
+        "current_vault_display": format_money(get_user_vault_balance(discord_user["id"])) if discord_user else None,
         "discord_oauth_ready": is_discord_oauth_ready(),
         "discord_user": discord_user,
         "is_admin_user": admin_user,
+        "admin_role": admin_role,
         "is_authenticated": discord_user is not None,
         "notification_cursor": notification_cursor,
         "pending_level_reward_count": pending_level_reward_count,
@@ -7921,6 +8351,37 @@ def notification_state():
         payload = build_notification_payload(get_current_user_id(), since_id)
 
     return jsonify(payload)
+
+
+@app.get("/api/vault")
+@login_required
+def vault_state():
+    with STATE_LOCK:
+        payload = build_vault_payload(get_current_user_id())
+
+    return jsonify(payload)
+
+
+@app.post("/api/vault")
+@login_required
+def update_vault():
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip().lower() if isinstance(payload, dict) else ""
+    raw_amount = payload.get("amount") if isinstance(payload, dict) else None
+
+    try:
+        with STATE_LOCK:
+            response_payload = apply_vault_transfer(get_current_user_id(), action, raw_amount)
+    except ValueError as exc:
+        with STATE_LOCK:
+            response_payload = build_vault_payload(get_current_user_id())
+
+        return jsonify({
+            **response_payload,
+            "error": str(exc),
+        }), 400
+
+    return jsonify(response_payload)
 
 
 @app.route("/chat/state")
@@ -8352,7 +8813,7 @@ def admin_panel_state():
 
 
 @app.route("/panel/reset-state", methods=["POST"])
-@admin_panel_required
+@admin_owner_required
 def admin_reset_state():
     try:
         with STATE_LOCK:
@@ -8360,6 +8821,45 @@ def admin_reset_state():
             panel_payload = build_admin_panel_payload(get_current_user_id())
     except OSError:
         return jsonify({"error": "Could not reset the persisted state."}), 500
+
+    return jsonify({
+        **result,
+        "panel": panel_payload,
+    })
+
+
+@app.route("/panel/staff", methods=["POST"])
+@admin_owner_required
+def admin_add_staff_user():
+    payload = request.get_json(silent=True)
+    raw_target = (
+        payload.get("user")
+        if isinstance(payload, dict)
+        else request.form.get("user")
+    )
+
+    try:
+        with STATE_LOCK:
+            result = add_admin_staff_member(get_current_user(), raw_target)
+            panel_payload = build_admin_panel_payload(get_current_user_id())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        **result,
+        "panel": panel_payload,
+    })
+
+
+@app.route("/panel/staff/<user_id>", methods=["DELETE", "POST"])
+@admin_owner_required
+def admin_remove_staff_user(user_id):
+    try:
+        with STATE_LOCK:
+            result = remove_admin_staff_member(get_current_user(), user_id)
+            panel_payload = build_admin_panel_payload(get_current_user_id())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     return jsonify({
         **result,
@@ -8428,7 +8928,7 @@ def hand_slot_layout_state():
 
 
 @app.post("/api/hand-slot-layout")
-@admin_panel_required
+@admin_owner_required
 def save_hand_slot_layout_state():
     payload = request.get_json(silent=True) or {}
 
@@ -8449,7 +8949,7 @@ def blackjack_side_bet_layout_state():
 
 
 @app.post("/api/blackjack-side-bet-layout")
-@admin_panel_required
+@admin_owner_required
 def save_blackjack_side_bet_layout_state():
     payload = request.get_json(silent=True) or {}
 
@@ -8539,6 +9039,11 @@ def create_blackjack_session():
 @login_required
 def blackjack_session(session_id):
     with STATE_LOCK:
+        canceled_payload = get_blackjack_canceled_payload(session_id)
+
+        if canceled_payload:
+            return redirect(canceled_payload["redirect_url"])
+
         blackjack_session_data = get_blackjack_session_or_404(session_id)
         current_user = get_current_user()
         current_user_id = get_current_user_id()
@@ -8547,8 +9052,8 @@ def blackjack_session(session_id):
         blackjack_table_config = {
             "action_url": url_for("blackjack_table_actions", session_id=blackjack_session_data["id"]),
             "balance_sync_url": url_for("blackjack_table_balance", session_id=blackjack_session_data["id"]),
-            "can_admin_kick_seats": bool(is_admin_user(current_user)),
-            "can_edit_side_bet_layout": bool(is_admin_user(current_user)),
+            "can_admin_kick_seats": bool(has_admin_panel_access(current_user)),
+            "can_edit_side_bet_layout": bool(is_admin_owner(current_user)),
             "initial_state": build_blackjack_table_payload(blackjack_session_data, current_user_id),
             "seat_action_url": url_for("blackjack_table_seats", session_id=blackjack_session_data["id"]),
             "state_url": url_for("blackjack_table_state", session_id=blackjack_session_data["id"]),
@@ -8568,6 +9073,11 @@ def blackjack_session_state(session_id):
     requested_version = request.args.get("version")
 
     with STATE_LOCK:
+        canceled_payload = get_blackjack_canceled_payload(session_id)
+
+        if canceled_payload:
+            return jsonify(canceled_payload)
+
         blackjack_session_data = get_blackjack_session_or_404(session_id)
         touch_blackjack_session_presence(session_id)
         payload = build_blackjack_session_state(blackjack_session_data, get_current_user_id())
@@ -8584,6 +9094,11 @@ def blackjack_table_state(session_id):
     requested_version = request.args.get("version")
 
     with STATE_LOCK:
+        canceled_payload = get_blackjack_canceled_payload(session_id)
+
+        if canceled_payload:
+            return jsonify(canceled_payload)
+
         blackjack_session_data = get_blackjack_session_or_404(session_id)
         touch_blackjack_session_presence(session_id)
         payload = build_blackjack_table_payload(blackjack_session_data, get_current_user_id())
@@ -8609,6 +9124,11 @@ def blackjack_table_seats(session_id):
         return jsonify({"error": "Choose a valid seat."}), 400
 
     with STATE_LOCK:
+        canceled_payload = get_blackjack_canceled_payload(session_id)
+
+        if canceled_payload:
+            return jsonify(canceled_payload)
+
         blackjack_session_data = get_blackjack_session_or_404(session_id)
         touch_blackjack_session_presence(session_id)
         seat_claims = sync_blackjack_session_seat_claims(blackjack_session_data)
@@ -8616,7 +9136,7 @@ def blackjack_table_seats(session_id):
         current_owner_id = seat_claims.get(seat_id)
 
         if seat_action == "kick":
-            if not is_admin_user(get_current_user()):
+            if not has_admin_panel_access(get_current_user()):
                 return jsonify({"error": "Admin access required."}), 403
 
             try:
@@ -8662,6 +9182,11 @@ def blackjack_table_actions(session_id):
 
     try:
         with STATE_LOCK:
+            canceled_payload = get_blackjack_canceled_payload(session_id)
+
+            if canceled_payload:
+                return jsonify(canceled_payload)
+
             blackjack_session_data = get_blackjack_session_or_404(session_id)
             touch_blackjack_session_presence(session_id)
             seat_claims = sync_blackjack_session_seat_claims(blackjack_session_data)
@@ -8824,6 +9349,11 @@ def blackjack_table_actions(session_id):
             table_payload = build_blackjack_table_payload(blackjack_session_data, current_user_id)
     except ValueError as exc:
         with STATE_LOCK:
+            canceled_payload = get_blackjack_canceled_payload(session_id)
+
+            if canceled_payload:
+                return jsonify(canceled_payload)
+
             blackjack_session_data = get_blackjack_session_or_404(session_id)
             touch_blackjack_session_presence(session_id)
             table_payload = build_blackjack_table_payload(blackjack_session_data, current_user_id)
@@ -8842,6 +9372,11 @@ def blackjack_table_balance(session_id):
     current_user_id = get_current_user_id()
 
     with STATE_LOCK:
+        canceled_payload = get_blackjack_canceled_payload(session_id)
+
+        if canceled_payload:
+            return jsonify(canceled_payload)
+
         get_blackjack_session_or_404(session_id)
         current_balance_cents = get_user_balance(current_user_id)
 
@@ -8858,6 +9393,11 @@ def blackjack_table_balance(session_id):
 @login_required
 def blackjack_frame(session_id):
     with STATE_LOCK:
+        canceled_payload = get_blackjack_canceled_payload(session_id)
+
+        if canceled_payload:
+            return redirect(canceled_payload["redirect_url"])
+
         blackjack_session_data = get_blackjack_session_or_404(session_id)
         touch_blackjack_session_presence(session_id)
         current_user_id = get_current_user_id()
@@ -8871,7 +9411,7 @@ def blackjack_frame(session_id):
         blackjack_table_config={
             "action_url": url_for("blackjack_table_actions", session_id=blackjack_session_data["id"]),
             "balance_sync_url": url_for("blackjack_table_balance", session_id=blackjack_session_data["id"]),
-            "can_admin_kick_seats": bool(is_admin_user(get_current_user())),
+            "can_admin_kick_seats": bool(has_admin_panel_access(get_current_user())),
             "initial_state": blackjack_table_state,
             "seat_action_url": url_for("blackjack_table_seats", session_id=blackjack_session_data["id"]),
             "state_url": url_for("blackjack_table_state", session_id=blackjack_session_data["id"]),

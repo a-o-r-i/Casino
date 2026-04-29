@@ -72,6 +72,15 @@
                   {{ blackjack_session.occupancy_text }}
                   {% if blackjack_session.viewer_count %}&middot; {{ blackjack_session.viewer_count }} watching{% endif %}
                 </p>
+                <p class="mt-1 text-xs text-white/32">
+                  Created <span data-blackjack-created-at="{{ blackjack_session.created_at }}"></span>
+                  &middot;
+                  {% if blackjack_session.status == 'live' %}
+                    Deletion paused while seated
+                  {% else %}
+                    Deletes in <span data-blackjack-delete-remaining="{{ blackjack_session.delete_remaining }}"></span>
+                  {% endif %}
+                </p>
               </div>
 
               <span class="inline-flex h-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/5 px-5 text-sm font-medium text-white transition hover:bg-white/10">
