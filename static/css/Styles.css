@@ -580,8 +580,11 @@ body {
 }
 
 .SeatBetSpot:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
+}
+
+.SeatBetSpot.IsVisible:disabled {
+  opacity: 0.5;
 }
 
 .SeatBetSpot.IsClaimed::before {

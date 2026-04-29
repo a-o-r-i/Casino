@@ -428,7 +428,7 @@ export function CreateTableRenderer({
         };
         const HasResolvedSideBet = Number(Spot.payout) > 0 || Boolean(Spot.payoutLabel);
         const IsEditorSelected = SelectedEditorKey === SideBetKey(Seat.id, BetType);
-        const ShouldShow = EditorActive || IsClaimed && (ShouldShowForBetting || HasResolvedSideBet);
+        const ShouldShow = EditorActive || (IsClaimed && (ShouldShowForBetting || HasResolvedSideBet)) || (IsOccupied && HasResolvedSideBet);
         let SpotAction = `${Spot.label} spot for ${Seat.name}`;
         if (EditorActive) {
           SpotAction = `Edit ${Spot.label} position for ${Seat.name}`;
