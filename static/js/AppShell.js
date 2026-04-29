@@ -11,6 +11,7 @@
     const MasterSoundVolumeStorageKey = "gambling.soundVolume";
     const CountdownAutoplayStorageKey = "gambling.countdownAutoplayOnLoad";
     const PendingToastStorageKey = "gambling.pendingToast";
+    const VaultPreviousAmountStorageKey = "vault.previousAmount";
     const NotificationBurstSpacingMs = 110;
     const NotificationHiddenPollMultiplier = 2.4;
     const MaxNotificationToastsPerBurst = 3;
@@ -370,6 +371,271 @@
 
         DeferredBalanceDisplay = "";
         ApplyGlobalBalanceDisplay(Value);
+    };
+
+    const ParseVaultAmount = (RawValue) =>
+    {
+        const ParsedValue = Number.parseFloat(RawValue);
+
+        if (!Number.isFinite(ParsedValue))
+        {
+            return null;
+        }
+
+        return ParsedValue;
+    };
+
+    const FormatVaultAmount = (Amount) =>
+    {
+        return Amount.toFixed(2).replace(/\.00$/, "").replace(/(\.\d*[1-9])0$/, "$1");
+    };
+
+    const GetVaultAmountMax = (InputNode) =>
+    {
+        const MaxAmount = ParseVaultAmount(InputNode?.max);
+        return MaxAmount === null ? Infinity : Math.max(MaxAmount, 0);
+    };
+
+    const SetVaultAmountInputValue = (InputNode, Amount) =>
+    {
+        if (!(InputNode instanceof HTMLInputElement))
+        {
+            return;
+        }
+
+        const ParsedAmount = Number(Amount);
+
+        if (!Number.isFinite(ParsedAmount) || ParsedAmount <= 0)
+        {
+            InputNode.value = "";
+            return;
+        }
+
+        const MaxAmount = GetVaultAmountMax(InputNode);
+        const RoundedAmount = Math.round(ParsedAmount * 100) / 100;
+        const NextAmount = Number.isFinite(MaxAmount)
+            ? Math.min(RoundedAmount, MaxAmount)
+            : RoundedAmount;
+
+        if (NextAmount <= 0)
+        {
+            InputNode.value = "";
+            return;
+        }
+
+        InputNode.value = FormatVaultAmount(NextAmount);
+        InputNode.focus();
+    };
+
+    const SyncVaultAmountMax = (Payload) =>
+    {
+        const BalanceCents = Number(Payload?.current_balance_cents);
+
+        if (!Number.isFinite(BalanceCents))
+        {
+            return;
+        }
+
+        const MaxAmount = Math.max(BalanceCents / 100, 0);
+
+        document.querySelectorAll("[data-vault-amount]").forEach((InputNode) =>
+        {
+            if (!(InputNode instanceof HTMLInputElement))
+            {
+                return;
+            }
+
+            InputNode.max = FormatVaultAmount(MaxAmount);
+
+            const CurrentAmount = ParseVaultAmount(InputNode.value);
+
+            if (CurrentAmount !== null && CurrentAmount > MaxAmount)
+            {
+                SetVaultAmountInputValue(InputNode, CurrentAmount);
+            }
+        });
+    };
+
+    const SyncVaultDisplays = (Payload) =>
+    {
+        if (!Payload)
+        {
+            return;
+        }
+
+        if (Payload.current_balance_display)
+        {
+            SetGlobalBalanceDisplay(Payload.current_balance_display, {
+                force: true,
+            });
+        }
+
+        document.querySelectorAll("[data-vault-wallet-display]").forEach((Node) =>
+        {
+            Node.textContent = Payload.current_balance_display || "$0";
+        });
+        document.querySelectorAll("[data-vault-balance-display]").forEach((Node) =>
+        {
+            Node.textContent = Payload.vault_balance_display || "$0";
+        });
+        SyncVaultAmountMax(Payload);
+    };
+
+    const FetchVaultState = async () =>
+    {
+        const Form = document.querySelector("[data-vault-form]");
+        const StateUrl = Form?.dataset.url || "/api/vault";
+
+        try
+        {
+            const Response = await fetch(StateUrl, {
+                headers: {
+                    Accept: "application/json",
+                },
+            });
+
+            if (!Response.ok)
+            {
+                return null;
+            }
+
+            const Payload = await Response.json();
+            SyncVaultDisplays(Payload);
+            return Payload;
+        }
+        catch (ErrorValue)
+        {
+            console.error(ErrorValue);
+            return null;
+        }
+    };
+
+    const SetVaultFormBusy = (Form, IsBusy) =>
+    {
+        Form.querySelectorAll("button, input").forEach((Node) =>
+        {
+            Node.disabled = IsBusy;
+        });
+    };
+
+    const SubmitVaultForm = async (Form, Submitter) =>
+    {
+        const AmountInput = Form.querySelector("[data-vault-amount]");
+        const MessageNode = Form.querySelector("[data-vault-message]");
+        const Action = Submitter?.dataset?.vaultAction || "deposit";
+        const RequestUrl = Form.dataset.url || "/api/vault";
+
+        SetVaultFormBusy(Form, true);
+
+        if (MessageNode)
+        {
+            MessageNode.textContent = "";
+            MessageNode.className = "mt-3 min-h-5 text-xs leading-5 text-white/42";
+        }
+
+        try
+        {
+            const Response = await fetch(RequestUrl, {
+                body: JSON.stringify({
+                    action: Action,
+                    amount: AmountInput?.value || "",
+                }),
+                headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                method: "POST",
+            });
+            const Payload = await Response.json().catch(() => ({}));
+            SyncVaultDisplays(Payload);
+
+            if (!Response.ok)
+            {
+                throw new Error(Payload?.error || `Request failed with ${Response.status}.`);
+            }
+
+            if (AmountInput instanceof HTMLInputElement)
+            {
+                if (AmountInput.value)
+                {
+                    window.localStorage.setItem(VaultPreviousAmountStorageKey, AmountInput.value);
+                }
+
+                AmountInput.value = "";
+            }
+
+            if (MessageNode)
+            {
+                MessageNode.textContent = `${Action === "withdraw" ? "Withdrew" : "Deposited"} ${Payload.amount_display || ""}.`.trim();
+                MessageNode.className = "mt-3 min-h-5 text-xs leading-5 text-emerald-200/80";
+            }
+        }
+        catch (ErrorValue)
+        {
+            if (MessageNode)
+            {
+                MessageNode.textContent = ErrorValue.message || "Vault update failed.";
+                MessageNode.className = "mt-3 min-h-5 text-xs leading-5 text-red-200/80";
+            }
+        }
+        finally
+        {
+            SetVaultFormBusy(Form, false);
+        }
+    };
+
+    const HandleVaultAmountControlClick = (EventValue) =>
+    {
+        const Target = EventValue.target instanceof Element ? EventValue.target : null;
+        const Button = Target?.closest("[data-vault-use-previous-amount], [data-vault-adjust-amount]");
+
+        if (!Button)
+        {
+            return;
+        }
+
+        const Form = Button.closest("[data-vault-form]");
+        const AmountInput = Form?.querySelector("[data-vault-amount]");
+
+        if (!(AmountInput instanceof HTMLInputElement))
+        {
+            return;
+        }
+
+        EventValue.preventDefault();
+
+        if (Button.matches("[data-vault-use-previous-amount]"))
+        {
+            SetVaultAmountInputValue(AmountInput, ParseVaultAmount(window.localStorage.getItem(VaultPreviousAmountStorageKey)));
+            return;
+        }
+
+        const CurrentAmount = ParseVaultAmount(AmountInput.value) ?? ParseVaultAmount(window.localStorage.getItem(VaultPreviousAmountStorageKey)) ?? 0;
+        const NextAmount = Button.dataset.vaultAdjustAmount === "double"
+            ? CurrentAmount * 2
+            : CurrentAmount / 2;
+
+        SetVaultAmountInputValue(AmountInput, NextAmount);
+    };
+
+    const HandleVaultAmountInput = (EventValue) =>
+    {
+        const InputNode = EventValue.target instanceof HTMLInputElement && EventValue.target.matches("[data-vault-amount]")
+            ? EventValue.target
+            : null;
+
+        if (!InputNode)
+        {
+            return;
+        }
+
+        const CurrentAmount = ParseVaultAmount(InputNode.value);
+        const MaxAmount = GetVaultAmountMax(InputNode);
+
+        if (CurrentAmount !== null && Number.isFinite(MaxAmount) && CurrentAmount > MaxAmount)
+        {
+            SetVaultAmountInputValue(InputNode, CurrentAmount);
+        }
     };
 
     const SetRewardMenuBadge = (CountValue) =>
@@ -2798,7 +3064,16 @@
         }
 
         EventValue.preventDefault();
-        Controller.open().catch((ErrorValue) =>
+        Controller.open().then(() =>
+        {
+            if (OpenTrigger.dataset.openModal === "vault")
+            {
+                FetchVaultState().catch((ErrorValue) =>
+                {
+                    console.error(ErrorValue);
+                });
+            }
+        }).catch((ErrorValue) =>
         {
             console.error(ErrorValue);
         });
@@ -2866,6 +3141,16 @@
                         method: "POST",
                     },
                 });
+            });
+            return;
+        }
+
+        if (Form.matches("[data-vault-form]"))
+        {
+            EventValue.preventDefault();
+            SubmitVaultForm(Form, EventValue.submitter).catch((ErrorValue) =>
+            {
+                console.error(ErrorValue);
             });
             return;
         }
@@ -3063,9 +3348,12 @@
     document.addEventListener("click", HandleModalTriggerClick);
     document.addEventListener("click", HandleDocumentClick);
     document.addEventListener("click", HandleProfileMenuDocumentClick);
+    document.addEventListener("click", HandleVaultAmountControlClick);
     document.addEventListener("focusin", HandleProfileMenuFocusIn);
     document.addEventListener("input", HandleSoundControlInput);
+    document.addEventListener("input", HandleVaultAmountInput);
     document.addEventListener("change", HandleSoundControlInput);
+    document.addEventListener("change", HandleVaultAmountInput);
     document.addEventListener("keydown", HandleDocumentKeyDown);
     document.addEventListener("pointerover", HandleProfileMenuPointerOver);
     document.addEventListener("submit", HandleDocumentSubmit);
