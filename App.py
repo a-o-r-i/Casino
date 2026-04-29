@@ -83,6 +83,8 @@ BLACKJACK_TURN_TIMEOUT_SECONDS = 30
 BLACKJACK_UNBET_SEAT_TIMEOUT_SECONDS = 30
 BLACKJACK_SETTLE_HOLD_SECONDS = 4.0
 BLACKJACK_IDLE_EMPTY_TTL_SECONDS = 60 * 60
+ONLINE_PLAYER_BONUS_INTERVAL_SECONDS = 20 * 60
+ONLINE_PLAYER_BONUS_CENTS = 50000
 BLACKJACK_DEFAULT_MIN_BET_CENTS = 100
 BLACKJACK_DEFAULT_MAX_BET_CENTS = 100000
 BLACKJACK_TABLE_LIMIT_CAP_CENTS = 100000000
@@ -268,6 +270,9 @@ CHAT_EMOJI_ALIASES = {
 CHAT_MENTION_NOTIFICATION_HISTORY = {}
 USER_PRESENCE = {}
 PRESENCE_ONLINE_WINDOW_SECONDS = 12
+ONLINE_PLAYER_BONUS_STATE = {
+    "last_paid_at": time.time(),
+}
 USER_REWARDS = {}
 USER_AUTH_VERSIONS = {}
 RAKEBACK_RATE_BPS = 300
@@ -383,6 +388,7 @@ def build_persistent_state_payload():
         "user_bet_history": USER_BET_HISTORY,
         "app_notifications": APP_NOTIFICATIONS,
         "chat_messages": CHAT_MESSAGES,
+        "online_player_bonus_state": ONLINE_PLAYER_BONUS_STATE,
         "user_rewards": USER_REWARDS,
         "user_auth_versions": USER_AUTH_VERSIONS,
     }
@@ -426,6 +432,7 @@ def load_persistent_state():
     user_bet_history = payload.get("user_bet_history")
     app_notifications = payload.get("app_notifications")
     chat_messages = payload.get("chat_messages")
+    online_player_bonus_state = payload.get("online_player_bonus_state")
     user_rewards = payload.get("user_rewards")
     user_auth_versions = payload.get("user_auth_versions")
 
@@ -470,6 +477,11 @@ def load_persistent_state():
 
         APP_NOTIFICATIONS[:] = app_notifications[-MAX_APP_NOTIFICATIONS:] if isinstance(app_notifications, list) else []
         CHAT_MESSAGES[:] = chat_messages[-MAX_CHAT_MESSAGES:] if isinstance(chat_messages, list) else []
+
+        ONLINE_PLAYER_BONUS_STATE.clear()
+        if isinstance(online_player_bonus_state, dict):
+            ONLINE_PLAYER_BONUS_STATE.update(online_player_bonus_state)
+        ONLINE_PLAYER_BONUS_STATE.setdefault("last_paid_at", time.time())
 
         USER_REWARDS.clear()
         if isinstance(user_rewards, dict):
@@ -2472,6 +2484,51 @@ def get_online_player_count():
         for user_id, presence in USER_PRESENCE.items()
         if user_id != BOT_PROFILE["id"] and user_presence_is_online(presence)
     )
+
+
+def maybe_award_online_player_bonus(now=None):
+    current_time = now or time.time()
+
+    try:
+        last_paid_at = float(ONLINE_PLAYER_BONUS_STATE.get("last_paid_at") or current_time)
+    except (TypeError, ValueError):
+        last_paid_at = current_time
+
+    if current_time < last_paid_at + ONLINE_PLAYER_BONUS_INTERVAL_SECONDS:
+        return {
+            "awarded": False,
+            "recipient_ids": [],
+        }
+
+    recipient_ids = sorted(
+        user_id
+        for user_id, presence in USER_PRESENCE.items()
+        if (
+            user_id != BOT_PROFILE["id"]
+            and user_id in USER_PROFILES
+            and user_presence_is_online(presence)
+        )
+    )
+    bonus_display = format_money(ONLINE_PLAYER_BONUS_CENTS)
+
+    for user_id in recipient_ids:
+        set_user_balance(user_id, get_user_balance(user_id) + ONLINE_PLAYER_BONUS_CENTS)
+        add_app_notification(
+            actor_user=BOT_PROFILE,
+            event_type="online_player_bonus",
+            message=f"{bonus_display} was added to your balance for being online.",
+            recipient_user_id=user_id,
+            title="Online bonus",
+            tone="success",
+        )
+
+    ONLINE_PLAYER_BONUS_STATE["last_paid_at"] = current_time
+    ONLINE_PLAYER_BONUS_STATE["last_recipient_ids"] = recipient_ids
+
+    return {
+        "awarded": bool(recipient_ids),
+        "recipient_ids": recipient_ids,
+    }
 
 
 def build_chat_reply_preview(chat_message):
@@ -6493,6 +6550,69 @@ def release_blackjack_seat(blackjack_session, table_state, seat_id):
     return released_user_id
 
 
+def admin_kick_blackjack_seat(blackjack_session, seat_id, actor_user):
+    actor_snapshot = make_user_snapshot(actor_user)
+    table_state = sync_blackjack_table_lifecycle(blackjack_session)
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+    kicked_user_id = seat_claims.get(seat_id)
+
+    if not kicked_user_id:
+        raise ValueError("That seat is not taken.")
+
+    kicked_profile = USER_PROFILES.get(kicked_user_id) or {}
+    kicked_name = kicked_profile.get("display_name") or kicked_profile.get("username") or "Player"
+    release_blackjack_seat(blackjack_session, table_state, seat_id)
+
+    for hand in table_state.get("hands") or []:
+        if hand.get("seat_id") == seat_id and not hand.get("result"):
+            hand["stood"] = True
+
+    seat_side_bets = ensure_blackjack_seat_side_bets(table_state)
+    insurance_bet = (seat_side_bets.get(seat_id) or {}).get(BLACKJACK_BET_TYPE_INSURANCE)
+    if insurance_bet and insurance_bet.get("status") == "offered":
+        insurance_bet["bet_cents"] = 0
+        insurance_bet["result"] = "declined"
+        insurance_bet["result_label"] = "Declined"
+        insurance_bet["status"] = "declined"
+
+    if table_state.get("round_state") == BLACKJACK_ROUND_PLAYER_TURN:
+        active_hand = get_blackjack_active_hand(table_state)
+        if not active_hand or active_hand.get("stood"):
+            advance_blackjack_after_hand(blackjack_session)
+            table_state = ensure_blackjack_table_state(blackjack_session)
+
+    if table_state.get("round_state") == BLACKJACK_ROUND_INSURANCE:
+        resolve_blackjack_stale_insurance_offers(blackjack_session)
+        table_state = ensure_blackjack_table_state(blackjack_session)
+
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+    if table_state.get("round_state") == BLACKJACK_ROUND_BETTING and not seat_claims:
+        table_state["round_state"] = BLACKJACK_ROUND_WAITING
+        clear_blackjack_betting_timer(table_state)
+
+    if table_state.get("round_state") in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
+        table_state["message"] = f"{kicked_name} was kicked from {seat_id}."
+
+    table_state["updated_at"] = time.time()
+    touch_blackjack_session_activity(blackjack_session, table_state["updated_at"])
+
+    if kicked_user_id != BOT_PROFILE["id"]:
+        add_app_notification(
+            actor_user=actor_snapshot,
+            event_type="admin_blackjack_seat_kicked",
+            message=f"You were removed from {blackjack_session.get('table_name', 'a blackjack table')}.",
+            recipient_user_id=kicked_user_id,
+            title="Removed from blackjack table",
+            tone="error",
+        )
+
+    return {
+        "seat_id": seat_id,
+        "user_id": kicked_user_id,
+        "user_name": kicked_name,
+    }
+
+
 def blackjack_seat_has_pending_bet(table_state, seat_id, user_id=None):
     return any(
         chip.get("seat_id") == seat_id
@@ -7681,10 +7801,11 @@ def load_current_user():
 
     if g.discord_user:
         ensure_user_balance(g.discord_user)
-        g.current_balance_cents = get_user_balance(g.discord_user["id"])
-        if request_should_touch_presence():
-            with STATE_LOCK:
+        with STATE_LOCK:
+            if request_should_touch_presence():
                 touch_user_presence(g.discord_user, request.path)
+            maybe_award_online_player_bonus()
+            g.current_balance_cents = get_user_balance(g.discord_user["id"])
 
 
 @app.after_request
@@ -7979,9 +8100,15 @@ def presence_heartbeat():
 
     with STATE_LOCK:
         touch_user_presence(get_current_user(), current_path, is_typing=is_typing)
+        maybe_award_online_player_bonus()
         online_count = get_online_player_count()
+        current_balance_cents = get_user_balance(get_current_user_id())
 
-    return jsonify({"online_count": online_count})
+    return jsonify({
+        "current_balance_cents": current_balance_cents,
+        "current_balance_display": format_money(current_balance_cents),
+        "online_count": online_count,
+    })
 
 
 @app.route("/presence/offline", methods=["POST"])
@@ -8420,6 +8547,7 @@ def blackjack_session(session_id):
         blackjack_table_config = {
             "action_url": url_for("blackjack_table_actions", session_id=blackjack_session_data["id"]),
             "balance_sync_url": url_for("blackjack_table_balance", session_id=blackjack_session_data["id"]),
+            "can_admin_kick_seats": bool(is_admin_user(current_user)),
             "can_edit_side_bet_layout": bool(is_admin_user(current_user)),
             "initial_state": build_blackjack_table_payload(blackjack_session_data, current_user_id),
             "seat_action_url": url_for("blackjack_table_seats", session_id=blackjack_session_data["id"]),
@@ -8474,7 +8602,7 @@ def blackjack_table_seats(session_id):
     seat_id = str(payload.get("seat_id") or "").strip()
     current_user_id = get_current_user_id()
 
-    if seat_action not in {"claim", "release"}:
+    if seat_action not in {"claim", "release", "kick"}:
         return jsonify({"error": "Choose a valid seat action."}), 400
 
     if seat_id not in HAND_SLOT_SEAT_IDS:
@@ -8487,7 +8615,15 @@ def blackjack_table_seats(session_id):
         table_state = ensure_blackjack_table_state(blackjack_session_data)
         current_owner_id = seat_claims.get(seat_id)
 
-        if seat_action == "claim":
+        if seat_action == "kick":
+            if not is_admin_user(get_current_user()):
+                return jsonify({"error": "Admin access required."}), 403
+
+            try:
+                admin_kick_blackjack_seat(blackjack_session_data, seat_id, get_current_user())
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        elif seat_action == "claim":
             if current_owner_id and current_owner_id != current_user_id:
                 owner_profile = USER_PROFILES.get(current_owner_id) or {}
                 owner_name = owner_profile.get("display_name") or owner_profile.get("username") or "Another player"
@@ -8735,6 +8871,7 @@ def blackjack_frame(session_id):
         blackjack_table_config={
             "action_url": url_for("blackjack_table_actions", session_id=blackjack_session_data["id"]),
             "balance_sync_url": url_for("blackjack_table_balance", session_id=blackjack_session_data["id"]),
+            "can_admin_kick_seats": bool(is_admin_user(get_current_user())),
             "initial_state": blackjack_table_state,
             "seat_action_url": url_for("blackjack_table_seats", session_id=blackjack_session_data["id"]),
             "state_url": url_for("blackjack_table_state", session_id=blackjack_session_data["id"]),

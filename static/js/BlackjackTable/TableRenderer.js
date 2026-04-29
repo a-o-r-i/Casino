@@ -345,7 +345,7 @@ export function CreateTableRenderer({
       const ExternalSeatClaim = View.externalSeatClaims?.[Seat.id] || null;
       const IsOccupied = Boolean(ExternalSeatClaim);
       const IsReady = Array.isArray(View.readySeatIds) && View.readySeatIds.includes(Seat.id);
-      const Disabled = View.disableSeatSelection || IsOccupied ? "disabled" : "";
+      const Disabled = View.disableSeatSelection || (IsOccupied && !View.canAdminKickSeats) ? "disabled" : "";
       let SeatAction = IsOccupied ? `${ExternalSeatClaim.displayName} already took ${Seat.name}` : `Select ${Seat.name}`;
       if (!IsOccupied) {
         if (State.roundState === ROUND_STATES.INSURANCE && IsClaimed) {

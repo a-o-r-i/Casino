@@ -73,6 +73,18 @@ export function BindControls({
     }
     Handlers.onSeatToggle?.(SeatButton.dataset.seatId, Number(Event.detail) || 1);
   };
+  const HandleSeatContextMenu = Event => {
+    const SeatButton = Event.target.closest("[data-seat-id]");
+    if (!SeatButton) {
+      return;
+    }
+    const DidHandle = Handlers.onSeatContextMenu?.(SeatButton.dataset.seatId, Event);
+    if (!DidHandle) {
+      return;
+    }
+    Event.preventDefault();
+    Event.stopPropagation();
+  };
   const HandleSideBetSpotClick = Event => {
     const SideBetSpot = Event.target.closest("[data-bet-spot-seat-id]");
     if (!SideBetSpot) {
@@ -119,6 +131,7 @@ export function BindControls({
     OnAction?.("split");
   };
   AddListener(SeatLayer, "click", HandleSeatClick);
+  AddListener(SeatLayer, "contextmenu", HandleSeatContextMenu);
   AddListener(SideBetSpotLayer, "click", HandleSideBetSpotClick);
   AddListener(ChipTray, "click", HandleChipClick);
   BindButton(UndoChipButton, HandleUndoChipClick, { fastTap: true });

@@ -147,12 +147,14 @@ class NetworkBlackjackTable {
     initialBalance: InitialBalance = 0,
     actionUrl: ActionUrl = "",
     seatActionUrl: SeatActionUrl = "",
+    canAdminKickSeats: CanAdminKickSeats = false,
     canEditSideBetLayout: CanEditSideBetLayout = false
   }) {
     this.animator = animator;
     this.renderer = Renderer;
     this.actionUrl = ActionUrl;
     this.seatActionUrl = SeatActionUrl;
+    this.canAdminKickSeats = Boolean(CanAdminKickSeats);
     this.canEditSideBetLayout = Boolean(CanEditSideBetLayout);
     this.state = CreateInitialState({
       balance: InitialBalance
@@ -1109,6 +1111,7 @@ class NetworkBlackjackTable {
       showBettingControls: [ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState),
       showDecisionPanel: CanAct,
       showInsurancePanel: this.state.roundState === ROUND_STATES.INSURANCE,
+      canAdminKickSeats: this.canAdminKickSeats,
       disableSeatSelection: false,
       disableUndoChip: !CanBet || !HasSelfPendingBet,
       disableDoubleBet: !this.CanDoublePendingBet(),
@@ -1328,6 +1331,21 @@ class NetworkBlackjackTable {
       this.SetLocalMessage("Seat update failed.");
       return false;
     }
+  }
+  GetSeatClaim(SeatId) {
+    return (this.seatClaims || []).find(Claim => {
+      const ClaimSeatId = Claim?.seat_id || Claim?.seatId;
+      return ClaimSeatId === SeatId;
+    }) || null;
+  }
+  CanAdminKickSeat(SeatId) {
+    return Boolean(this.canAdminKickSeats && this.GetSeatClaim(SeatId));
+  }
+  async KickSeat(SeatId) {
+    if (!this.CanAdminKickSeat(SeatId)) {
+      return false;
+    }
+    return this.PostSeatAction("kick", SeatId);
   }
   async PostTableAction(Action, Body = {}, Options = {}) {
     if (!this.actionUrl) {
@@ -1552,6 +1570,7 @@ export async function InitializeBlackjackTable({
   const Table = new NetworkBlackjackTable({
     actionUrl: Config?.action_url || "",
     animator: AnimatorController,
+    canAdminKickSeats: Boolean(Config?.can_admin_kick_seats),
     canEditSideBetLayout: false,
     initialBalance: GetInitialBalanceAmount(InitialTableState),
     renderer: Renderer,
@@ -1564,6 +1583,50 @@ export async function InitializeBlackjackTable({
   let CleanupControls = () => {};
   let ActiveSideBetDrag = null;
   let StageResizeObserver = null;
+  let SeatKickMenuSeatId = "";
+  const SeatKickMenu = ScopeDocument.createElement("div");
+  SeatKickMenu.className = "BlackjackSeatKickMenu IsHidden";
+  SeatKickMenu.setAttribute("role", "menu");
+  SeatKickMenu.innerHTML = '<button class="BlackjackSeatKickButton" type="button" role="menuitem">Kick</button>';
+  ScopeDocument.body.append(SeatKickMenu);
+  const SeatKickButton = SeatKickMenu.querySelector(".BlackjackSeatKickButton");
+  const HideSeatKickMenu = () => {
+    SeatKickMenuSeatId = "";
+    SeatKickMenu.classList.add("IsHidden");
+  };
+  const ShowSeatKickMenu = (SeatId, Event) => {
+    if (!Table.CanAdminKickSeat(SeatId)) {
+      return false;
+    }
+    SeatKickMenuSeatId = SeatId;
+    SeatKickMenu.classList.remove("IsHidden");
+    const MenuRect = SeatKickMenu.getBoundingClientRect();
+    const ViewportWidth = ScopeWindow.innerWidth || ScopeDocument.documentElement.clientWidth || 0;
+    const ViewportHeight = ScopeWindow.innerHeight || ScopeDocument.documentElement.clientHeight || 0;
+    const Left = Math.min(Math.max(Number(Event?.clientX) || 0, 8), Math.max(ViewportWidth - MenuRect.width - 8, 8));
+    const Top = Math.min(Math.max(Number(Event?.clientY) || 0, 8), Math.max(ViewportHeight - MenuRect.height - 8, 8));
+    SeatKickMenu.style.left = `${Left}px`;
+    SeatKickMenu.style.top = `${Top}px`;
+    return true;
+  };
+  const HandleDocumentPointerDown = Event => {
+    if (SeatKickMenu.classList.contains("IsHidden") || SeatKickMenu.contains(Event.target)) {
+      return;
+    }
+    HideSeatKickMenu();
+  };
+  const HandleDocumentKeyDown = Event => {
+    if (Event.key === "Escape") {
+      HideSeatKickMenu();
+    }
+  };
+  SeatKickButton?.addEventListener("click", () => {
+    const SeatId = SeatKickMenuSeatId;
+    HideSeatKickMenu();
+    if (SeatId) {
+      void Table.KickSeat(SeatId);
+    }
+  });
   async function ApplyTableState(Payload, {
     animate: Animate = true,
     source: Source = "poll"
@@ -1661,11 +1724,14 @@ export async function InitializeBlackjackTable({
     ScopeWindow.removeEventListener("pointermove", HandleSideBetPointerMove);
     ScopeWindow.removeEventListener("pointerup", HandleSideBetPointerEnd);
     ScopeWindow.removeEventListener("pointercancel", HandleSideBetPointerEnd);
+    ScopeDocument.removeEventListener("pointerdown", HandleDocumentPointerDown);
+    ScopeDocument.removeEventListener("keydown", HandleDocumentKeyDown);
     Renderer.elements.sideBetSpotLayer?.removeEventListener("pointerdown", HandleSideBetPointerDown);
     Renderer.elements.stage?.removeEventListener("load", HandleStageLayoutChange, true);
     StageResizeObserver?.disconnect();
     StageResizeObserver = null;
     CleanupControls();
+    SeatKickMenu.remove();
   };
   const HandleStageLayoutChange = () => {
     if (IsDisposed) {
@@ -1722,6 +1788,7 @@ export async function InitializeBlackjackTable({
     onSeatToggle: (SeatId, ClickCount) => {
       void Table.ToggleSeat(SeatId, ClickCount);
     },
+    onSeatContextMenu: (SeatId, Event) => ShowSeatKickMenu(SeatId, Event),
     onSideBetEditorSpot: (SeatId, BetType) => {
       Table.SelectSideBetEditorSpot(SeatId, BetType);
     },
@@ -1763,6 +1830,8 @@ export async function InitializeBlackjackTable({
   ScopeWindow.addEventListener("pointermove", HandleSideBetPointerMove);
   ScopeWindow.addEventListener("pointerup", HandleSideBetPointerEnd);
   ScopeWindow.addEventListener("pointercancel", HandleSideBetPointerEnd);
+  ScopeDocument.addEventListener("pointerdown", HandleDocumentPointerDown);
+  ScopeDocument.addEventListener("keydown", HandleDocumentKeyDown);
   ScopeDocument.addEventListener("visibilitychange", HandleVisibilityChange);
   ScopeWindow.addEventListener("pagehide", Dispose);
   CountdownHandle = ScopeWindow.setInterval(HandleCountdownTick, 250);

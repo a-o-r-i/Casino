@@ -1787,6 +1787,7 @@ const BuildAuthorBadgeMarkup = (User) =>
             if (Payload)
             {
                 ApplyOnlineCount(Payload.online_count);
+                SetBalanceDisplay(Payload.current_balance_display);
             }
 
             return Payload;
