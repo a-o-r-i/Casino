@@ -305,6 +305,28 @@
         }
     };
 
+    const ScrollRankCarousel = () =>
+    {
+        const Carousel = document.querySelector("[data-reward-rank-carousel]");
+
+        if (!(Carousel instanceof HTMLElement))
+        {
+            return;
+        }
+
+        const FirstCard = Carousel.querySelector("article");
+        const CardWidth = FirstCard instanceof HTMLElement ? FirstCard.getBoundingClientRect().width : 195;
+        const Styles = window.getComputedStyle(Carousel);
+        const Gap = Number.parseFloat(Styles.columnGap || Styles.gap || "0") || 12;
+        const MaxScrollLeft = Math.max(Carousel.scrollWidth - Carousel.clientWidth, 0);
+        const NextScrollLeft = Carousel.scrollLeft + CardWidth + Gap;
+
+        Carousel.scrollTo({
+            behavior: "smooth",
+            left: NextScrollLeft >= MaxScrollLeft - 2 ? 0 : NextScrollLeft,
+        });
+    };
+
     const InitializeRewardsPage = ({ main }) =>
     {
         const StateNode = main.querySelector("[data-rewards-page-state]");
@@ -324,7 +346,21 @@
 
         const HandleClaimClick = (EventValue) =>
         {
-            const Button = EventValue.target.closest("[data-reward-claim]");
+            const Target = EventValue.target instanceof Element ? EventValue.target : null;
+
+            if (!Target)
+            {
+                return;
+            }
+
+            if (Target.closest("[data-reward-rank-next]"))
+            {
+                EventValue.preventDefault();
+                ScrollRankCarousel();
+                return;
+            }
+
+            const Button = Target.closest("[data-reward-claim]");
 
             if (!Button)
             {

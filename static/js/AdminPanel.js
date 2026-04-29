@@ -34,6 +34,11 @@
         return `${Number.isInteger(NumberValue) ? NumberValue.toFixed(0) : NumberValue.toFixed(1)}%`;
     };
 
+    const GetAdjustmentLabel = (Form) =>
+    {
+        return String(Form?.dataset?.adminAdjustmentLabel || "balance").trim().toLowerCase() || "balance";
+    };
+
     const FormatRelativeTime = (Timestamp) =>
     {
         const NumberValue = Number(Timestamp);
@@ -208,9 +213,9 @@
     const RenderDetailRow = (Key, Label, Value, AdditionalClassName = "") =>
     {
         return `
-            <div class="rounded-[8px] border border-white/10 bg-white/[0.03] px-3 py-2.5 ${AdditionalClassName}">
-              <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/34">${EscapeHtml(Label)}</div>
-              <div class="mt-1 text-sm font-medium text-white" data-admin-popout-value="${EscapeHtml(Key)}">${EscapeHtml(Value)}</div>
+            <div class="rounded-[8px] border border-white/10 bg-white/[0.03] px-2.5 py-2 ${AdditionalClassName}">
+              <div class="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/34">${EscapeHtml(Label)}</div>
+              <div class="mt-0.5 text-xs font-medium text-white" data-admin-popout-value="${EscapeHtml(Key)}">${EscapeHtml(Value)}</div>
             </div>
         `;
     };
@@ -419,7 +424,7 @@
         const LogoutMarkup = Row.can_force_logout
             ? `
                 <button
-                  class="inline-flex h-10 w-full items-center justify-center rounded-[8px] border border-red-400/14 bg-red-500/10 px-3 text-sm font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
+                  class="inline-flex h-8 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-white/76 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:opacity-45"
                   data-admin-force-logout
                   data-url="${EscapeHtml(Row.force_logout_url || "")}"
                   type="button"
@@ -429,7 +434,7 @@
             `
             : `
                 <a
-                  class="inline-flex h-10 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08]"
+                  class="inline-flex h-8 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-white transition hover:bg-white/[0.08]"
                   data-admin-logout-href
                   href="/logout"
                 >
@@ -440,6 +445,19 @@
         const LevelCopy = `${Row.reward_level || 0} (${Row.reward_badge || "Unranked"})`;
         const ActivityCopy = Row.current_path_label || "--";
         const LastActivityCopy = GetLastActivityCopy(Row);
+        const ResetMarkup = Row.can_reset_player
+            ? `
+                <div class="mt-2 rounded-[8px] border border-white/10 bg-white/[0.025] p-2">
+                  <div class="grid grid-cols-2 gap-1.5">
+                    <div data-admin-reset-slot data-action="wallet" data-label="Wallet" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}"><button class="inline-flex h-8 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] px-2 text-xs font-medium text-white/76 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:opacity-45" data-admin-reset-player="wallet" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}" type="button">Wallet</button></div>
+                    <div data-admin-reset-slot data-action="vault" data-label="Vault" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}"><button class="inline-flex h-8 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] px-2 text-xs font-medium text-white/76 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:opacity-45" data-admin-reset-player="vault" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}" type="button">Vault</button></div>
+                    <div data-admin-reset-slot data-action="rewards" data-label="Levels" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}"><button class="inline-flex h-8 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] px-2 text-xs font-medium text-white/76 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:opacity-45" data-admin-reset-player="rewards" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}" type="button">Levels</button></div>
+                    <div data-admin-reset-slot data-action="wagered" data-label="Wagered" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}"><button class="inline-flex h-8 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] px-2 text-xs font-medium text-white/76 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:opacity-45" data-admin-reset-player="wagered" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}" type="button">Wagered</button></div>
+                    <div class="col-span-2" data-admin-reset-slot data-action="all" data-label="Reset all data" data-full-width="true" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}"><button class="inline-flex h-8 w-full items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.045] px-2 text-xs font-medium text-white/82 transition hover:bg-white/[0.09] hover:text-white disabled:cursor-default disabled:opacity-45" data-admin-reset-player="all" data-player-name="${EscapeHtml(Row.display_name)}" data-url="${EscapeHtml(Row.admin_reset_url || "")}" type="button">Reset all data</button></div>
+                  </div>
+                </div>
+            `
+            : "";
 
         return `
             <div
@@ -453,20 +471,21 @@
                 data-admin-popout-arrow
                 style="top: var(--admin-popout-arrow-top, 36px);"
               ></span>
-              <div class="rounded-[8px] border border-white/10 bg-[#07090e] p-3.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
-                <div class="flex items-center gap-3">
+              <div class="rounded-[8px] border border-white/10 bg-[#07090e] p-2.5 shadow-[0_20px_60px_rgba(0,0,0,0.48)] backdrop-blur-xl">
+                <div class="flex items-center gap-2.5">
                   <span class="shrink-0">
-                    ${BuildAvatarMarkup(Row, "h-10 w-10")}
+                    ${BuildAvatarMarkup(Row, "h-8 w-8")}
                   </span>
                   <div class="min-w-0">
-                    <div class="truncate text-[1.05rem] font-semibold text-white">${EscapeHtml(Row.display_name)}</div>
-                    <div class="mt-0.5 truncate text-[11px] text-white/38">@${EscapeHtml(Row.username)}</div>
+                    <div class="truncate text-sm font-semibold text-white">${EscapeHtml(Row.display_name)}</div>
+                    <div class="mt-0.5 truncate text-[10px] text-white/38">@${EscapeHtml(Row.username)}</div>
                   </div>
                 </div>
 
-                <div class="mt-3 grid grid-cols-2 gap-2">
+                <div class="mt-2.5 grid grid-cols-2 gap-1.5">
                   ${RenderDetailRow("status", "Status", StatusCopy)}
                   ${RenderDetailRow("balance", "Balance", Row.balance_display || "$0")}
+                  ${RenderDetailRow("vault", "Vault", Row.vault_display || "$0")}
                   ${RenderDetailRow("wagered", "Wagered", Row.total_wagered_display || "$0")}
                   ${RenderDetailRow("level", "Level", LevelCopy)}
                   ${RenderDetailRow("win-rate", "Win rate", FormatPercent(Row.win_rate))}
@@ -477,13 +496,14 @@
 
                 <form
                   action="${EscapeHtml(Row.balance_adjust_url || "")}"
-                  class="mt-3 flex items-center gap-2"
-                  data-admin-popout-balance-form
+                  class="mt-2.5 flex items-center gap-1.5"
+                  data-admin-adjustment-label="balance"
+                  data-admin-popout-money-form
                   method="post"
                 >
                   <input
                     autocomplete="off"
-                    class="h-10 min-w-0 flex-1 rounded-[8px] border border-white/10 bg-white/[0.03] px-3 text-sm text-white outline-none transition placeholder:text-white/26 focus:border-white/18 focus:bg-white/[0.05]"
+                    class="h-8 min-w-0 flex-1 rounded-[8px] border border-white/10 bg-white/[0.03] px-2.5 text-xs text-white outline-none transition placeholder:text-white/26 focus:border-white/18 focus:bg-white/[0.05]"
                     inputmode="decimal"
                     name="amount"
                     placeholder="+200 / -200"
@@ -491,14 +511,40 @@
                     type="number"
                   >
                   <button
-                    class="inline-flex h-10 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-3 text-sm font-medium text-white transition hover:bg-white/[0.08] disabled:cursor-default disabled:opacity-45"
+                    class="inline-flex h-8 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-2.5 text-xs font-medium text-white transition hover:bg-white/[0.08] disabled:cursor-default disabled:opacity-45"
                     type="submit"
                   >
                     Apply
                   </button>
                 </form>
 
-                <div class="mt-2 flex">
+                <form
+                  action="${EscapeHtml(Row.vault_adjust_url || "")}"
+                  class="mt-1.5 flex items-center gap-1.5"
+                  data-admin-adjustment-label="vault"
+                  data-admin-popout-money-form
+                  method="post"
+                >
+                  <input
+                    autocomplete="off"
+                    class="h-8 min-w-0 flex-1 rounded-[8px] border border-white/10 bg-white/[0.03] px-2.5 text-xs text-white outline-none transition placeholder:text-white/26 focus:border-white/18 focus:bg-white/[0.05]"
+                    inputmode="decimal"
+                    name="amount"
+                    placeholder="Vault +200 / -200"
+                    step="0.01"
+                    type="number"
+                  >
+                  <button
+                    class="inline-flex h-8 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-2.5 text-xs font-medium text-white transition hover:bg-white/[0.08] disabled:cursor-default disabled:opacity-45"
+                    type="submit"
+                  >
+                    Vault
+                  </button>
+                </form>
+
+                ${ResetMarkup}
+
+                <div class="mt-1.5 flex">
                   ${LogoutMarkup}
                 </div>
               </div>
@@ -588,6 +634,8 @@
         let SelectedPopout = null;
         let ShouldAnimatePopoutOpen = false;
         let IsResetSubmitting = false;
+        let PendingPlayerReset = null;
+        let IsPlayerResetSubmitting = false;
         let RenderedCoinflipSignature = "";
         let RenderedDiceSignature = "";
         let RenderedPlayersSignature = "";
@@ -814,6 +862,111 @@
             }
         };
 
+        const IsPlayerResetConfirmOpen = () =>
+        {
+            return Boolean(PendingPlayerReset);
+        };
+
+        const SyncPlayerResetConfirmState = () =>
+        {
+            PopoutNode.querySelectorAll("[data-admin-reset-player]").forEach((Button) =>
+            {
+                if (Button instanceof HTMLButtonElement)
+                {
+                    Button.disabled = IsPlayerResetSubmitting;
+                }
+            });
+
+            PopoutNode.querySelectorAll("[data-admin-inline-reset-confirm]").forEach((Button) =>
+            {
+                if (Button instanceof HTMLButtonElement)
+                {
+                    Button.disabled = IsPlayerResetSubmitting;
+                    Button.textContent = IsPlayerResetSubmitting ? "Resetting..." : "Confirm";
+                }
+            });
+
+            PopoutNode.querySelectorAll("[data-admin-inline-reset-cancel]").forEach((Button) =>
+            {
+                if (Button instanceof HTMLButtonElement)
+                {
+                    Button.disabled = IsPlayerResetSubmitting;
+                }
+            });
+        };
+
+        const RenderResetSlotButton = (Slot) =>
+        {
+            if (!(Slot instanceof HTMLElement))
+            {
+                return;
+            }
+
+            const Action = Slot.dataset.action || "";
+            const Label = Slot.dataset.label || Action;
+            const PlayerName = Slot.dataset.playerName || "";
+            const RequestUrl = Slot.dataset.url || "";
+            const IsFullWidth = Slot.dataset.fullWidth === "true";
+
+            Slot.classList.toggle("col-span-2", IsFullWidth);
+            Slot.innerHTML = `
+                <button
+                  class="inline-flex h-8 w-full items-center justify-center rounded-[8px] border border-white/10 ${IsFullWidth ? "bg-white/[0.045] text-white/82 hover:bg-white/[0.09]" : "bg-white/[0.035] text-white/76 hover:bg-white/[0.08]"} px-2 text-xs font-medium transition hover:text-white disabled:cursor-default disabled:opacity-45"
+                  data-admin-reset-player="${EscapeHtml(Action)}"
+                  data-player-name="${EscapeHtml(PlayerName)}"
+                  data-url="${EscapeHtml(RequestUrl)}"
+                  type="button"
+                >${EscapeHtml(Label)}</button>
+            `;
+        };
+
+        const ClosePlayerResetConfirm = () =>
+        {
+            PopoutNode.querySelectorAll("[data-admin-reset-slot]").forEach(RenderResetSlotButton);
+
+            PendingPlayerReset = null;
+            IsPlayerResetSubmitting = false;
+            SyncPlayerResetConfirmState();
+        };
+
+        const OpenPlayerResetConfirm = (Button) =>
+        {
+            const Action = Button.dataset.adminResetPlayer || "";
+            const RequestUrl = Button.dataset.url || "";
+
+            const Slot = Button.closest("[data-admin-reset-slot]");
+
+            if (!Action || !RequestUrl || !(Slot instanceof HTMLElement) || IsPlayerResetSubmitting)
+            {
+                return;
+            }
+
+            ClosePlayerResetConfirm();
+            PendingPlayerReset = {
+                action: Action,
+                requestUrl: RequestUrl,
+            };
+            IsPlayerResetSubmitting = false;
+
+            Slot.classList.toggle("col-span-2", Slot.dataset.fullWidth === "true");
+            Slot.innerHTML = `
+                <div class="grid grid-cols-2 gap-1.5">
+                  <button
+                    class="inline-flex h-8 min-w-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.08] px-1.5 text-[11px] font-semibold text-white transition hover:bg-white/[0.12] disabled:cursor-default disabled:opacity-45"
+                    data-admin-inline-reset-confirm
+                    type="button"
+                  >Confirm</button>
+                  <button
+                    class="inline-flex h-8 min-w-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.035] px-1.5 text-[11px] font-medium text-white/70 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-default disabled:opacity-45"
+                    data-admin-inline-reset-cancel
+                    type="button"
+                  >Cancel</button>
+                </div>
+            `;
+            SyncPlayerResetConfirmState();
+            Slot.querySelector("[data-admin-inline-reset-confirm]")?.focus?.();
+        };
+
         const GetFilteredPlayers = () =>
         {
             const Query = FilterQuery.trim().toLowerCase();
@@ -964,6 +1117,8 @@
 
             SelectedPopout = null;
             ShouldAnimatePopoutOpen = false;
+            PendingPlayerReset = null;
+            IsPlayerResetSubmitting = false;
 
             if (!animate || !(ShellNode instanceof Element) || typeof ShellNode.animate !== "function")
             {
@@ -1065,7 +1220,7 @@
             const Gap = 18;
             const AnchorRect = AnchorNode.getBoundingClientRect();
             const PopoutViewportOffset = GetPopoutViewportOffset();
-            const Width = PopoutNode.offsetWidth || 320;
+            const Width = PopoutNode.offsetWidth || 240;
             let Side = "right";
 
             if (AnchorRect.right + Gap + Width > window.innerWidth - Margin)
@@ -1280,10 +1435,11 @@
             });
         };
 
-        const SubmitBalanceAdjustment = async (Form) =>
+        const SubmitMoneyAdjustment = async (Form) =>
         {
             const AmountInput = Form.querySelector("input[name='amount']");
             const RawAmount = AmountInput?.value ?? "";
+            const AdjustmentLabel = GetAdjustmentLabel(Form);
 
             SetFormBusy(Form, true);
 
@@ -1325,15 +1481,72 @@
                 Render({
                     forcePopoutRefresh: true,
                 });
-                ShowToast("Balance updated", `${Payload.adjustment_display} applied.`, Payload.adjustment_cents > 0 ? "success" : "info");
+                ShowToast(`${AdjustmentLabel.charAt(0).toUpperCase()}${AdjustmentLabel.slice(1)} updated`, `${Payload.adjustment_display} applied.`, Payload.adjustment_cents > 0 ? "success" : "info");
             }
             catch (ErrorValue)
             {
-                ShowToast("Panel error", ErrorValue.message || "Could not update the balance.", "error");
+                ShowToast("Panel error", ErrorValue.message || `Could not update the ${AdjustmentLabel}.`, "error");
             }
             finally
             {
                 SetFormBusy(Form, false);
+            }
+        };
+
+        const SubmitPlayerReset = async () =>
+        {
+            const RequestUrl = PendingPlayerReset?.requestUrl || "";
+            const Action = PendingPlayerReset?.action || "";
+
+            if (!RequestUrl || !Action)
+            {
+                return;
+            }
+
+            IsPlayerResetSubmitting = true;
+            SyncPlayerResetConfirmState();
+
+            try
+            {
+                const Response = await fetch(RequestUrl, {
+                    body: JSON.stringify({
+                        action: Action,
+                    }),
+                    headers: {
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    method: "POST",
+                });
+                const Payload = await Response.json().catch(() => ({}));
+
+                if (Response.status === 401 || Response.status === 404)
+                {
+                    HandleUnauthorized();
+                    return;
+                }
+
+                if (!Response.ok)
+                {
+                    throw new Error(Payload?.error || `Request failed with ${Response.status}.`);
+                }
+
+                if (Payload.panel)
+                {
+                    LastState = Payload.panel;
+                }
+
+                Render({
+                    forcePopoutRefresh: true,
+                });
+                ClosePlayerResetConfirm();
+                ShowToast("Player reset", Payload.summary || "Player data was reset.", "success");
+            }
+            catch (ErrorValue)
+            {
+                ShowToast("Panel error", ErrorValue.message || "Could not reset that player.", "error");
+                IsPlayerResetSubmitting = false;
+                SyncPlayerResetConfirmState();
             }
         };
 
@@ -1688,13 +1901,13 @@
         {
             const Form = EventValue.target instanceof HTMLFormElement ? EventValue.target : null;
 
-            if (!Form || !Form.matches("[data-admin-popout-balance-form]"))
+            if (!Form || !Form.matches("[data-admin-popout-money-form]"))
             {
                 return;
             }
 
             EventValue.preventDefault();
-            SubmitBalanceAdjustment(Form).catch((ErrorValue) =>
+            SubmitMoneyAdjustment(Form).catch((ErrorValue) =>
             {
                 console.error(ErrorValue);
             });
@@ -1709,6 +1922,27 @@
                 return;
             }
 
+            const InlineResetConfirmButton = Target.closest("[data-admin-inline-reset-confirm]");
+
+            if (InlineResetConfirmButton)
+            {
+                EventValue.preventDefault();
+                SubmitPlayerReset().catch((ErrorValue) =>
+                {
+                    console.error(ErrorValue);
+                });
+                return;
+            }
+
+            const InlineResetCancelButton = Target.closest("[data-admin-inline-reset-cancel]");
+
+            if (InlineResetCancelButton)
+            {
+                EventValue.preventDefault();
+                ClosePlayerResetConfirm();
+                return;
+            }
+
             const LogoutButton = Target.closest("[data-admin-force-logout]");
 
             if (LogoutButton)
@@ -1718,6 +1952,15 @@
                 {
                     console.error(ErrorValue);
                 });
+                return;
+            }
+
+            const ResetPlayerButton = Target.closest("[data-admin-reset-player]");
+
+            if (ResetPlayerButton)
+            {
+                EventValue.preventDefault();
+                OpenPlayerResetConfirm(ResetPlayerButton);
                 return;
             }
 
@@ -1758,6 +2001,12 @@
         {
             if (EventValue.key !== "Escape")
             {
+                return;
+            }
+
+            if (IsPlayerResetConfirmOpen())
+            {
+                ClosePlayerResetConfirm();
                 return;
             }
 
@@ -1810,6 +2059,9 @@
             }
 
             HidePopoutNow();
+            ClosePlayerResetConfirm({
+                animate: false,
+            });
             if (ResetModalForm instanceof HTMLFormElement)
             {
                 ResetModalForm.reset();

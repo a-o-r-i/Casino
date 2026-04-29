@@ -70,35 +70,48 @@
         </div>
       </div>
 
-      <div class="mt-5 grid gap-3 md:grid-cols-5">
-        {% for rank in reward_rank_guide %}
-          {% set current_rank = namespace(active=false) %}
-          {% for tier in rank.tiers %}
-            {% if rewards_page.reward_progress.badge == tier.badge %}
-              {% set current_rank.active = true %}
-            {% endif %}
+      <div class="relative mt-5">
+        <div class="flex snap-x gap-3 overflow-x-auto pb-2 pr-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-reward-rank-carousel>
+          {% for rank in reward_rank_guide %}
+            {% set current_rank = namespace(active=false) %}
+            {% for tier in rank.tiers %}
+              {% if rewards_page.reward_progress.badge == tier.badge %}
+                {% set current_rank.active = true %}
+              {% endif %}
+            {% endfor %}
+            {% set is_current_rank = current_rank.active or (loop.first and rewards_page.reward_progress.level == 0) %}
+            <article class="relative w-[195px] shrink-0 snap-start rounded-[8px] border {% if is_current_rank %}border-white/18 bg-white/[0.06]{% else %}border-white/8 bg-white/[0.03]{% endif %} p-4">
+              <p class="text-sm font-semibold {% if rank.tone == 'wood' %}text-[#f0d0ac]{% elif rank.tone == 'bronze' %}text-[#f7d2bc]{% elif rank.tone == 'silver' %}text-[#eef4fb]{% elif rank.tone == 'gold' %}text-[#fde8a2]{% elif rank.tone == 'platinum' %}text-[#d7ffff]{% elif rank.tone == 'jade' %}text-[#d7ffe5]{% elif rank.tone == 'sapphire' %}text-[#dff6ff]{% elif rank.tone == 'ruby' %}text-[#ffe1e8]{% elif rank.tone == 'obsidian' %}text-[#e5edf8]{% else %}text-[#dbe7ff]{% endif %}">
+                {{ rank.title }}
+              </p>
+              <p class="mt-1 text-xs text-white/42">{{ rank.level_range_display }}</p>
+              <div class="mt-3 flex flex-wrap gap-1.5">
+                {% for tier in rank.tiers %}
+                  <span class="group relative">
+                    <span class="inline-flex rounded-[8px] border px-2 py-1 text-xs transition {% if rewards_page.reward_progress.badge == tier.badge %}{% if rank.tone == 'wood' %}border-[#f0d0ac]/60 bg-[#f0d0ac] text-[#1b1007]{% elif rank.tone == 'bronze' %}border-[#f7d2bc]/60 bg-[#f7d2bc] text-[#1b0f09]{% elif rank.tone == 'silver' %}border-[#eef4fb]/60 bg-[#eef4fb] text-[#10141a]{% elif rank.tone == 'gold' %}border-[#fde8a2]/60 bg-[#fde8a2] text-[#1c1605]{% elif rank.tone == 'platinum' %}border-[#d7ffff]/60 bg-[#d7ffff] text-[#062326]{% elif rank.tone == 'jade' %}border-[#d7ffe5]/60 bg-[#d7ffe5] text-[#062315]{% elif rank.tone == 'sapphire' %}border-[#dff6ff]/60 bg-[#dff6ff] text-[#062032]{% elif rank.tone == 'ruby' %}border-[#ffe1e8]/60 bg-[#ffe1e8] text-[#330814]{% elif rank.tone == 'obsidian' %}border-[#e5edf8]/60 bg-[#e5edf8] text-[#101722]{% else %}border-[#dbe7ff]/60 bg-[#dbe7ff] text-[#081629]{% endif %}{% else %}border-white/10 bg-white/[0.03] text-white/66 hover:border-white/16 hover:text-white{% endif %}">
+                      {{ tier.badge | replace(rank.title ~ ' ', '') }}
+                    </span>
+                    <span class="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 w-max min-w-[92px] -translate-x-1/2 translate-y-1.5 scale-[0.96] rounded-[8px] border border-white/12 bg-[#07090e] px-3 py-2 text-center opacity-0 shadow-[0_18px_50px_rgba(0,0,0,0.46)] transition group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100">
+                      <span class="block text-[10px] font-semibold uppercase text-white/38">Level {{ tier.level }}</span>
+                      <span class="mt-1 block text-sm font-semibold text-white">{{ tier.bonus_display }}</span>
+                    </span>
+                  </span>
+                {% endfor %}
+              </div>
+            </article>
           {% endfor %}
-          {% set is_current_rank = current_rank.active or (loop.first and rewards_page.reward_progress.level == 0) %}
-          <article class="relative rounded-[8px] border {% if is_current_rank %}border-white/18 bg-white/[0.06]{% else %}border-white/8 bg-white/[0.03]{% endif %} p-4">
-            <p class="text-sm font-semibold {% if rank.tone == 'bronze' %}text-[#f7d2bc]{% elif rank.tone == 'silver' %}text-[#eef4fb]{% elif rank.tone == 'gold' %}text-[#fde8a2]{% elif rank.tone == 'platinum' %}text-[#d7ffff]{% else %}text-[#dbe7ff]{% endif %}">
-              {{ rank.title }}
-            </p>
-            <p class="mt-1 text-xs text-white/42">{{ rank.level_range_display }}</p>
-            <div class="mt-3 flex flex-wrap gap-1.5">
-              {% for tier in rank.tiers %}
-                <span class="group relative">
-                  <span class="inline-flex rounded-[8px] border px-2 py-1 text-xs transition {% if rewards_page.reward_progress.badge == tier.badge %}{% if rank.tone == 'bronze' %}border-[#f7d2bc]/60 bg-[#f7d2bc] text-[#1b0f09]{% elif rank.tone == 'silver' %}border-[#eef4fb]/60 bg-[#eef4fb] text-[#10141a]{% elif rank.tone == 'gold' %}border-[#fde8a2]/60 bg-[#fde8a2] text-[#1c1605]{% elif rank.tone == 'platinum' %}border-[#d7ffff]/60 bg-[#d7ffff] text-[#062326]{% else %}border-[#dbe7ff]/60 bg-[#dbe7ff] text-[#081629]{% endif %}{% else %}border-white/10 bg-white/[0.03] text-white/66 hover:border-white/16 hover:text-white{% endif %}">
-                    {{ tier.badge | replace(rank.title ~ ' ', '') }}
-                  </span>
-                  <span class="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 w-max min-w-[92px] -translate-x-1/2 translate-y-1.5 scale-[0.96] rounded-[8px] border border-white/12 bg-[#07090e] px-3 py-2 text-center opacity-0 shadow-[0_18px_50px_rgba(0,0,0,0.46)] transition group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100">
-                    <span class="block text-[10px] font-semibold uppercase text-white/38">Level {{ tier.level }}</span>
-                    <span class="mt-1 block text-sm font-semibold text-white">{{ tier.bonus_display }}</span>
-                  </span>
-                </span>
-              {% endfor %}
-            </div>
-          </article>
-        {% endfor %}
+        </div>
+
+        <button
+          class="absolute inset-y-0 right-0 flex w-10 items-center justify-end bg-gradient-to-l from-[#07090e] to-transparent text-white/36 transition hover:text-white/70"
+          data-reward-rank-next
+          type="button"
+          aria-label="Show more ranks"
+        >
+          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" aria-hidden="true">
+            <path d="M7 4l6 6-6 6"></path>
+          </svg>
+        </button>
       </div>
     </section>
 

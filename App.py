@@ -276,6 +276,7 @@ CHAT_EMOJI_ALIASES = {
     "thumbs_up": "\U0001f44d",
     "thumbsup": "\U0001f44d",
     "wave": "\U0001f44b",
+    "wilted_rose": "\U0001f940",
 }
 CHAT_MENTION_NOTIFICATION_HISTORY = {}
 USER_PRESENCE = {}
@@ -329,36 +330,86 @@ LEVEL_BONUS_CENTS = {
     23: 120_000,
     24: 150_000,
     25: 200_000,
+    26: 225_000,
+    27: 250_000,
+    28: 275_000,
+    29: 300_000,
+    30: 325_000,
+    31: 375_000,
+    32: 425_000,
+    33: 475_000,
+    34: 525_000,
+    35: 575_000,
+    36: 650_000,
+    37: 725_000,
+    38: 800_000,
+    39: 875_000,
+    40: 950_000,
+    41: 1_050_000,
+    42: 1_150_000,
+    43: 1_250_000,
+    44: 1_350_000,
+    45: 1_450_000,
+    46: 1_575_000,
+    47: 1_700_000,
+    48: 1_825_000,
+    49: 1_950_000,
+    50: 2_075_000,
 }
 # Previous placeholder badge ladder kept for later iteration:
 # Newbie, Beginner, Gambler, Regular, Grinder, Sharp, High Roller, Elite, Legend, Whale
 REWARD_TIERS = [
     {"badge": "Unranked", "level": 0, "threshold_cents": 0, "tone": "unranked"},
-    {"badge": "Bronze I", "level": 1, "threshold_cents": 5_000, "tone": "bronze"},
-    {"badge": "Bronze II", "level": 2, "threshold_cents": 10_000, "tone": "bronze"},
-    {"badge": "Bronze III", "level": 3, "threshold_cents": 20_000, "tone": "bronze"},
-    {"badge": "Bronze IV", "level": 4, "threshold_cents": 35_000, "tone": "bronze"},
-    {"badge": "Bronze V", "level": 5, "threshold_cents": 55_000, "tone": "bronze"},
-    {"badge": "Silver I", "level": 6, "threshold_cents": 80_000, "tone": "silver"},
-    {"badge": "Silver II", "level": 7, "threshold_cents": 110_000, "tone": "silver"},
-    {"badge": "Silver III", "level": 8, "threshold_cents": 150_000, "tone": "silver"},
-    {"badge": "Silver IV", "level": 9, "threshold_cents": 200_000, "tone": "silver"},
-    {"badge": "Silver V", "level": 10, "threshold_cents": 270_000, "tone": "silver"},
-    {"badge": "Gold I", "level": 11, "threshold_cents": 360_000, "tone": "gold"},
-    {"badge": "Gold II", "level": 12, "threshold_cents": 480_000, "tone": "gold"},
-    {"badge": "Gold III", "level": 13, "threshold_cents": 640_000, "tone": "gold"},
-    {"badge": "Gold IV", "level": 14, "threshold_cents": 850_000, "tone": "gold"},
-    {"badge": "Gold V", "level": 15, "threshold_cents": 1_100_000, "tone": "gold"},
-    {"badge": "Platinum I", "level": 16, "threshold_cents": 1_400_000, "tone": "platinum"},
-    {"badge": "Platinum II", "level": 17, "threshold_cents": 1_750_000, "tone": "platinum"},
-    {"badge": "Platinum III", "level": 18, "threshold_cents": 2_150_000, "tone": "platinum"},
-    {"badge": "Platinum IV", "level": 19, "threshold_cents": 2_600_000, "tone": "platinum"},
-    {"badge": "Platinum V", "level": 20, "threshold_cents": 3_100_000, "tone": "platinum"},
-    {"badge": "Diamond I", "level": 21, "threshold_cents": 3_600_000, "tone": "diamond"},
-    {"badge": "Diamond II", "level": 22, "threshold_cents": 4_100_000, "tone": "diamond"},
-    {"badge": "Diamond III", "level": 23, "threshold_cents": 4_450_000, "tone": "diamond"},
-    {"badge": "Diamond IV", "level": 24, "threshold_cents": 4_750_000, "tone": "diamond"},
-    {"badge": "Diamond V", "level": 25, "threshold_cents": 5_000_000, "tone": "diamond"},
+    {"badge": "Wood I", "level": 1, "threshold_cents": 15_000, "tone": "wood"},
+    {"badge": "Wood II", "level": 2, "threshold_cents": 30_000, "tone": "wood"},
+    {"badge": "Wood III", "level": 3, "threshold_cents": 60_000, "tone": "wood"},
+    {"badge": "Wood IV", "level": 4, "threshold_cents": 105_000, "tone": "wood"},
+    {"badge": "Wood V", "level": 5, "threshold_cents": 165_000, "tone": "wood"},
+    {"badge": "Bronze I", "level": 6, "threshold_cents": 240_000, "tone": "bronze"},
+    {"badge": "Bronze II", "level": 7, "threshold_cents": 330_000, "tone": "bronze"},
+    {"badge": "Bronze III", "level": 8, "threshold_cents": 450_000, "tone": "bronze"},
+    {"badge": "Bronze IV", "level": 9, "threshold_cents": 600_000, "tone": "bronze"},
+    {"badge": "Bronze V", "level": 10, "threshold_cents": 810_000, "tone": "bronze"},
+    {"badge": "Silver I", "level": 11, "threshold_cents": 1_080_000, "tone": "silver"},
+    {"badge": "Silver II", "level": 12, "threshold_cents": 1_440_000, "tone": "silver"},
+    {"badge": "Silver III", "level": 13, "threshold_cents": 1_920_000, "tone": "silver"},
+    {"badge": "Silver IV", "level": 14, "threshold_cents": 2_550_000, "tone": "silver"},
+    {"badge": "Silver V", "level": 15, "threshold_cents": 3_300_000, "tone": "silver"},
+    {"badge": "Gold I", "level": 16, "threshold_cents": 4_200_000, "tone": "gold"},
+    {"badge": "Gold II", "level": 17, "threshold_cents": 5_250_000, "tone": "gold"},
+    {"badge": "Gold III", "level": 18, "threshold_cents": 6_450_000, "tone": "gold"},
+    {"badge": "Gold IV", "level": 19, "threshold_cents": 7_800_000, "tone": "gold"},
+    {"badge": "Gold V", "level": 20, "threshold_cents": 9_300_000, "tone": "gold"},
+    {"badge": "Platinum I", "level": 21, "threshold_cents": 10_800_000, "tone": "platinum"},
+    {"badge": "Platinum II", "level": 22, "threshold_cents": 12_300_000, "tone": "platinum"},
+    {"badge": "Platinum III", "level": 23, "threshold_cents": 13_350_000, "tone": "platinum"},
+    {"badge": "Platinum IV", "level": 24, "threshold_cents": 14_250_000, "tone": "platinum"},
+    {"badge": "Platinum V", "level": 25, "threshold_cents": 15_000_000, "tone": "platinum"},
+    {"badge": "Jade I", "level": 26, "threshold_cents": 16_000_000, "tone": "jade"},
+    {"badge": "Jade II", "level": 27, "threshold_cents": 17_000_000, "tone": "jade"},
+    {"badge": "Jade III", "level": 28, "threshold_cents": 18_000_000, "tone": "jade"},
+    {"badge": "Jade IV", "level": 29, "threshold_cents": 19_000_000, "tone": "jade"},
+    {"badge": "Jade V", "level": 30, "threshold_cents": 20_000_000, "tone": "jade"},
+    {"badge": "Sapphire I", "level": 31, "threshold_cents": 21_250_000, "tone": "sapphire"},
+    {"badge": "Sapphire II", "level": 32, "threshold_cents": 22_500_000, "tone": "sapphire"},
+    {"badge": "Sapphire III", "level": 33, "threshold_cents": 23_750_000, "tone": "sapphire"},
+    {"badge": "Sapphire IV", "level": 34, "threshold_cents": 25_000_000, "tone": "sapphire"},
+    {"badge": "Sapphire V", "level": 35, "threshold_cents": 26_250_000, "tone": "sapphire"},
+    {"badge": "Ruby I", "level": 36, "threshold_cents": 27_750_000, "tone": "ruby"},
+    {"badge": "Ruby II", "level": 37, "threshold_cents": 29_250_000, "tone": "ruby"},
+    {"badge": "Ruby III", "level": 38, "threshold_cents": 30_750_000, "tone": "ruby"},
+    {"badge": "Ruby IV", "level": 39, "threshold_cents": 32_250_000, "tone": "ruby"},
+    {"badge": "Ruby V", "level": 40, "threshold_cents": 33_750_000, "tone": "ruby"},
+    {"badge": "Diamond I", "level": 41, "threshold_cents": 35_500_000, "tone": "diamond"},
+    {"badge": "Diamond II", "level": 42, "threshold_cents": 37_250_000, "tone": "diamond"},
+    {"badge": "Diamond III", "level": 43, "threshold_cents": 39_000_000, "tone": "diamond"},
+    {"badge": "Diamond IV", "level": 44, "threshold_cents": 40_750_000, "tone": "diamond"},
+    {"badge": "Diamond V", "level": 45, "threshold_cents": 42_500_000, "tone": "diamond"},
+    {"badge": "Obsidian I", "level": 46, "threshold_cents": 44_500_000, "tone": "obsidian"},
+    {"badge": "Obsidian II", "level": 47, "threshold_cents": 46_500_000, "tone": "obsidian"},
+    {"badge": "Obsidian III", "level": 48, "threshold_cents": 48_500_000, "tone": "obsidian"},
+    {"badge": "Obsidian IV", "level": 49, "threshold_cents": 50_500_000, "tone": "obsidian"},
+    {"badge": "Obsidian V", "level": 50, "threshold_cents": 52_500_000, "tone": "obsidian"},
 ]
 LAST_PERSISTED_STATE_DIGEST = None
 
@@ -1521,11 +1572,16 @@ def build_rewards_page_state(user_id, now=None):
 
 def build_reward_rank_guide():
     rank_descriptions = {
-        "bronze": "Entry bracket. Early levels unlock here and ramp up quickly.",
-        "silver": "Mid-tier bracket for active players with steadier reward payouts.",
+        "wood": "Starting bracket for the first reward milestones.",
+        "bronze": "Early bracket. Progression starts to stretch beyond the opener.",
+        "silver": "Active-player bracket with steadier reward payouts.",
         "gold": "Advanced bracket with noticeably stronger bonus jumps per level.",
-        "platinum": "High-end bracket for heavy volume and bigger milestone claims.",
-        "diamond": "Top bracket. This is the last stretch from level 21 to 25.",
+        "platinum": "High-volume bracket for larger milestone claims.",
+        "jade": "Extended bracket for sustained high-volume play.",
+        "sapphire": "Prestige bracket with larger unlock gaps and milestone claims.",
+        "ruby": "Late-game bracket for very heavy wager volume.",
+        "diamond": "Endgame bracket with very large reward score requirements.",
+        "obsidian": "Final bracket. This is the last stretch from level 46 to 50.",
     }
     rank_groups = []
 
@@ -7475,16 +7531,41 @@ def format_signed_money(amount_cents):
     return absolute_display
 
 
-def parse_balance_adjustment_to_cents(raw_value):
+def parse_admin_money_adjustment_to_cents(raw_value, field_label):
     try:
         parsed_value = Decimal(str(raw_value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, TypeError, ValueError):
-        raise ValueError("Enter a valid balance adjustment.")
+        raise ValueError(f"Enter a valid {field_label} adjustment.")
 
     if parsed_value == 0:
-        raise ValueError("Enter a non-zero balance adjustment.")
+        raise ValueError(f"Enter a non-zero {field_label} adjustment.")
 
     return int(parsed_value * 100)
+
+
+def get_admin_target_profile(target_user_id):
+    if target_user_id == BOT_PROFILE["id"]:
+        raise ValueError("That player could not be found.")
+
+    target_profile = USER_PROFILES.get(target_user_id)
+
+    if not target_profile:
+        known_user_ids = (
+            set(USER_BALANCES.keys())
+            | set(USER_VAULTS.keys())
+            | set(USER_STATS.keys())
+            | set(USER_REWARDS.keys())
+            | set(USER_BET_HISTORY.keys())
+        )
+
+        if target_user_id not in known_user_ids:
+            raise ValueError("That player could not be found.")
+
+    return normalize_user_profile(target_profile or {
+        "display_name": target_user_id,
+        "id": target_user_id,
+        "username": target_user_id,
+    })
 
 
 def get_admin_balance_adjustment_record(actor_user_id):
@@ -7703,8 +7784,10 @@ def build_admin_player_rows(current_user_id):
     user_ids = (
         set(USER_PROFILES.keys())
         | set(USER_BALANCES.keys())
+        | set(USER_VAULTS.keys())
         | set(USER_STATS.keys())
         | set(USER_REWARDS.keys())
+        | set(USER_BET_HISTORY.keys())
     ) - {BOT_PROFILE["id"]}
     player_rows = []
 
@@ -7719,6 +7802,7 @@ def build_admin_player_rows(current_user_id):
         presence = USER_PRESENCE.get(user_id) or {}
         is_online = user_presence_is_online(presence)
         balance_cents = get_user_balance(user_id)
+        vault_cents = get_user_vault_balance(user_id)
         current_path = normalize_presence_path(presence.get("current_path"))
         last_seen = presence.get("last_seen") or user_profile.get("last_active_at")
 
@@ -7731,10 +7815,16 @@ def build_admin_player_rows(current_user_id):
                     if has_request_context()
                     else None
                 ),
+                "admin_reset_url": (
+                    url_for("admin_reset_user_data", user_id=user_id)
+                    if has_request_context()
+                    else None
+                ),
                 "balance_cents": balance_cents,
                 "balance_display": format_money(balance_cents),
                 "can_force_logout": user_id != current_user_id,
                 "can_adjust_balance": True,
+                "can_reset_player": current_user_id == ADMIN_PANEL_USER_ID,
                 "connected_since": presence.get("connected_at"),
                 "current_path": current_path,
                 "current_path_label": build_admin_location_label(current_path),
@@ -7762,6 +7852,13 @@ def build_admin_player_rows(current_user_id):
                 "total_wagered_cents": stats["total_wagered_cents"],
                 "total_wagered_display": format_money(stats["total_wagered_cents"]),
                 "username": user_profile["username"],
+                "vault_adjust_url": (
+                    url_for("admin_adjust_user_vault", user_id=user_id)
+                    if has_request_context()
+                    else None
+                ),
+                "vault_cents": vault_cents,
+                "vault_display": format_money(vault_cents),
                 "win_rate": round(stats["bets_won"] / stats["total_bets"] * 100 if stats["total_bets"] else 0, 1),
                 "wins": stats["bets_won"],
                 "losses": stats["bets_lost"],
@@ -7950,6 +8047,7 @@ def build_admin_panel_payload(current_user_id):
                 "last_seen": row["last_seen"],
                 "reward_level": row["reward_level"],
                 "total_wagered_cents": row["total_wagered_cents"],
+                "vault_cents": row["vault_cents"],
                 "win_rate": row["win_rate"],
             }
             for row in player_rows
@@ -7977,12 +8075,9 @@ def build_admin_panel_payload(current_user_id):
 
 
 def admin_adjust_balance(actor_user, target_user_id, raw_amount):
-    target_profile = USER_PROFILES.get(target_user_id)
+    get_admin_target_profile(target_user_id)
 
-    if not target_profile or target_user_id == BOT_PROFILE["id"]:
-        raise ValueError("That player could not be found.")
-
-    adjustment_cents = parse_balance_adjustment_to_cents(raw_amount)
+    adjustment_cents = parse_admin_money_adjustment_to_cents(raw_amount, "balance")
     current_balance_cents = get_user_balance(target_user_id)
     next_balance_cents = current_balance_cents + adjustment_cents
 
@@ -8013,6 +8108,108 @@ def admin_adjust_balance(actor_user, target_user_id, raw_amount):
         "adjustment_display": format_signed_money(adjustment_cents),
         "balance_cents": next_balance_cents,
         "balance_display": format_money(next_balance_cents),
+        "user_id": target_user_id,
+    }
+
+
+def admin_adjust_vault(actor_user, target_user_id, raw_amount):
+    get_admin_target_profile(target_user_id)
+
+    adjustment_cents = parse_admin_money_adjustment_to_cents(raw_amount, "vault")
+    current_vault_cents = get_user_vault_balance(target_user_id)
+    next_vault_cents = current_vault_cents + adjustment_cents
+
+    if next_vault_cents < 0:
+        raise ValueError("Adjustment would make the vault negative.")
+
+    validate_admin_balance_adjustment(actor_user, adjustment_cents)
+    set_user_vault_balance(target_user_id, next_vault_cents)
+
+    actor_snapshot = make_user_snapshot(actor_user)
+    add_app_notification(
+        actor_user=actor_snapshot,
+        event_type="admin_vault_adjusted",
+        message=(
+            f"{actor_snapshot['display_name']} adjusted your vault by "
+            f"{format_signed_money(adjustment_cents)}."
+        ),
+        recipient_user_id=target_user_id,
+        title="Vault updated",
+        tone="success" if adjustment_cents > 0 else "info",
+    )
+
+    return {
+        "adjustment_cents": adjustment_cents,
+        "adjustment_display": format_signed_money(adjustment_cents),
+        "user_id": target_user_id,
+        "vault_cents": next_vault_cents,
+        "vault_display": format_money(next_vault_cents),
+    }
+
+
+def reset_user_stats_record(user_id):
+    USER_STATS[user_id] = {
+        "total_deposited_cents": 0,
+        "total_wagered_cents": 0,
+        "bets_won": 0,
+        "bets_lost": 0,
+        "total_bets": 0,
+    }
+
+
+def reset_user_wager_stats_record(user_id):
+    stats = get_user_stats(user_id)
+    stats["total_wagered_cents"] = 0
+    stats["bets_won"] = 0
+    stats["bets_lost"] = 0
+    stats["total_bets"] = 0
+
+
+def admin_reset_player_data(actor_user, target_user_id, reset_action):
+    get_admin_target_profile(target_user_id)
+    action = str(reset_action or "").strip().lower()
+    valid_actions = {"all", "wallet", "vault", "rewards", "wagered"}
+
+    if action not in valid_actions:
+        raise ValueError("Choose a valid player reset action.")
+
+    actor_snapshot = make_user_snapshot(actor_user)
+
+    if action == "wallet":
+        set_user_balance(target_user_id, STARTING_BALANCE_CENTS)
+        summary = f"Wallet reset to {format_money(STARTING_BALANCE_CENTS)}."
+    elif action == "vault":
+        set_user_vault_balance(target_user_id, 0)
+        summary = "Vault reset to $0."
+    elif action == "wagered":
+        reset_user_wager_stats_record(target_user_id)
+        USER_BET_HISTORY.pop(target_user_id, None)
+        summary = "Wager and bet stats reset."
+    elif action == "rewards":
+        USER_REWARDS.pop(target_user_id, None)
+        reset_user_wager_stats_record(target_user_id)
+        USER_BET_HISTORY.pop(target_user_id, None)
+        summary = "Reward level reset to Unranked."
+    else:
+        set_user_balance(target_user_id, STARTING_BALANCE_CENTS)
+        set_user_vault_balance(target_user_id, 0)
+        reset_user_stats_record(target_user_id)
+        USER_BET_HISTORY.pop(target_user_id, None)
+        USER_REWARDS.pop(target_user_id, None)
+        summary = "Wallet, vault, wager stats, and reward level reset."
+
+    add_app_notification(
+        actor_user=actor_snapshot,
+        event_type="admin_player_reset",
+        message=f"{actor_snapshot['display_name']} reset part of your player data. {summary}",
+        recipient_user_id=target_user_id,
+        title="Account data reset",
+        tone="info",
+    )
+
+    return {
+        "action": action,
+        "summary": summary,
         "user_id": target_user_id,
     }
 
@@ -8880,6 +9077,52 @@ def admin_adjust_user_balance(user_id):
     try:
         with STATE_LOCK:
             result = admin_adjust_balance(get_current_user(), user_id, raw_amount)
+            panel_payload = build_admin_panel_payload(get_current_user_id())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        **result,
+        "panel": panel_payload,
+    })
+
+
+@app.route("/panel/users/<user_id>/vault", methods=["POST"])
+@admin_panel_required
+def admin_adjust_user_vault(user_id):
+    payload = request.get_json(silent=True)
+    raw_amount = (
+        payload.get("amount")
+        if isinstance(payload, dict)
+        else request.form.get("amount")
+    )
+
+    try:
+        with STATE_LOCK:
+            result = admin_adjust_vault(get_current_user(), user_id, raw_amount)
+            panel_payload = build_admin_panel_payload(get_current_user_id())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        **result,
+        "panel": panel_payload,
+    })
+
+
+@app.route("/panel/users/<user_id>/reset", methods=["POST"])
+@admin_owner_required
+def admin_reset_user_data(user_id):
+    payload = request.get_json(silent=True)
+    reset_action = (
+        payload.get("action")
+        if isinstance(payload, dict)
+        else request.form.get("action")
+    )
+
+    try:
+        with STATE_LOCK:
+            result = admin_reset_player_data(get_current_user(), user_id, reset_action)
             panel_payload = build_admin_panel_payload(get_current_user_id())
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400

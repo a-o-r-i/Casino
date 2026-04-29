@@ -197,29 +197,54 @@
 
         const RewardLevel = Number.parseInt(Profile?.reward_level || "0", 10);
 
-        if (RewardLevel >= 21)
+        if (RewardLevel >= 46)
+        {
+            return "obsidian";
+        }
+
+        if (RewardLevel >= 41)
         {
             return "diamond";
         }
 
-        if (RewardLevel >= 16)
+        if (RewardLevel >= 36)
+        {
+            return "ruby";
+        }
+
+        if (RewardLevel >= 31)
+        {
+            return "sapphire";
+        }
+
+        if (RewardLevel >= 26)
+        {
+            return "jade";
+        }
+
+        if (RewardLevel >= 21)
         {
             return "platinum";
         }
 
-        if (RewardLevel >= 11)
+        if (RewardLevel >= 16)
         {
             return "gold";
         }
 
-        if (RewardLevel >= 6)
+        if (RewardLevel >= 11)
         {
             return "silver";
         }
 
-        if (RewardLevel >= 1)
+        if (RewardLevel >= 6)
         {
             return "bronze";
+        }
+
+        if (RewardLevel >= 1)
+        {
+            return "wood";
         }
 
         return "unranked";
