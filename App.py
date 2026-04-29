@@ -2912,15 +2912,7 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
         if not session_share:
             raise ValueError("That session could not be shared.")
 
-        if not normalized_body:
-            default_share_bodies = {
-                "blackjack": "Shared a blackjack table.",
-                "coinflip": "Shared a coinflip session.",
-                "dice": "Shared a dice session.",
-            }
-            normalized_body = default_share_bodies.get(shared_game, "Shared a session.")
-
-    if not normalized_body:
+    if not normalized_body and not session_share:
         raise ValueError("Write a message before sending it.")
 
     if len(normalized_body) > CHAT_MAX_MESSAGE_LENGTH:

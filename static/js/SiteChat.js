@@ -1230,6 +1230,9 @@ const BuildAuthorBadgeMarkup = (User) =>
         );
         const IsReplyToCurrentUser = Message.reply_to?.author?.id === CurrentUserId;
         const BubbleContentMarkup = `${BuildReplyContextMarkup(Message.reply_to)}${BuildHighlightedBodyMarkup(Message)}`;
+        const BodyBubbleMarkup = BubbleContentMarkup.trim()
+            ? `<div data-chat-bubble>${BubbleContentMarkup}</div>`
+            : "";
         const AuthorBadgeMarkup = BuildAuthorBadgeMarkup(Message.author);
         const AuthorMarkup = IsGrouped
             ? ""
@@ -1278,7 +1281,7 @@ const BuildAuthorBadgeMarkup = (User) =>
                   </svg>
                 </button>
                 ${AuthorMarkup}
-                <div data-chat-bubble>${BubbleContentMarkup}</div>
+                ${BodyBubbleMarkup}
                 ${RenderSessionShareMarkup(Message.session_share)}
                 ${TimestampMarkup}
               </article>
