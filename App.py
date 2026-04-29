@@ -1013,6 +1013,17 @@ def set_user_vault_balance(user_id, amount_cents):
     USER_VAULTS[user_id] = max(0, int(amount_cents or 0))
 
 
+def credit_user_vault(user_id, amount_cents):
+    amount_cents = int(amount_cents or 0)
+
+    if not user_id or amount_cents <= 0:
+        return get_user_vault_balance(user_id)
+
+    next_vault_cents = get_user_vault_balance(user_id) + amount_cents
+    set_user_vault_balance(user_id, next_vault_cents)
+    return next_vault_cents
+
+
 def ensure_user_stats(user_profile):
     if not user_profile:
         return
@@ -1723,11 +1734,11 @@ def claim_user_rakeback(user_id, now=None):
     reward_record = get_user_reward_record(user_id)
     reward_record["rakeback_claimed_cents"] = reward_record.get("rakeback_claimed_cents", 0) + claimable_cents
     reward_record["last_rakeback_claimed_at"] = current_time
-    set_user_balance(user_id, get_user_balance(user_id) + claimable_cents)
+    credit_user_vault(user_id, claimable_cents)
     add_app_notification(
         actor_user=USER_PROFILES.get(user_id),
         event_type="reward_instant_rakeback_claimed",
-        message=f"You claimed {format_money(claimable_cents)} from Rakeback.",
+        message=f"You claimed {format_money(claimable_cents)} from Rakeback. It was added to your vault.",
         recipient_user_id=user_id,
         title="Rakeback claimed",
         tone="success",
@@ -1761,7 +1772,7 @@ def claim_user_level_reward(user_id, now=None):
     reward_record["bonus_unlocked_levels"] = sorted(unlocked_levels)
 
     if bonus_cents > 0:
-        set_user_balance(user_id, get_user_balance(user_id) + bonus_cents)
+        credit_user_vault(user_id, bonus_cents)
 
     next_reward_state = build_reward_state(user_id, current_time)
     next_reward_state["claimed_level_reward"] = pending_level_reward
@@ -1786,11 +1797,11 @@ def claim_user_daily_rakeback(user_id, now=None):
 
     claimed_days.add(daily_state["day_key"])
     reward_record["claimed_daily_rakeback_days"] = sorted(claimed_days)
-    set_user_balance(user_id, get_user_balance(user_id) + claimable_cents)
+    credit_user_vault(user_id, claimable_cents)
     add_app_notification(
         actor_user=USER_PROFILES.get(user_id),
         event_type="reward_daily_rakeback_claimed",
-        message=f"You claimed {format_money(claimable_cents)} from Daily Rakeback.",
+        message=f"You claimed {format_money(claimable_cents)} from Daily Rakeback. It was added to your vault.",
         recipient_user_id=user_id,
         title="Daily rakeback claimed",
         tone="success",
@@ -1819,13 +1830,13 @@ def claim_user_weekly_bonus(user_id, now=None):
 
     claimed_weeks.add(weekly_state["previous_week_key"])
     reward_record["claimed_weekly_bonus_weeks"] = sorted(claimed_weeks)
-    set_user_balance(user_id, get_user_balance(user_id) + claimable_cents)
+    credit_user_vault(user_id, claimable_cents)
     add_app_notification(
         actor_user=USER_PROFILES.get(user_id),
         event_type="reward_weekly_bonus_claimed",
         message=(
             f"You claimed {format_money(claimable_cents)} from Weekly Bonus "
-            f"for {weekly_state['previous_week_label']}."
+            f"for {weekly_state['previous_week_label']}. It was added to your vault."
         ),
         recipient_user_id=user_id,
         title="Weekly bonus claimed",
@@ -1856,13 +1867,13 @@ def claim_user_leader_reward(user_id, now=None):
 
     claimed_weeks.add(leader_state["previous_week_key"])
     reward_record["claimed_leader_reward_weeks"] = sorted(claimed_weeks)
-    set_user_balance(user_id, get_user_balance(user_id) + claimable_cents)
+    credit_user_vault(user_id, claimable_cents)
     add_app_notification(
         actor_user=USER_PROFILES.get(user_id),
         event_type="reward_leader_prize_claimed",
         message=(
             f"You claimed {format_money(claimable_cents)} for finishing "
-            f"#{winner_row['rank']} in weekly wager."
+            f"#{winner_row['rank']} in weekly wager. It was added to your vault."
         ),
         recipient_user_id=user_id,
         title="Leader reward claimed",
@@ -1894,13 +1905,13 @@ def claim_user_daily_leader_reward(user_id, now=None):
 
     claimed_days.add(leader_state["previous_day_key"])
     reward_record["claimed_daily_leader_reward_days"] = sorted(claimed_days)
-    set_user_balance(user_id, get_user_balance(user_id) + claimable_cents)
+    credit_user_vault(user_id, claimable_cents)
     add_app_notification(
         actor_user=USER_PROFILES.get(user_id),
         event_type="reward_daily_leader_prize_claimed",
         message=(
             f"You claimed {format_money(claimable_cents)} for finishing "
-            f"#{winner_row['rank']} in daily wager."
+            f"#{winner_row['rank']} in daily wager. It was added to your vault."
         ),
         recipient_user_id=user_id,
         title="Daily leader reward claimed",
@@ -2727,11 +2738,11 @@ def maybe_award_online_player_bonus(now=None):
     bonus_display = format_money(ONLINE_PLAYER_BONUS_CENTS)
 
     for user_id in recipient_ids:
-        set_user_balance(user_id, get_user_balance(user_id) + ONLINE_PLAYER_BONUS_CENTS)
+        credit_user_vault(user_id, ONLINE_PLAYER_BONUS_CENTS)
         add_app_notification(
             actor_user=BOT_PROFILE,
             event_type="online_player_bonus",
-            message=f"{bonus_display} was added to your balance for being online.",
+            message=f"{bonus_display} was added to your vault for being online.",
             recipient_user_id=user_id,
             title="Online bonus",
             tone="success",
@@ -8977,10 +8988,13 @@ def build_profile_stats_formatted(stats):
 def build_rewards_response_payload(user_id, claimed_reward=None):
     rewards_page_state = build_rewards_page_state(user_id)
     current_balance_cents = get_user_balance(user_id)
+    current_vault_cents = get_user_vault_balance(user_id)
     return {
         "claimed_reward": claimed_reward,
         "current_balance_cents": current_balance_cents,
         "current_balance_display": format_money(current_balance_cents),
+        "current_vault_cents": current_vault_cents,
+        "current_vault_display": format_money(current_vault_cents),
         "page": rewards_page_state,
         "rewards": rewards_page_state["reward_progress"],
     }
@@ -9025,11 +9039,13 @@ def rewards_page():
     with STATE_LOCK:
         rewards_page_state = build_rewards_page_state(current_user_id)
         current_balance_display = format_money(get_user_balance(current_user_id))
+        current_vault_display = format_money(get_user_vault_balance(current_user_id))
 
     return render_template(
         "Rewards.html",
         active_page="rewards",
         current_balance_display=current_balance_display,
+        current_vault_display=current_vault_display,
         reward_rank_guide=build_reward_rank_guide(),
         rewards_page=rewards_page_state,
     )

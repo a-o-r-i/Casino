@@ -112,7 +112,7 @@
         }
 
         window.GamblingApp?.showToast?.({
-            message: `${ClaimedReward?.amount_display || "$0"} was added to your balance.`,
+            message: `${ClaimedReward?.amount_display || "$0"} was added to your vault.`,
             title: ClaimedReward?.title || "Reward claimed",
             tone: "success",
         });
@@ -208,7 +208,7 @@
         Button.textContent = Label;
     };
 
-    const ApplyPageState = (PageState, CurrentBalanceDisplay = null) =>
+    const ApplyPageState = (PageState, CurrentBalanceDisplay = null, CurrentVaultDisplay = null) =>
     {
         if (!PageState)
         {
@@ -296,6 +296,12 @@
         if (CurrentBalanceDisplay)
         {
             SetText("[data-balance-display]", CurrentBalanceDisplay);
+            SetText("[data-vault-wallet-display]", CurrentBalanceDisplay);
+        }
+
+        if (CurrentVaultDisplay)
+        {
+            SetText("[data-vault-balance-display]", CurrentVaultDisplay);
         }
 
         ScheduleCooldownRefresh();
@@ -327,7 +333,7 @@
 
             if (Payload.page)
             {
-                ApplyPageState(Payload.page, Payload.current_balance_display);
+                ApplyPageState(Payload.page, Payload.current_balance_display, Payload.current_vault_display);
             }
 
             if (!Response.ok)
@@ -380,7 +386,7 @@
             try
             {
                 const Parsed = JSON.parse(StateNode.textContent);
-                ApplyPageState(Parsed.page, Parsed.current_balance_display);
+                ApplyPageState(Parsed.page, Parsed.current_balance_display, Parsed.current_vault_display);
             }
             catch (ErrorValue)
             {
