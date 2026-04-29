@@ -455,13 +455,17 @@
     const SyncVaultAmountMax = (Payload) =>
     {
         const BalanceCents = Number(Payload?.current_balance_cents);
+        const VaultCents = Number(Payload?.vault_balance_cents);
 
-        if (!Number.isFinite(BalanceCents))
+        if (!Number.isFinite(BalanceCents) && !Number.isFinite(VaultCents))
         {
             return;
         }
 
-        const MaxAmount = Math.max(BalanceCents / 100, 0);
+        const MaxSourceCents = Number.isFinite(VaultCents) && VaultCents > 0
+            ? VaultCents
+            : BalanceCents;
+        const MaxAmount = Math.max((Number(MaxSourceCents) || 0) / 100, 0);
 
         document.querySelectorAll("[data-vault-amount]").forEach((InputNode) =>
         {
