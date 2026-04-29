@@ -79,6 +79,8 @@ BLACKJACK_SESSION_MAX_SEATS = 5
 BLACKJACK_SHOE_COUNT = 6
 BLACKJACK_RESHUFFLE_THRESHOLD = 20
 BLACKJACK_BETTING_COUNTDOWN_SECONDS = 30
+BLACKJACK_TURN_TIMEOUT_SECONDS = 30
+BLACKJACK_UNBET_SEAT_TIMEOUT_SECONDS = 30
 BLACKJACK_SETTLE_HOLD_SECONDS = 4.0
 BLACKJACK_IDLE_EMPTY_TTL_SECONDS = 60 * 60
 BLACKJACK_DEFAULT_MIN_BET_CENTS = 100
@@ -3344,6 +3346,9 @@ def create_blackjack_table_state():
         "seat_side_bets": {},
         "settled_at": None,
         "shoe": create_blackjack_shoe(),
+        "turn_ends_at": None,
+        "turn_hand_id": None,
+        "turn_started_at": None,
         "updated_at": time.time(),
     }
 
@@ -3372,6 +3377,9 @@ def ensure_blackjack_table_state(blackjack_session):
     table_state.setdefault("round_state", BLACKJACK_ROUND_WAITING)
     table_state.setdefault("seat_side_bets", {})
     table_state.setdefault("settled_at", None)
+    table_state.setdefault("turn_ends_at", None)
+    table_state.setdefault("turn_hand_id", None)
+    table_state.setdefault("turn_started_at", None)
 
     shoe = table_state.get("shoe")
 
@@ -3854,10 +3862,34 @@ def clear_blackjack_betting_timer(table_state):
     table_state["betting_ends_at"] = None
 
 
+def clear_blackjack_turn_timer(table_state):
+    table_state["turn_started_at"] = None
+    table_state["turn_ends_at"] = None
+    table_state["turn_hand_id"] = None
+
+
 def start_blackjack_betting_timer(table_state, now=None):
     current_time = now or time.time()
     table_state["betting_started_at"] = current_time
     table_state["betting_ends_at"] = current_time + BLACKJACK_BETTING_COUNTDOWN_SECONDS
+
+
+def start_blackjack_turn_timer(table_state, active_hand=None, now=None):
+    if table_state.get("round_state") != BLACKJACK_ROUND_PLAYER_TURN:
+        clear_blackjack_turn_timer(table_state)
+        return False
+
+    hand = active_hand or get_blackjack_active_hand(table_state)
+
+    if not hand:
+        clear_blackjack_turn_timer(table_state)
+        return False
+
+    current_time = now or time.time()
+    table_state["turn_started_at"] = current_time
+    table_state["turn_ends_at"] = current_time + BLACKJACK_TURN_TIMEOUT_SECONDS
+    table_state["turn_hand_id"] = hand.get("id")
+    return True
 
 
 def get_blackjack_betting_ends_at(table_state):
@@ -3873,6 +3905,31 @@ def get_blackjack_betting_ends_at(table_state):
         return None
 
     return betting_ends_at
+
+
+def get_blackjack_turn_ends_at(table_state, active_hand=None):
+    if table_state.get("round_state") != BLACKJACK_ROUND_PLAYER_TURN:
+        return None
+
+    hand = active_hand or get_blackjack_active_hand(table_state)
+
+    if not hand:
+        return None
+
+    turn_hand_id = table_state.get("turn_hand_id")
+
+    if turn_hand_id and turn_hand_id != hand.get("id"):
+        return None
+
+    try:
+        turn_ends_at = float(table_state.get("turn_ends_at") or 0)
+    except (TypeError, ValueError):
+        return None
+
+    if turn_ends_at <= 0:
+        return None
+
+    return turn_ends_at
 
 
 def ensure_blackjack_betting_timer(table_state, seat_claims, now=None, *, reset=False):
@@ -3977,6 +4034,13 @@ def blackjack_table_has_active_hand_for_seat(table_state, seat_id):
     )
 
 
+def blackjack_table_has_hand_for_seat(table_state, seat_id):
+    return any(
+        hand.get("seat_id") == seat_id
+        for hand in table_state.get("hands") or []
+    )
+
+
 def remove_blackjack_pending_bets_for_seat(table_state, seat_id):
     table_state["pending_bet_chips"] = [
         chip
@@ -4014,25 +4078,6 @@ def cleanup_blackjack_pending_bets_for_claims(blackjack_session):
         table_state["round_state"] = BLACKJACK_ROUND_WAITING
         table_state["message"] = ""
         clear_blackjack_betting_timer(table_state)
-
-
-def blackjack_seat_has_locked_bet_state(table_state, seat_id, user_id):
-    if not seat_id or not user_id:
-        return False
-
-    if any(
-        chip.get("seat_id") == seat_id and chip.get("user_id") == user_id
-        for chip in table_state.get("pending_bet_chips") or []
-    ):
-        return True
-
-    if any(
-        hand.get("seat_id") == seat_id and hand.get("user_id") == user_id
-        for hand in table_state.get("hands") or []
-    ):
-        return True
-
-    return False
 
 
 def get_blackjack_seat_hand_indexes(table_state, seat_id):
@@ -4449,6 +4494,7 @@ def maybe_offer_blackjack_insurance(table_state):
     if offered_any:
         table_state["round_state"] = BLACKJACK_ROUND_INSURANCE
         table_state["message"] = "Dealer shows an Ace. Insurance?"
+        clear_blackjack_turn_timer(table_state)
         table_state["updated_at"] = time.time()
 
     return offered_any
@@ -4522,6 +4568,7 @@ def continue_blackjack_round_after_initial_deal(blackjack_session, allow_insuran
     table_state["active_hand_index"] = next_index
     table_state["round_state"] = BLACKJACK_ROUND_PLAYER_TURN
     table_state["updated_at"] = time.time()
+    start_blackjack_turn_timer(table_state, table_state["hands"][next_index], table_state["updated_at"])
 
 
 def reveal_blackjack_dealer_hole_card(table_state):
@@ -4537,6 +4584,7 @@ def reveal_blackjack_dealer_hole_card(table_state):
 def finish_blackjack_dealer_turn(blackjack_session):
     table_state = ensure_blackjack_table_state(blackjack_session)
     table_state["round_state"] = BLACKJACK_ROUND_DEALER_TURN
+    clear_blackjack_turn_timer(table_state)
     reveal_blackjack_dealer_hole_card(table_state)
 
     dealer_cards = table_state["dealer"].setdefault("cards", [])
@@ -4576,6 +4624,7 @@ def advance_blackjack_after_hand(blackjack_session):
         table_state["round_state"] = BLACKJACK_ROUND_PLAYER_TURN
         table_state["message"] = ""
         table_state["updated_at"] = time.time()
+        start_blackjack_turn_timer(table_state, table_state["hands"][next_index], table_state["updated_at"])
         return
 
     finish_blackjack_dealer_turn(blackjack_session)
@@ -4597,6 +4646,7 @@ def reset_blackjack_table_for_next_round(blackjack_session):
     table_state["round_state"] = BLACKJACK_ROUND_BETTING if seat_claims else BLACKJACK_ROUND_WAITING
     table_state["seat_side_bets"] = {}
     table_state["settled_at"] = None
+    clear_blackjack_turn_timer(table_state)
     table_state["updated_at"] = time.time()
 
     if seat_claims:
@@ -4632,9 +4682,47 @@ def maybe_begin_blackjack_round_on_timeout(blackjack_session, now=None):
     return False
 
 
+def resolve_blackjack_turn_timeout(blackjack_session, now=None):
+    table_state = ensure_blackjack_table_state(blackjack_session)
+
+    if table_state.get("round_state") != BLACKJACK_ROUND_PLAYER_TURN:
+        clear_blackjack_turn_timer(table_state)
+        return False
+
+    active_hand = get_blackjack_active_hand(table_state)
+
+    if not active_hand:
+        clear_blackjack_turn_timer(table_state)
+        advance_blackjack_after_hand(blackjack_session)
+        return True
+
+    hand_value = get_blackjack_hand_value(active_hand.get("cards") or [])
+
+    if active_hand.get("bust") or active_hand.get("stood") or active_hand.get("blackjack") or hand_value["total"] >= 21:
+        clear_blackjack_turn_timer(table_state)
+        advance_blackjack_after_hand(blackjack_session)
+        return True
+
+    current_time = now or time.time()
+    turn_ends_at = get_blackjack_turn_ends_at(table_state, active_hand)
+
+    if not turn_ends_at:
+        start_blackjack_turn_timer(table_state, active_hand, current_time)
+        table_state["updated_at"] = current_time
+        return False
+
+    if current_time < turn_ends_at:
+        return False
+
+    active_hand["stood"] = True
+    table_state["updated_at"] = current_time
+    advance_blackjack_after_hand(blackjack_session)
+    return True
+
+
 def sync_blackjack_table_lifecycle(blackjack_session):
     table_state = ensure_blackjack_table_state(blackjack_session)
-    cleanup_blackjack_pending_bets_for_claims(blackjack_session)
+    sync_blackjack_session_seat_claims(blackjack_session)
 
     if (
         table_state.get("round_state") == BLACKJACK_ROUND_SETTLING
@@ -4642,6 +4730,8 @@ def sync_blackjack_table_lifecycle(blackjack_session):
         and time.time() >= table_state["settled_at"] + BLACKJACK_SETTLE_HOLD_SECONDS
     ):
         reset_blackjack_table_for_next_round(blackjack_session)
+        table_state = ensure_blackjack_table_state(blackjack_session)
+        sync_blackjack_session_seat_claims(blackjack_session)
         table_state = ensure_blackjack_table_state(blackjack_session)
 
     if table_state.get("round_state") in {BLACKJACK_ROUND_WAITING, BLACKJACK_ROUND_BETTING}:
@@ -4653,6 +4743,12 @@ def sync_blackjack_table_lifecycle(blackjack_session):
     if table_state.get("round_state") == BLACKJACK_ROUND_INSURANCE:
         if resolve_blackjack_stale_insurance_offers(blackjack_session):
             table_state = ensure_blackjack_table_state(blackjack_session)
+
+    if table_state.get("round_state") == BLACKJACK_ROUND_PLAYER_TURN:
+        if resolve_blackjack_turn_timeout(blackjack_session):
+            table_state = ensure_blackjack_table_state(blackjack_session)
+    else:
+        clear_blackjack_turn_timer(table_state)
 
     return table_state
 
@@ -4758,6 +4854,7 @@ def begin_blackjack_round(blackjack_session, current_user_id=None):
 
     capture_blackjack_last_bet_snapshots(table_state)
     clear_blackjack_betting_timer(table_state)
+    clear_blackjack_turn_timer(table_state)
     table_state["round_id"] = secrets.token_hex(8)
     table_state["round_state"] = BLACKJACK_ROUND_DEALING
     table_state["active_hand_index"] = 0
@@ -4867,7 +4964,7 @@ def rebet_blackjack_user(blackjack_session, current_user_id):
     )
 
     for chip in snapshot:
-        seat_claims[chip["seat_id"]] = current_user_id
+        claim_blackjack_seat(blackjack_session, chip["seat_id"], current_user_id)
 
     existing_pending_chips = [
         chip
@@ -5016,6 +5113,7 @@ def perform_blackjack_player_action(blackjack_session, current_user_id, action):
             advance_blackjack_after_hand(blackjack_session)
         else:
             table_state["updated_at"] = time.time()
+            start_blackjack_turn_timer(table_state, active_hand, table_state["updated_at"])
         return
 
     if action == "stand":
@@ -5088,6 +5186,7 @@ def perform_blackjack_player_action(blackjack_session, current_user_id, action):
             finish_blackjack_dealer_turn(blackjack_session)
         else:
             table_state["active_hand_index"] = next_index
+            start_blackjack_turn_timer(table_state, table_state["hands"][next_index], table_state["updated_at"])
         return
 
     raise ValueError("Choose a valid blackjack action.")
@@ -5962,6 +6061,7 @@ def create_blackjack_session_record(creator_user, table_name, min_bet_cents=None
         "min_bet_cents": min_bet_cents,
         "seat_count": BLACKJACK_SESSION_MAX_SEATS,
         "seat_claims": {},
+        "seat_claimed_at": {},
         "table_state": create_blackjack_table_state(),
         "table_name": normalized_table_name,
     }
@@ -6359,10 +6459,78 @@ def touch_blackjack_session_presence(session_id, user_profile=None):
     touch_user_presence(profile, get_blackjack_session_path(session_id))
 
 
+def get_blackjack_seat_claimed_at(blackjack_session):
+    seat_claimed_at = blackjack_session.setdefault("seat_claimed_at", {})
+
+    if not isinstance(seat_claimed_at, dict):
+        seat_claimed_at = {}
+        blackjack_session["seat_claimed_at"] = seat_claimed_at
+
+    return seat_claimed_at
+
+
+def claim_blackjack_seat(blackjack_session, seat_id, user_id, now=None):
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+    seat_claimed_at = get_blackjack_seat_claimed_at(blackjack_session)
+    previous_owner_id = seat_claims.get(seat_id)
+    seat_claims[seat_id] = user_id
+
+    if previous_owner_id != user_id or seat_id not in seat_claimed_at:
+        seat_claimed_at[seat_id] = now or time.time()
+
+    return seat_claims
+
+
+def release_blackjack_seat(blackjack_session, table_state, seat_id):
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+    released_user_id = seat_claims.pop(seat_id, None)
+    get_blackjack_seat_claimed_at(blackjack_session).pop(seat_id, None)
+    remove_blackjack_pending_bets_for_seat(table_state, seat_id)
+
+    if released_user_id:
+        remove_blackjack_ready_user(table_state, released_user_id)
+
+    return released_user_id
+
+
+def blackjack_seat_has_pending_bet(table_state, seat_id, user_id=None):
+    return any(
+        chip.get("seat_id") == seat_id
+        and (user_id is None or chip.get("user_id") == user_id)
+        for chip in table_state.get("pending_bet_chips") or []
+    )
+
+
+def blackjack_user_is_live_at_session(user_id, session_path):
+    presence = USER_PRESENCE.get(user_id)
+
+    return bool(
+        user_presence_is_online(presence)
+        and normalize_presence_path(presence.get("current_path")) == session_path
+    )
+
+
+def blackjack_seat_should_release_for_inactivity(table_state, seat_id, user_id, claimed_at, current_time):
+    if blackjack_table_has_hand_for_seat(table_state, seat_id):
+        return False
+
+    if blackjack_seat_has_pending_bet(table_state, seat_id, user_id):
+        return False
+
+    try:
+        claimed_at_timestamp = float(claimed_at or 0)
+    except (TypeError, ValueError):
+        claimed_at_timestamp = current_time
+
+    return current_time >= claimed_at_timestamp + BLACKJACK_UNBET_SEAT_TIMEOUT_SECONDS
+
+
 def sync_blackjack_session_seat_claims(blackjack_session):
     session_path = normalize_presence_path(get_blackjack_session_path(blackjack_session["id"]))
     table_state = ensure_blackjack_table_state(blackjack_session)
     seat_claims = blackjack_session.setdefault("seat_claims", {})
+    seat_claimed_at = get_blackjack_seat_claimed_at(blackjack_session)
+    current_time = time.time()
     stale_seat_ids = []
 
     for seat_id, user_id in list(seat_claims.items()):
@@ -6370,21 +6538,42 @@ def sync_blackjack_session_seat_claims(blackjack_session):
             stale_seat_ids.append(seat_id)
             continue
 
-        presence = USER_PRESENCE.get(user_id)
-        if (
-            not user_presence_is_online(presence)
-            or normalize_presence_path(presence.get("current_path")) != session_path
-        ):
-            if blackjack_seat_has_locked_bet_state(table_state, seat_id, user_id):
+        if user_id not in USER_PROFILES:
+            if blackjack_table_has_hand_for_seat(table_state, seat_id):
                 continue
             stale_seat_ids.append(seat_id)
             continue
 
-        if user_id not in USER_PROFILES:
+        if not blackjack_user_is_live_at_session(user_id, session_path) or get_user_balance(user_id) <= 0:
+            if blackjack_table_has_hand_for_seat(table_state, seat_id):
+                continue
             stale_seat_ids.append(seat_id)
+            continue
+
+        if seat_id not in seat_claimed_at:
+            seat_claimed_at[seat_id] = current_time
+        else:
+            try:
+                float(seat_claimed_at.get(seat_id) or 0)
+            except (TypeError, ValueError):
+                seat_claimed_at[seat_id] = current_time
+                continue
+
+            if blackjack_seat_should_release_for_inactivity(
+                table_state,
+                seat_id,
+                user_id,
+                seat_claimed_at.get(seat_id),
+                current_time,
+            ):
+                stale_seat_ids.append(seat_id)
 
     for seat_id in stale_seat_ids:
-        seat_claims.pop(seat_id, None)
+        release_blackjack_seat(blackjack_session, table_state, seat_id)
+
+    for seat_id in list(seat_claimed_at.keys()):
+        if seat_id not in seat_claims:
+            seat_claimed_at.pop(seat_id, None)
 
     cleanup_blackjack_pending_bets_for_claims(blackjack_session)
     return seat_claims
@@ -6657,6 +6846,8 @@ def build_public_blackjack_table_state(blackjack_session, current_user_id):
             "isReady": bool(table_state.get("shoe", {}).get("is_ready", True)),
             "remaining": int(table_state.get("shoe", {}).get("remaining") or 0),
         },
+        "turn_ends_at": get_blackjack_turn_ends_at(table_state, active_hand),
+        "turn_started_at": table_state.get("turn_started_at"),
         "updated_at": table_state.get("updated_at"),
     }
 
@@ -8302,7 +8493,7 @@ def blackjack_table_seats(session_id):
                 owner_name = owner_profile.get("display_name") or owner_profile.get("username") or "Another player"
                 return jsonify({"error": f"{owner_name} already took that seat."}), 409
 
-            seat_claims[seat_id] = current_user_id
+            claim_blackjack_seat(blackjack_session_data, seat_id, current_user_id)
             remove_blackjack_ready_user(table_state, current_user_id)
             ensure_blackjack_betting_timer(table_state, seat_claims, reset=True)
             table_state["message"] = ""
@@ -8312,9 +8503,7 @@ def blackjack_table_seats(session_id):
             if blackjack_table_has_active_hand_for_seat(table_state, seat_id):
                 return jsonify({"error": "Finish the current hand before leaving that seat."}), 409
 
-            remove_blackjack_pending_bets_for_seat(table_state, seat_id)
-            remove_blackjack_ready_user(table_state, current_user_id)
-            seat_claims.pop(seat_id, None)
+            release_blackjack_seat(blackjack_session_data, table_state, seat_id)
             if table_state.get("round_state") == BLACKJACK_ROUND_BETTING and not seat_claims:
                 table_state["round_state"] = BLACKJACK_ROUND_WAITING
                 table_state["message"] = ""
