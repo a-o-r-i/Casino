@@ -38,9 +38,20 @@
     const FormatDuration = (Seconds) =>
     {
         const NormalizedSeconds = Math.max(Math.ceil(Number(Seconds) || 0), 0);
-        const Hours = Math.floor(NormalizedSeconds / 3600);
+        const Days = Math.floor(NormalizedSeconds / 86400);
+        const Hours = Math.floor((NormalizedSeconds % 86400) / 3600);
         const Minutes = Math.floor((NormalizedSeconds % 3600) / 60);
         const RemainingSeconds = NormalizedSeconds % 60;
+
+        if (Days > 0)
+        {
+            if (Hours > 0)
+            {
+                return `${Days}d ${Hours}h`;
+            }
+
+            return `${Days}d`;
+        }
 
         if (Hours > 0)
         {
@@ -53,6 +64,18 @@
         }
 
         return `${RemainingSeconds}s`;
+    };
+
+    const GetCountdownSeconds = (EndsAt, FallbackSeconds = 0) =>
+    {
+        const EndsAtNumber = Number(EndsAt || 0);
+
+        if (Number.isFinite(EndsAtNumber) && EndsAtNumber > 0)
+        {
+            return Math.max(Math.ceil((EndsAtNumber * 1000 - Date.now()) / 1000), 0);
+        }
+
+        return Math.max(Number.parseInt(FallbackSeconds || "0", 10), 0);
     };
 
     const GetClaimButton = (Key) =>
@@ -107,9 +130,9 @@
         return Math.max(Number.parseInt(PageState?.instant_rakeback?.cooldown_remaining_seconds || "0", 10), 0);
     };
 
-    const RenderLeaderboard = (Rows) =>
+    const RenderLeaderboard = (Selector, Rows, EmptyCopy) =>
     {
-        const List = document.querySelector("[data-weekly-leaderboard]");
+        const List = document.querySelector(Selector);
 
         if (!List)
         {
@@ -120,7 +143,7 @@
         {
             List.innerHTML = `
               <div class="rounded-[8px] border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center text-sm text-white/45">
-                No weekly wagers yet.
+                ${EscapeHtml(EmptyCopy || "No wagers yet.")}
               </div>
             `;
             return;
@@ -135,7 +158,10 @@
                 <p class="truncate text-xs text-white/40">${EscapeHtml(Row.id)}</p>
               </div>
             </div>
-            <p class="shrink-0 text-sm font-semibold text-white">${EscapeHtml(Row.wagered_display)}</p>
+            <div class="shrink-0 text-right">
+              <p class="text-sm font-semibold text-white">${EscapeHtml(Row.wagered_display)}</p>
+              ${Row.prize_display ? `<p class="mt-0.5 text-xs text-white/40">${EscapeHtml(Row.prize_display)}</p>` : ""}
+            </div>
           </div>
         `).join("");
     };
@@ -151,7 +177,14 @@
             CooldownTimer = 0;
         }
 
-        if (!LastPageState || GetInstantCooldownSeconds(LastPageState) <= 0)
+        if (
+            !LastPageState
+            || (
+                GetInstantCooldownSeconds(LastPageState) <= 0
+                && GetCountdownSeconds(LastPageState?.daily_leader_reward?.current_day_ends_at, LastPageState?.daily_leader_reward?.payout_countdown_seconds) <= 0
+                && GetCountdownSeconds(LastPageState?.leader_reward?.current_week_ends_at, LastPageState?.leader_reward?.payout_countdown_seconds) <= 0
+            )
+        )
         {
             return;
         }
@@ -185,10 +218,13 @@
         LastPageState = PageState;
 
         const RewardProgress = PageState.reward_progress || {};
+        const DailyLeader = PageState.daily_leader_reward || {};
         const Instant = PageState.instant_rakeback || {};
         const Daily = PageState.daily_rakeback || {};
         const Weekly = PageState.weekly_bonus || {};
         const Leader = PageState.leader_reward || {};
+        const DailyLeaderPayoutSeconds = GetCountdownSeconds(DailyLeader.current_day_ends_at, DailyLeader.payout_countdown_seconds);
+        const WeeklyLeaderPayoutSeconds = GetCountdownSeconds(Leader.current_week_ends_at, Leader.payout_countdown_seconds);
         const InstantCooldownSeconds = GetInstantCooldownSeconds(PageState);
         const CanClaimInstant = Number(Instant.claimable_cents || 0) > 0 && InstantCooldownSeconds <= 0;
         const RewardBadge = document.querySelector("[data-reward-badge]");
@@ -243,11 +279,19 @@
         SetText("[data-weekly-bonus-tier]", Weekly.current_week_tier?.label || "Starter");
         ApplyButtonState("weekly", Boolean(Weekly.can_claim));
 
+        SetText("[data-daily-leader-payout-countdown]", FormatDuration(DailyLeaderPayoutSeconds));
+        SetText("[data-daily-leader-reward-available]", DailyLeader.claimable_display || "$0");
+        SetText("[data-daily-leader-current-rank]", DailyLeader.current_rank ? `#${DailyLeader.current_rank}` : "-");
+        SetText("[data-daily-leader-previous-rank]", DailyLeader.previous_rank ? `#${DailyLeader.previous_rank}` : "-");
+        ApplyButtonState("daily-leader", Boolean(DailyLeader.can_claim));
+        RenderLeaderboard("[data-daily-leaderboard]", DailyLeader.current_day_rows || [], "No daily wagers yet.");
+
+        SetText("[data-weekly-leader-payout-countdown]", FormatDuration(WeeklyLeaderPayoutSeconds));
         SetText("[data-leader-reward-available]", Leader.claimable_display || "$0");
         SetText("[data-leader-current-rank]", Leader.current_rank ? `#${Leader.current_rank}` : "-");
         SetText("[data-leader-previous-rank]", Leader.previous_rank ? `#${Leader.previous_rank}` : "-");
         ApplyButtonState("leader", Boolean(Leader.can_claim));
-        RenderLeaderboard(Leader.current_week_rows || []);
+        RenderLeaderboard("[data-weekly-leaderboard]", Leader.current_week_rows || [], "No weekly wagers yet.");
 
         if (CurrentBalanceDisplay)
         {

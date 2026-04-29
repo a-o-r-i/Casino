@@ -298,9 +298,14 @@ WEEKLY_BONUS_TIERS = (
     {"label": "Whale", "rate_bps": 300, "threshold_cents": 2_500_000},
 )
 LEADER_REWARD_PRIZES_CENTS = {
-    1: 1_000_000,
-    2: 500_000,
-    3: 250_000,
+    1: 2_500_000,
+    2: 1_000_000,
+    3: 500_000,
+}
+DAILY_LEADER_REWARD_PRIZES_CENTS = {
+    1: 250_000,
+    2: 100_000,
+    3: 50_000,
 }
 SITE_VISIT_REWARD_CENTS = 200
 SITE_VISIT_REWARD_INTERVAL_SECONDS = 30 * 60
@@ -1127,8 +1132,21 @@ def get_all_reward_user_ids():
     ) - {BOT_PROFILE["id"]}
 
 
-def build_weekly_wager_leaderboard(start_timestamp, end_timestamp, limit=None):
+def build_leader_reward_prize_rows(prize_cents_by_rank):
+    return [
+        {
+            "prize_cents": prize_cents,
+            "prize_display": format_money(prize_cents),
+            "rank": rank,
+        }
+        for rank, prize_cents in sorted((prize_cents_by_rank or {}).items())
+        if prize_cents > 0
+    ]
+
+
+def build_weekly_wager_leaderboard(start_timestamp, end_timestamp, limit=None, prize_cents_by_rank=None):
     leaderboard_rows = []
+    prize_cents_by_rank = prize_cents_by_rank or LEADER_REWARD_PRIZES_CENTS
 
     for user_id in get_all_reward_user_ids():
         wagered_cents = get_user_wagered_cents_between(user_id, start_timestamp, end_timestamp)
@@ -1159,7 +1177,7 @@ def build_weekly_wager_leaderboard(start_timestamp, end_timestamp, limit=None):
     )
 
     for rank, row in enumerate(leaderboard_rows, start=1):
-        prize_cents = LEADER_REWARD_PRIZES_CENTS.get(rank, 0)
+        prize_cents = prize_cents_by_rank.get(rank, 0)
         row["prize_cents"] = prize_cents
         row["prize_display"] = format_money(prize_cents) if prize_cents > 0 else None
         row["rank"] = rank
@@ -1226,6 +1244,7 @@ def get_user_reward_record(user_id):
     reward_record = USER_REWARDS.setdefault(user_id, {
         "bonus_awarded_levels": [],
         "bonus_unlocked_levels": [],
+        "claimed_daily_leader_reward_days": [],
         "claimed_daily_rakeback_days": [],
         "claimed_leader_reward_weeks": [],
         "claimed_weekly_bonus_weeks": [],
@@ -1236,6 +1255,7 @@ def get_user_reward_record(user_id):
     })
     reward_record.setdefault("bonus_awarded_levels", [])
     reward_record.setdefault("bonus_unlocked_levels", [])
+    reward_record.setdefault("claimed_daily_leader_reward_days", [])
     reward_record.setdefault("claimed_daily_rakeback_days", [])
     reward_record.setdefault("claimed_leader_reward_weeks", [])
     reward_record.setdefault("claimed_weekly_bonus_weeks", [])
@@ -1506,11 +1526,21 @@ def build_leader_reward_state(user_id, now=None):
     current_time = now or time.time()
     reward_record = get_user_reward_record(user_id)
     current_week_start = get_utc_week_start(current_time)
+    current_week_end = current_week_start + timedelta(days=7)
     previous_week_start = get_utc_week_start(current_time, -1)
     previous_week_end = previous_week_start + timedelta(days=7)
     previous_week_key = previous_week_start.strftime("%Y-%m-%d")
-    current_rows = build_weekly_wager_leaderboard(current_week_start.timestamp(), current_time, limit=5)
-    previous_rows = build_weekly_wager_leaderboard(previous_week_start.timestamp(), previous_week_end.timestamp())
+    current_rows = build_weekly_wager_leaderboard(
+        current_week_start.timestamp(),
+        current_time,
+        limit=5,
+        prize_cents_by_rank=LEADER_REWARD_PRIZES_CENTS,
+    )
+    previous_rows = build_weekly_wager_leaderboard(
+        previous_week_start.timestamp(),
+        previous_week_end.timestamp(),
+        prize_cents_by_rank=LEADER_REWARD_PRIZES_CENTS,
+    )
     previous_winner_row = next((row for row in previous_rows if row["id"] == user_id and row["rank"] <= 3), None)
     claimed_weeks = set(reward_record.get("claimed_leader_reward_weeks") or [])
     current_rank_row = next((row for row in current_rows if row["id"] == user_id), None)
@@ -1524,12 +1554,59 @@ def build_leader_reward_state(user_id, now=None):
             else "$0"
         ),
         "current_rank": current_rank_row["rank"] if current_rank_row else None,
+        "current_week_ends_at": current_week_end.timestamp(),
         "current_week_label": format_week_window_label(current_week_start),
         "current_week_rows": current_rows,
+        "payout_countdown_seconds": max(int(current_week_end.timestamp() - current_time), 0),
+        "prize_rows": build_leader_reward_prize_rows(LEADER_REWARD_PRIZES_CENTS),
         "previous_rank": previous_winner_row["rank"] if previous_winner_row else None,
         "previous_week_key": previous_week_key,
         "previous_week_label": format_week_window_label(previous_week_start),
         "previous_winner_row": previous_winner_row,
+    }
+
+
+def build_daily_leader_reward_state(user_id, now=None):
+    current_time = now or time.time()
+    reward_record = get_user_reward_record(user_id)
+    current_day_start = get_utc_day_start(current_time)
+    current_day_end = current_day_start + timedelta(days=1)
+    previous_day_start = get_utc_day_start(current_time, -1)
+    previous_day_end = previous_day_start + timedelta(days=1)
+    previous_day_key = previous_day_start.strftime("%Y-%m-%d")
+    current_rows = build_weekly_wager_leaderboard(
+        current_day_start.timestamp(),
+        current_time,
+        limit=5,
+        prize_cents_by_rank=DAILY_LEADER_REWARD_PRIZES_CENTS,
+    )
+    previous_rows = build_weekly_wager_leaderboard(
+        previous_day_start.timestamp(),
+        previous_day_end.timestamp(),
+        prize_cents_by_rank=DAILY_LEADER_REWARD_PRIZES_CENTS,
+    )
+    previous_winner_row = next((row for row in previous_rows if row["id"] == user_id and row["rank"] <= 3), None)
+    claimed_days = set(reward_record.get("claimed_daily_leader_reward_days") or [])
+    current_rank_row = next((row for row in current_rows if row["id"] == user_id), None)
+
+    return {
+        "can_claim": bool(previous_winner_row and previous_day_key not in claimed_days),
+        "claimable_cents": previous_winner_row["prize_cents"] if previous_winner_row else 0,
+        "claimable_display": (
+            previous_winner_row["prize_display"]
+            if previous_winner_row and previous_winner_row["prize_display"]
+            else "$0"
+        ),
+        "current_day_ends_at": current_day_end.timestamp(),
+        "current_day_label": format_day_window_label(current_day_start),
+        "current_day_rows": current_rows,
+        "current_rank": current_rank_row["rank"] if current_rank_row else None,
+        "payout_countdown_seconds": max(int(current_day_end.timestamp() - current_time), 0),
+        "previous_day_key": previous_day_key,
+        "previous_day_label": format_day_window_label(previous_day_start),
+        "previous_rank": previous_winner_row["rank"] if previous_winner_row else None,
+        "previous_winner_row": previous_winner_row,
+        "prize_rows": build_leader_reward_prize_rows(DAILY_LEADER_REWARD_PRIZES_CENTS),
     }
 
 
@@ -1540,6 +1617,7 @@ def build_rewards_page_state(user_id, now=None):
     daily_rakeback_state = build_daily_rakeback_state(user_id, current_time)
     weekly_bonus_state = build_weekly_bonus_state(user_id, current_time)
     leader_reward_state = build_leader_reward_state(user_id, current_time)
+    daily_leader_reward_state = build_daily_leader_reward_state(user_id, current_time)
 
     if streak_state["played_today"]:
         streak_copy = "You played today. Keep the streak alive tomorrow."
@@ -1549,6 +1627,7 @@ def build_rewards_page_state(user_id, now=None):
         streak_copy = "Place a wager today to start your streak."
 
     return {
+        "daily_leader_reward": daily_leader_reward_state,
         "daily_rakeback": daily_rakeback_state,
         "instant_rakeback": {
             "can_claim": reward_state["can_claim_rakeback"],
@@ -1795,6 +1874,44 @@ def claim_user_leader_reward(user_id, now=None):
         "claimed_now_display": format_money(claimable_cents),
         "rank": winner_row["rank"],
         "window_label": leader_state["previous_week_label"],
+    }, None, 200
+
+
+def claim_user_daily_leader_reward(user_id, now=None):
+    current_time = now or time.time()
+    leader_state = build_daily_leader_reward_state(user_id, current_time)
+    winner_row = leader_state["previous_winner_row"]
+    claimable_cents = leader_state["claimable_cents"]
+
+    if not winner_row or claimable_cents <= 0:
+        return None, "No daily leader reward available to claim.", 400
+
+    reward_record = get_user_reward_record(user_id)
+    claimed_days = set(reward_record.get("claimed_daily_leader_reward_days") or [])
+
+    if leader_state["previous_day_key"] in claimed_days:
+        return None, "That daily leader reward was already claimed.", 409
+
+    claimed_days.add(leader_state["previous_day_key"])
+    reward_record["claimed_daily_leader_reward_days"] = sorted(claimed_days)
+    set_user_balance(user_id, get_user_balance(user_id) + claimable_cents)
+    add_app_notification(
+        actor_user=USER_PROFILES.get(user_id),
+        event_type="reward_daily_leader_prize_claimed",
+        message=(
+            f"You claimed {format_money(claimable_cents)} for finishing "
+            f"#{winner_row['rank']} in daily wager."
+        ),
+        recipient_user_id=user_id,
+        title="Daily leader reward claimed",
+        tone="success",
+    )
+
+    return {
+        "claimed_now_cents": claimable_cents,
+        "claimed_now_display": format_money(claimable_cents),
+        "rank": winner_row["rank"],
+        "window_label": leader_state["previous_day_label"],
     }, None, 200
 
 
@@ -6727,6 +6844,16 @@ def get_blackjack_seat_claimed_at(blackjack_session):
     return seat_claimed_at
 
 
+def get_blackjack_seat_inactive_since(blackjack_session):
+    seat_inactive_since = blackjack_session.setdefault("seat_inactive_since", {})
+
+    if not isinstance(seat_inactive_since, dict):
+        seat_inactive_since = {}
+        blackjack_session["seat_inactive_since"] = seat_inactive_since
+
+    return seat_inactive_since
+
+
 def claim_blackjack_seat(blackjack_session, seat_id, user_id, now=None):
     seat_claims = blackjack_session.setdefault("seat_claims", {})
     seat_claimed_at = get_blackjack_seat_claimed_at(blackjack_session)
@@ -6743,6 +6870,7 @@ def release_blackjack_seat(blackjack_session, table_state, seat_id):
     seat_claims = blackjack_session.setdefault("seat_claims", {})
     released_user_id = seat_claims.pop(seat_id, None)
     get_blackjack_seat_claimed_at(blackjack_session).pop(seat_id, None)
+    get_blackjack_seat_inactive_since(blackjack_session).pop(seat_id, None)
     remove_blackjack_pending_bets_for_seat(table_state, seat_id)
 
     if released_user_id:
@@ -6822,6 +6950,25 @@ def blackjack_seat_has_pending_bet(table_state, seat_id, user_id=None):
     )
 
 
+def blackjack_seat_has_ready_main_bet(blackjack_session, table_state, seat_id, user_id):
+    if user_id not in get_blackjack_ready_user_ids(table_state):
+        return False
+
+    pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state, BLACKJACK_BET_TYPE_MAIN)
+    min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
+    return min_bet_cents <= pending_bets_by_seat.get(seat_id, 0) <= max_bet_cents
+
+
+def blackjack_seat_was_previous_round_participant(table_state, seat_id, user_id):
+    return any(
+        chip.get("seat_id") == seat_id
+        and chip.get("user_id") == user_id
+        and normalize_blackjack_bet_type(chip.get("bet_type")) == BLACKJACK_BET_TYPE_MAIN
+        and int(chip.get("value_cents") or 0) > 0
+        for chip in get_blackjack_last_bet_snapshot_for_user(table_state, user_id)
+    )
+
+
 def blackjack_user_is_live_at_session(user_id, session_path):
     presence = USER_PRESENCE.get(user_id)
 
@@ -6851,6 +6998,7 @@ def sync_blackjack_session_seat_claims(blackjack_session):
     table_state = ensure_blackjack_table_state(blackjack_session)
     seat_claims = blackjack_session.setdefault("seat_claims", {})
     seat_claimed_at = get_blackjack_seat_claimed_at(blackjack_session)
+    seat_inactive_since = get_blackjack_seat_inactive_since(blackjack_session)
     current_time = time.time()
     stale_seat_ids = []
 
@@ -6865,9 +7013,41 @@ def sync_blackjack_session_seat_claims(blackjack_session):
             stale_seat_ids.append(seat_id)
             continue
 
-        if not blackjack_user_is_live_at_session(user_id, session_path) or get_user_balance(user_id) <= 0:
+        is_live_at_session = blackjack_user_is_live_at_session(user_id, session_path)
+        has_positive_balance = get_user_balance(user_id) > 0
+
+        if not is_live_at_session:
             if blackjack_table_has_hand_for_seat(table_state, seat_id):
                 continue
+
+            if blackjack_seat_has_ready_main_bet(blackjack_session, table_state, seat_id, user_id):
+                seat_inactive_since.pop(seat_id, None)
+                continue
+
+            if blackjack_seat_was_previous_round_participant(table_state, seat_id, user_id):
+                inactive_started_at = seat_inactive_since.get(seat_id)
+
+                try:
+                    inactive_started_at = float(inactive_started_at or 0)
+                except (TypeError, ValueError):
+                    inactive_started_at = 0
+
+                if inactive_started_at <= 0:
+                    inactive_started_at = current_time
+                    seat_inactive_since[seat_id] = inactive_started_at
+
+                if current_time < inactive_started_at + BLACKJACK_UNBET_SEAT_TIMEOUT_SECONDS:
+                    continue
+
+            stale_seat_ids.append(seat_id)
+            continue
+
+        seat_inactive_since.pop(seat_id, None)
+
+        if not has_positive_balance:
+            if blackjack_table_has_hand_for_seat(table_state, seat_id):
+                continue
+
             stale_seat_ids.append(seat_id)
             continue
 
@@ -6895,6 +7075,10 @@ def sync_blackjack_session_seat_claims(blackjack_session):
     for seat_id in list(seat_claimed_at.keys()):
         if seat_id not in seat_claims:
             seat_claimed_at.pop(seat_id, None)
+
+    for seat_id in list(seat_inactive_since.keys()):
+        if seat_id not in seat_claims:
+            seat_inactive_since.pop(seat_id, None)
 
     cleanup_blackjack_pending_bets_for_claims(blackjack_session)
     return seat_claims
@@ -8972,6 +9156,31 @@ def claim_leader_reward():
             "kind": "leader_reward",
             "rank": claim_result["rank"],
             "title": "Leader reward claimed",
+            "window_label": claim_result["window_label"],
+        }
+
+        return jsonify(build_rewards_response_payload(current_user_id, claimed_reward))
+
+
+@app.route("/rewards/daily-leader-reward/claim", methods=["POST"])
+@login_required
+def claim_daily_leader_reward():
+    current_user_id = get_current_user_id()
+
+    with STATE_LOCK:
+        claim_result, error_message, status_code = claim_user_daily_leader_reward(current_user_id)
+
+        if not claim_result:
+            return jsonify({
+                "error": error_message or "No daily leader reward available to claim.",
+                **build_rewards_response_payload(current_user_id),
+            }), status_code
+
+        claimed_reward = {
+            "amount_display": claim_result["claimed_now_display"],
+            "kind": "daily_leader_reward",
+            "rank": claim_result["rank"],
+            "title": "Daily leader reward claimed",
             "window_label": claim_result["window_label"],
         }
 
