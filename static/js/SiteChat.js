@@ -24,6 +24,8 @@
     const ProfileCacheTtlMs = 1500;
     const ProfileHideDelayMs = 110;
     const ProfileSwitchDelayMs = 180;
+    const RepeatMessageCooldownMs = 5000;
+    const SessionShareCooldownMs = 5000;
     const Body = document.body;
     const CurrentUserId = Body.dataset.chatCurrentUserId || "";
     const MentionSuggestionsUrl = Body.dataset.chatMentionQueryUrl || "";
@@ -106,6 +108,8 @@
     let JoiningRainIds = new Set();
     let LastStatePayload = null;
     let LastTypingInputAt = 0;
+    let LastSentMessageAt = 0;
+    let LastSentRepeatMessageBody = "";
     let LatestMessageId = 0;
     let PendingFocusMessageId = 0;
     let PresenceHeartbeatInterval = 0;
@@ -114,6 +118,8 @@
     let RenderedProfileUserId = "";
     let RainState = null;
     let RainCountdownInterval = 0;
+    let SessionShareCooldownTimer = 0;
+    let SessionShareCooldownUntil = 0;
     let SentOfflinePresence = false;
     let FocusedMessageElement = null;
     let TypingResetTimeout = 0;
@@ -1355,6 +1361,80 @@ const BuildAuthorBadgeMarkup = (User) =>
         ChatError.textContent = Message || "";
     };
 
+    const FormatCooldownSeconds = (RemainingMs) =>
+    {
+        return Math.max(1, Math.ceil(RemainingMs / 1000));
+    };
+
+    const NormalizeRepeatMessageBody = (Message) =>
+    {
+        return String(Message || "").trim().replace(/\s+/g, " ").toLowerCase();
+    };
+
+    const GetSessionShareCooldownRemainingMs = () =>
+    {
+        return Math.max(0, SessionShareCooldownUntil - Date.now());
+    };
+
+    const GetShareButtonIdleLabel = (ShareButton) =>
+    {
+        if (!ShareButton)
+        {
+            return "Share in chat";
+        }
+
+        const IdleLabel = ShareButton.dataset.shareIdleLabel || ShareButton.textContent.trim() || "Share in chat";
+        ShareButton.dataset.shareIdleLabel = IdleLabel;
+        return IdleLabel;
+    };
+
+    const SyncSessionShareCooldownButtons = () =>
+    {
+        window.clearTimeout(SessionShareCooldownTimer);
+        SessionShareCooldownTimer = 0;
+
+        const RemainingMs = GetSessionShareCooldownRemainingMs();
+        const ShareButtons = Array.from(document.querySelectorAll("[data-share-chat-session]"));
+
+        if (RemainingMs <= 0)
+        {
+            SessionShareCooldownUntil = 0;
+            ShareButtons.forEach((ShareButton) =>
+            {
+                if (ShareButton.dataset.shareCooldownActive !== "true")
+                {
+                    return;
+                }
+
+                ShareButton.disabled = false;
+                ShareButton.textContent = GetShareButtonIdleLabel(ShareButton);
+                delete ShareButton.dataset.shareCooldownActive;
+            });
+            return;
+        }
+
+        const RemainingSeconds = FormatCooldownSeconds(RemainingMs);
+
+        ShareButtons.forEach((ShareButton) =>
+        {
+            GetShareButtonIdleLabel(ShareButton);
+            ShareButton.dataset.shareCooldownActive = "true";
+            ShareButton.disabled = true;
+            ShareButton.textContent = `Share in ${RemainingSeconds}s`;
+        });
+
+        SessionShareCooldownTimer = window.setTimeout(
+            SyncSessionShareCooldownButtons,
+            Math.min(RemainingMs, 1000),
+        );
+    };
+
+    const StartSessionShareCooldown = () =>
+    {
+        SessionShareCooldownUntil = Date.now() + SessionShareCooldownMs;
+        SyncSessionShareCooldownButtons();
+    };
+
     const SetRainMessage = (Message, Tone = "neutral") =>
     {
         if (!ChatRainMessage)
@@ -2586,14 +2666,22 @@ const BuildAuthorBadgeMarkup = (User) =>
 
         const Game = ShareButton.dataset.shareGame || "";
         const SessionId = ShareButton.dataset.shareSessionId || "";
-        const OriginalLabel = ShareButton.dataset.shareIdleLabel || ShareButton.textContent.trim() || "Share in chat";
+        const OriginalLabel = GetShareButtonIdleLabel(ShareButton);
 
         if (!Game || !SessionId)
         {
             return;
         }
 
-        ShareButton.dataset.shareIdleLabel = OriginalLabel;
+        const CooldownRemainingMs = GetSessionShareCooldownRemainingMs();
+
+        if (CooldownRemainingMs > 0)
+        {
+            SyncSessionShareCooldownButtons();
+            SetChatError(`Wait ${FormatCooldownSeconds(CooldownRemainingMs)}s before sharing another session.`);
+            return;
+        }
+
         ShareButton.disabled = true;
         ShareButton.textContent = "Sharing...";
         SetChatError("");
@@ -2630,18 +2718,10 @@ const BuildAuthorBadgeMarkup = (User) =>
             }
 
             ShareButton.textContent = "Shared";
+            StartSessionShareCooldown();
             SetChatOpen(true, {
                 FocusComposer: false,
             });
-            window.setTimeout(() =>
-            {
-                if (!ShareButton.isConnected)
-                {
-                    return;
-                }
-
-                ShareButton.textContent = OriginalLabel;
-            }, 1200);
         }
         catch (ErrorValue)
         {
@@ -2651,7 +2731,7 @@ const BuildAuthorBadgeMarkup = (User) =>
         }
         finally
         {
-            if (ShareButton.isConnected)
+            if (ShareButton.isConnected && ShareButton.dataset.shareCooldownActive !== "true")
             {
                 ShareButton.disabled = false;
             }
@@ -2664,6 +2744,17 @@ const BuildAuthorBadgeMarkup = (User) =>
 
         if (!MessageBody || IsSending)
         {
+            return;
+        }
+
+        const RepeatBody = NormalizeRepeatMessageBody(MessageBody);
+        const RepeatCooldownRemainingMs = RepeatBody === LastSentRepeatMessageBody
+            ? Math.max(0, LastSentMessageAt + RepeatMessageCooldownMs - Date.now())
+            : 0;
+
+        if (RepeatCooldownRemainingMs > 0)
+        {
+            SetChatError(`Wait ${FormatCooldownSeconds(RepeatCooldownRemainingMs)}s before sending that message again.`);
             return;
         }
 
@@ -2697,6 +2788,8 @@ const BuildAuthorBadgeMarkup = (User) =>
                 return;
             }
 
+            LastSentRepeatMessageBody = RepeatBody;
+            LastSentMessageAt = Date.now();
             ChatInput.value = "";
             HideComposerSuggestions();
             ClearActiveReplyMessage();

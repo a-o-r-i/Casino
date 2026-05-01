@@ -2312,6 +2312,21 @@
                     </svg>
                     Vault
                   </button>
+                  <button
+                    class="flex h-8 w-full items-center gap-2 rounded-[8px] px-2 text-left text-xs font-medium text-white/54 transition hover:bg-white/[0.04] hover:text-white/88"
+                    data-open-modal="notifications"
+                    type="button"
+                  >
+                    <svg class="h-3.5 w-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <g id="style=fill">
+                        <g id="notification-bell">
+                          <path id="vector (Stroke)" fill-rule="evenodd" clip-rule="evenodd" d="M14.802 19.8317C15.4184 19.7699 15.8349 20.4242 15.5437 20.9539C15.3385 21.3271 15.0493 21.6529 14.7029 21.9197C14.3496 22.1918 13.9397 22.4006 13.5 22.5408C13.0601 22.6812 12.593 22.7522 12.1242 22.7522C11.6554 22.7522 11.1883 22.6812 10.7484 22.5408C10.3087 22.4006 9.89883 22.1918 9.54556 21.9197C9.1991 21.6529 8.90988 21.3271 8.70472 20.9539C8.41354 20.4242 8.83002 19.7699 9.44644 19.8317C9.63869 19.851 11.1433 19.9981 12.1242 19.9981C13.1051 19.9981 14.6097 19.851 14.802 19.8317Z" fill="currentColor"></path>
+                          <path id="vector (Stroke)_2" fill-rule="evenodd" clip-rule="evenodd" d="M8.52901 2.08755C10.7932 1.00445 13.4465 0.967602 15.7423 1.98737L15.9475 2.07851C18.3532 3.14707 19.8934 5.4622 19.8934 8.0096L19.8934 9.27297C19.8934 10.2885 20.1236 11.2918 20.5681 12.213L20.8335 12.7632C22.0525 15.29 20.465 18.2435 17.6156 18.7498L17.455 18.7783C13.93 19.4046 10.3154 19.4046 6.79044 18.7783C3.90274 18.2653 2.37502 15.1943 3.77239 12.7115L3.99943 12.3082C4.55987 11.3124 4.85335 10.1981 4.85335 9.06596L4.85335 7.79233C4.85335 5.3744 6.27704 3.16478 8.52901 2.08755Z" fill="currentColor"></path>
+                        </g>
+                      </g>
+                    </svg>
+                    Notifications
+                  </button>
                   {% if is_admin_user %}
                     <a
                       class="flex h-8 items-center gap-2 rounded-[8px] px-2 text-xs font-medium transition {% if active_page == 'panel' %}bg-white/[0.05] text-white{% else %}text-white/54 hover:bg-white/[0.04] hover:text-white/88{% endif %}"
@@ -2527,6 +2542,69 @@
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+        <div
+          class="pointer-events-none fixed inset-0 z-50 flex items-center justify-center overflow-y-auto px-4 py-8 opacity-0 md:py-10"
+          data-modal="notifications"
+        >
+          <div
+            class="absolute inset-0 bg-black/0"
+            data-close-modal
+            data-modal-overlay
+          ></div>
+
+          <section
+            class="relative z-10 w-full max-w-[520px] translate-y-6 scale-[0.96] rounded-[8px] border border-white/10 bg-[#07090e] p-6 opacity-0 shadow-[0_28px_80px_rgba(0,0,0,0.52)]"
+            data-modal-panel
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notifications-modal-title"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h2 class="text-2xl font-semibold text-white" id="notifications-modal-title">Notifications</h2>
+                <p class="mt-1 text-sm leading-5 text-white/45">News and account updates.</p>
+              </div>
+              <button
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] text-white/58 transition hover:bg-white/10 hover:text-white"
+                data-close-modal
+                type="button"
+                aria-label="Close notifications"
+              >
+                <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" aria-hidden="true">
+                  <path d="m5 5 10 10"></path>
+                  <path d="M15 5 5 15"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div class="mt-5 space-y-3">
+              <section class="rounded-[8px] border border-white/10 bg-white/[0.03] p-4">
+                <div class="flex items-start gap-3">
+                  <div class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] border border-emerald-300/18 bg-emerald-400/10 text-emerald-200">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" aria-hidden="true">
+                      <path d="M12 2v20"></path>
+                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"></path>
+                    </svg>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="text-[11px] font-semibold uppercase text-white/34">News</div>
+                    <h3 class="mt-1 text-sm font-semibold text-white">Active bonus</h3>
+                    <p class="mt-1 text-sm leading-5 text-white/52">
+                      Every {{ online_player_bonus_interval_minutes }} minutes while active on the website, you get {{ online_player_bonus_display }} added to your vault.
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="rounded-[8px] border border-white/10 bg-white/[0.03] p-4">
+                <div class="text-[11px] font-semibold uppercase text-white/34">Chat</div>
+                <p class="mt-1 text-sm leading-5 text-white/52">
+                  Session shares and repeated identical messages now wait a few seconds between sends.
+                </p>
+              </section>
+            </div>
           </section>
         </div>
       {% endif %}

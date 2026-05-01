@@ -3,6 +3,7 @@ export function BindControls({
   ...Handlers
 } = {}) {
   const Scope = Root && typeof Root.querySelector === "function" ? Root : document;
+  const TableStage = Scope.querySelector("#TableStage");
   const SeatLayer = Scope.querySelector("#SeatLayer");
   const SideBetSpotLayer = Scope.querySelector("#SideBetSpotLayer");
   const ChipTray = Scope.querySelector("#ChipTray");
@@ -66,12 +67,98 @@ export function BindControls({
 
     AddListener(Button, "click", HandleClick);
   };
+  let LastSeatPointerActionAt = 0;
+  const RunSeatToggle = (SeatButton, Event, ClickCount = 1) => {
+    if (!SeatButton || IsControlBlocked(SeatButton)) {
+      Event?.preventDefault?.();
+      return;
+    }
+    Event.__blackjackSeatHandled = true;
+    Handlers.onSeatToggle?.(SeatButton.dataset.seatId, ClickCount);
+  };
+  const HandleSeatPointerUp = Event => {
+    if (Event.pointerType === "mouse" && Event.button !== 0) {
+      return;
+    }
+    const SeatButton = Event.target.closest("[data-seat-id]") || FindSeatButtonAtPoint(Event);
+    if (!SeatButton) {
+      return;
+    }
+    LastSeatPointerActionAt = Date.now();
+    Event.preventDefault();
+    Event.stopPropagation();
+    RunSeatToggle(SeatButton, Event);
+  };
   const HandleSeatClick = Event => {
     const SeatButton = Event.target.closest("[data-seat-id]");
     if (!SeatButton) {
       return;
     }
-    Handlers.onSeatToggle?.(SeatButton.dataset.seatId, Number(Event.detail) || 1);
+    if (Date.now() - LastSeatPointerActionAt < FastTapClickGuardMs) {
+      Event.preventDefault();
+      Event.stopPropagation();
+      return;
+    }
+    RunSeatToggle(SeatButton, Event, Number(Event.detail) || 1);
+  };
+  const FindSeatButtonAtPoint = Event => {
+    if (!SeatLayer || typeof Event.clientX !== "number" || typeof Event.clientY !== "number") {
+      return null;
+    }
+    return Array.from(SeatLayer.querySelectorAll("[data-seat-id]")).find(SeatButton => {
+      const Rect = SeatButton.getBoundingClientRect();
+      return (
+        Event.clientX >= Rect.left &&
+        Event.clientX <= Rect.right &&
+        Event.clientY >= Rect.top &&
+        Event.clientY <= Rect.bottom
+      );
+    }) || null;
+  };
+  const IsNonSeatControlTarget = Event => {
+    const Target = Event.target;
+    return Boolean(
+      Target.closest("[data-bet-spot-seat-id], [data-chip-value], a, input, select, textarea") ||
+      (Target.closest("button") && !Target.closest("[data-seat-id]"))
+    );
+  };
+  const HandleStageSeatFallbackClick = Event => {
+    if (
+      Event.__blackjackSeatHandled ||
+      Date.now() - LastSeatPointerActionAt < FastTapClickGuardMs ||
+      IsNonSeatControlTarget(Event)
+    ) {
+      return;
+    }
+
+    const SeatButton = FindSeatButtonAtPoint(Event);
+
+    if (!SeatButton || IsControlBlocked(SeatButton)) {
+      return;
+    }
+
+    Event.__blackjackSeatHandled = true;
+    RunSeatToggle(SeatButton, Event, Number(Event.detail) || 1);
+  };
+  const HandleStageSeatFallbackPointerUp = Event => {
+    if (
+      Event.__blackjackSeatHandled ||
+      (Event.pointerType === "mouse" && Event.button !== 0) ||
+      IsNonSeatControlTarget(Event)
+    ) {
+      return;
+    }
+
+    const SeatButton = FindSeatButtonAtPoint(Event);
+
+    if (!SeatButton || IsControlBlocked(SeatButton)) {
+      return;
+    }
+
+    LastSeatPointerActionAt = Date.now();
+    Event.preventDefault();
+    Event.stopPropagation();
+    RunSeatToggle(SeatButton, Event);
   };
   const HandleSeatContextMenu = Event => {
     const SeatButton = Event.target.closest("[data-seat-id]");
@@ -130,8 +217,17 @@ export function BindControls({
   const HandleSplitClick = () => {
     OnAction?.("split");
   };
+  if ("PointerEvent" in window) {
+    AddListener(SeatLayer, "pointerup", HandleSeatPointerUp, { passive: false });
+  }
   AddListener(SeatLayer, "click", HandleSeatClick);
   AddListener(SeatLayer, "contextmenu", HandleSeatContextMenu);
+  if (TableStage) {
+    if ("PointerEvent" in window) {
+      AddListener(TableStage, "pointerup", HandleStageSeatFallbackPointerUp, { passive: false });
+    }
+    AddListener(TableStage, "click", HandleStageSeatFallbackClick);
+  }
   AddListener(SideBetSpotLayer, "click", HandleSideBetSpotClick);
   AddListener(ChipTray, "click", HandleChipClick);
   BindButton(UndoChipButton, HandleUndoChipClick, { fastTap: true });

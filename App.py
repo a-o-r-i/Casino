@@ -75,6 +75,7 @@ BOT_PROFILE = {
 ADMIN_PANEL_USER_ID = "1195144155790327898"
 ADMIN_PANEL_USERNAME = "lastdanceparty"
 CANCELED_SESSION_MARKER_TTL_SECONDS = 45
+COINFLIP_DICE_SESSION_TTL_SECONDS = 24 * 60 * 60
 BLACKJACK_SESSION_MAX_SEATS = 5
 BLACKJACK_SHOE_COUNT = 6
 BLACKJACK_RESHUFFLE_THRESHOLD = 20
@@ -239,6 +240,8 @@ CHAT_INITIAL_MESSAGE_LIMIT = 60
 CHAT_MAX_MESSAGE_LENGTH = 280
 CHAT_MAX_MENTIONS = 6
 CHAT_POLL_INTERVAL_MS = 2200
+CHAT_REPEAT_MESSAGE_COOLDOWN_SECONDS = 5
+CHAT_SESSION_SHARE_COOLDOWN_SECONDS = 5
 CHAT_MENTION_NOTIFICATION_COOLDOWN_SECONDS = 30
 CHAT_MENTION_RESOLUTION_MIN_LENGTH = 3
 CHAT_MENTION_SUGGESTION_LIMIT = 6
@@ -279,6 +282,8 @@ CHAT_EMOJI_ALIASES = {
     "wilted_rose": "\U0001f940",
 }
 CHAT_MENTION_NOTIFICATION_HISTORY = {}
+CHAT_REPEAT_MESSAGE_COOLDOWNS = {}
+CHAT_SESSION_SHARE_COOLDOWNS = {}
 USER_PRESENCE = {}
 PRESENCE_ONLINE_WINDOW_SECONDS = 12
 ONLINE_PLAYER_BONUS_STATE = {
@@ -325,41 +330,41 @@ LEVEL_BONUS_CENTS = {
     13: 12_500,
     14: 15_000,
     15: 18_000,
-    16: 22_000,
-    17: 27_500,
-    18: 35_000,
-    19: 45_000,
-    20: 60_000,
-    21: 75_000,
-    22: 95_000,
-    23: 120_000,
-    24: 150_000,
-    25: 200_000,
-    26: 225_000,
-    27: 250_000,
-    28: 275_000,
-    29: 300_000,
-    30: 325_000,
-    31: 375_000,
-    32: 425_000,
-    33: 475_000,
-    34: 525_000,
-    35: 575_000,
-    36: 650_000,
-    37: 725_000,
-    38: 800_000,
-    39: 875_000,
-    40: 950_000,
-    41: 1_050_000,
-    42: 1_150_000,
-    43: 1_250_000,
-    44: 1_350_000,
-    45: 1_450_000,
-    46: 1_575_000,
-    47: 1_700_000,
-    48: 1_825_000,
-    49: 1_950_000,
-    50: 2_075_000,
+    16: 66_000,
+    17: 82_500,
+    18: 105_000,
+    19: 135_000,
+    20: 180_000,
+    21: 225_000,
+    22: 285_000,
+    23: 360_000,
+    24: 450_000,
+    25: 600_000,
+    26: 675_000,
+    27: 750_000,
+    28: 825_000,
+    29: 900_000,
+    30: 975_000,
+    31: 1_125_000,
+    32: 1_275_000,
+    33: 1_425_000,
+    34: 1_575_000,
+    35: 1_725_000,
+    36: 1_950_000,
+    37: 2_175_000,
+    38: 2_400_000,
+    39: 2_625_000,
+    40: 2_850_000,
+    41: 3_150_000,
+    42: 3_450_000,
+    43: 3_750_000,
+    44: 4_050_000,
+    45: 4_350_000,
+    46: 4_725_000,
+    47: 5_100_000,
+    48: 5_475_000,
+    49: 5_850_000,
+    50: 6_225_000,
 }
 # Previous placeholder badge ladder kept for later iteration:
 # Newbie, Beginner, Gambler, Regular, Grinder, Sharp, High Roller, Elite, Legend, Whale
@@ -380,41 +385,41 @@ REWARD_TIERS = [
     {"badge": "Silver III", "level": 13, "threshold_cents": 1_920_000, "tone": "silver"},
     {"badge": "Silver IV", "level": 14, "threshold_cents": 2_550_000, "tone": "silver"},
     {"badge": "Silver V", "level": 15, "threshold_cents": 3_300_000, "tone": "silver"},
-    {"badge": "Gold I", "level": 16, "threshold_cents": 4_200_000, "tone": "gold"},
-    {"badge": "Gold II", "level": 17, "threshold_cents": 5_250_000, "tone": "gold"},
-    {"badge": "Gold III", "level": 18, "threshold_cents": 6_450_000, "tone": "gold"},
-    {"badge": "Gold IV", "level": 19, "threshold_cents": 7_800_000, "tone": "gold"},
-    {"badge": "Gold V", "level": 20, "threshold_cents": 9_300_000, "tone": "gold"},
-    {"badge": "Platinum I", "level": 21, "threshold_cents": 10_800_000, "tone": "platinum"},
-    {"badge": "Platinum II", "level": 22, "threshold_cents": 12_300_000, "tone": "platinum"},
-    {"badge": "Platinum III", "level": 23, "threshold_cents": 13_350_000, "tone": "platinum"},
-    {"badge": "Platinum IV", "level": 24, "threshold_cents": 14_250_000, "tone": "platinum"},
-    {"badge": "Platinum V", "level": 25, "threshold_cents": 15_000_000, "tone": "platinum"},
-    {"badge": "Jade I", "level": 26, "threshold_cents": 16_000_000, "tone": "jade"},
-    {"badge": "Jade II", "level": 27, "threshold_cents": 17_000_000, "tone": "jade"},
-    {"badge": "Jade III", "level": 28, "threshold_cents": 18_000_000, "tone": "jade"},
-    {"badge": "Jade IV", "level": 29, "threshold_cents": 19_000_000, "tone": "jade"},
-    {"badge": "Jade V", "level": 30, "threshold_cents": 20_000_000, "tone": "jade"},
-    {"badge": "Sapphire I", "level": 31, "threshold_cents": 21_250_000, "tone": "sapphire"},
-    {"badge": "Sapphire II", "level": 32, "threshold_cents": 22_500_000, "tone": "sapphire"},
-    {"badge": "Sapphire III", "level": 33, "threshold_cents": 23_750_000, "tone": "sapphire"},
-    {"badge": "Sapphire IV", "level": 34, "threshold_cents": 25_000_000, "tone": "sapphire"},
-    {"badge": "Sapphire V", "level": 35, "threshold_cents": 26_250_000, "tone": "sapphire"},
-    {"badge": "Ruby I", "level": 36, "threshold_cents": 27_750_000, "tone": "ruby"},
-    {"badge": "Ruby II", "level": 37, "threshold_cents": 29_250_000, "tone": "ruby"},
-    {"badge": "Ruby III", "level": 38, "threshold_cents": 30_750_000, "tone": "ruby"},
-    {"badge": "Ruby IV", "level": 39, "threshold_cents": 32_250_000, "tone": "ruby"},
-    {"badge": "Ruby V", "level": 40, "threshold_cents": 33_750_000, "tone": "ruby"},
-    {"badge": "Diamond I", "level": 41, "threshold_cents": 35_500_000, "tone": "diamond"},
-    {"badge": "Diamond II", "level": 42, "threshold_cents": 37_250_000, "tone": "diamond"},
-    {"badge": "Diamond III", "level": 43, "threshold_cents": 39_000_000, "tone": "diamond"},
-    {"badge": "Diamond IV", "level": 44, "threshold_cents": 40_750_000, "tone": "diamond"},
-    {"badge": "Diamond V", "level": 45, "threshold_cents": 42_500_000, "tone": "diamond"},
-    {"badge": "Obsidian I", "level": 46, "threshold_cents": 44_500_000, "tone": "obsidian"},
-    {"badge": "Obsidian II", "level": 47, "threshold_cents": 46_500_000, "tone": "obsidian"},
-    {"badge": "Obsidian III", "level": 48, "threshold_cents": 48_500_000, "tone": "obsidian"},
-    {"badge": "Obsidian IV", "level": 49, "threshold_cents": 50_500_000, "tone": "obsidian"},
-    {"badge": "Obsidian V", "level": 50, "threshold_cents": 52_500_000, "tone": "obsidian"},
+    {"badge": "Gold I", "level": 16, "threshold_cents": 12_600_000, "tone": "gold"},
+    {"badge": "Gold II", "level": 17, "threshold_cents": 15_750_000, "tone": "gold"},
+    {"badge": "Gold III", "level": 18, "threshold_cents": 19_350_000, "tone": "gold"},
+    {"badge": "Gold IV", "level": 19, "threshold_cents": 23_400_000, "tone": "gold"},
+    {"badge": "Gold V", "level": 20, "threshold_cents": 27_900_000, "tone": "gold"},
+    {"badge": "Platinum I", "level": 21, "threshold_cents": 32_400_000, "tone": "platinum"},
+    {"badge": "Platinum II", "level": 22, "threshold_cents": 36_900_000, "tone": "platinum"},
+    {"badge": "Platinum III", "level": 23, "threshold_cents": 40_050_000, "tone": "platinum"},
+    {"badge": "Platinum IV", "level": 24, "threshold_cents": 42_750_000, "tone": "platinum"},
+    {"badge": "Platinum V", "level": 25, "threshold_cents": 45_000_000, "tone": "platinum"},
+    {"badge": "Jade I", "level": 26, "threshold_cents": 48_000_000, "tone": "jade"},
+    {"badge": "Jade II", "level": 27, "threshold_cents": 51_000_000, "tone": "jade"},
+    {"badge": "Jade III", "level": 28, "threshold_cents": 54_000_000, "tone": "jade"},
+    {"badge": "Jade IV", "level": 29, "threshold_cents": 57_000_000, "tone": "jade"},
+    {"badge": "Jade V", "level": 30, "threshold_cents": 60_000_000, "tone": "jade"},
+    {"badge": "Sapphire I", "level": 31, "threshold_cents": 63_750_000, "tone": "sapphire"},
+    {"badge": "Sapphire II", "level": 32, "threshold_cents": 67_500_000, "tone": "sapphire"},
+    {"badge": "Sapphire III", "level": 33, "threshold_cents": 71_250_000, "tone": "sapphire"},
+    {"badge": "Sapphire IV", "level": 34, "threshold_cents": 75_000_000, "tone": "sapphire"},
+    {"badge": "Sapphire V", "level": 35, "threshold_cents": 78_750_000, "tone": "sapphire"},
+    {"badge": "Ruby I", "level": 36, "threshold_cents": 83_250_000, "tone": "ruby"},
+    {"badge": "Ruby II", "level": 37, "threshold_cents": 87_750_000, "tone": "ruby"},
+    {"badge": "Ruby III", "level": 38, "threshold_cents": 92_250_000, "tone": "ruby"},
+    {"badge": "Ruby IV", "level": 39, "threshold_cents": 96_750_000, "tone": "ruby"},
+    {"badge": "Ruby V", "level": 40, "threshold_cents": 101_250_000, "tone": "ruby"},
+    {"badge": "Diamond I", "level": 41, "threshold_cents": 106_500_000, "tone": "diamond"},
+    {"badge": "Diamond II", "level": 42, "threshold_cents": 111_750_000, "tone": "diamond"},
+    {"badge": "Diamond III", "level": 43, "threshold_cents": 117_000_000, "tone": "diamond"},
+    {"badge": "Diamond IV", "level": 44, "threshold_cents": 122_250_000, "tone": "diamond"},
+    {"badge": "Diamond V", "level": 45, "threshold_cents": 127_500_000, "tone": "diamond"},
+    {"badge": "Obsidian I", "level": 46, "threshold_cents": 133_500_000, "tone": "obsidian"},
+    {"badge": "Obsidian II", "level": 47, "threshold_cents": 139_500_000, "tone": "obsidian"},
+    {"badge": "Obsidian III", "level": 48, "threshold_cents": 145_500_000, "tone": "obsidian"},
+    {"badge": "Obsidian IV", "level": 49, "threshold_cents": 151_500_000, "tone": "obsidian"},
+    {"badge": "Obsidian V", "level": 50, "threshold_cents": 157_500_000, "tone": "obsidian"},
 ]
 LAST_PERSISTED_STATE_DIGEST = None
 
@@ -668,6 +673,10 @@ def format_money(amount_cents):
         return f"${int(dollars):,}"
 
     return f"${dollars:,.2f}"
+
+
+def format_money_whole_dollars(amount_cents):
+    return f"${int(amount_cents) // 100:,}"
 
 
 def format_duration(seconds):
@@ -1177,7 +1186,7 @@ def build_weekly_wager_leaderboard(start_timestamp, end_timestamp, limit=None, p
             "id": user_id,
             "username": user_profile["username"],
             "wagered_cents": wagered_cents,
-            "wagered_display": format_money(wagered_cents),
+            "wagered_display": format_money_whole_dollars(wagered_cents),
         })
 
     leaderboard_rows.sort(
@@ -2777,6 +2786,57 @@ def find_chat_message_by_id(message_id):
     return None
 
 
+def normalize_chat_repeat_body(body):
+    return " ".join(str(body or "").casefold().split())
+
+
+def get_chat_cooldown_remaining_seconds(last_sent_at, current_time, cooldown_seconds):
+    try:
+        last_sent_timestamp = float(last_sent_at or 0)
+    except (TypeError, ValueError):
+        last_sent_timestamp = 0
+
+    if last_sent_timestamp <= 0:
+        return 0
+
+    remaining_seconds = last_sent_timestamp + cooldown_seconds - current_time
+
+    if remaining_seconds <= 0:
+        return 0
+
+    return max(1, int(math.ceil(remaining_seconds)))
+
+
+def get_chat_repeat_message_cooldown_remaining(user_id, repeat_body, current_time):
+    if not user_id or not repeat_body:
+        return 0
+
+    cooldown_record = CHAT_REPEAT_MESSAGE_COOLDOWNS.get(user_id)
+
+    if not isinstance(cooldown_record, dict):
+        return 0
+
+    if cooldown_record.get("body") != repeat_body:
+        return 0
+
+    return get_chat_cooldown_remaining_seconds(
+        cooldown_record.get("last_sent_at"),
+        current_time,
+        CHAT_REPEAT_MESSAGE_COOLDOWN_SECONDS,
+    )
+
+
+def get_chat_session_share_cooldown_remaining(user_id, current_time):
+    if not user_id:
+        return 0
+
+    return get_chat_cooldown_remaining_seconds(
+        CHAT_SESSION_SHARE_COOLDOWNS.get(user_id),
+        current_time,
+        CHAT_SESSION_SHARE_COOLDOWN_SECONDS,
+    )
+
+
 def build_chat_reply_snapshot(chat_message):
     if not chat_message:
         return None
@@ -2885,6 +2945,8 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
 
     author_snapshot = remember_user_profile(author_user)
     normalized_body = replace_chat_emoji_shortcodes(str(body or "").strip())
+    message_kind = str(message_type or "message").strip().lower() or "message"
+    current_time = time.time()
     reply_snapshot = None
     session_share = None
 
@@ -2917,6 +2979,34 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
 
     if len(normalized_body) > CHAT_MAX_MESSAGE_LENGTH:
         raise ValueError(f"Messages can be up to {CHAT_MAX_MESSAGE_LENGTH} characters.")
+
+    if message_kind == "message" and author_snapshot["id"] != BOT_PROFILE["id"]:
+        if session_share:
+            remaining_seconds = get_chat_session_share_cooldown_remaining(author_snapshot["id"], current_time)
+
+            if remaining_seconds > 0:
+                raise ValueError(f"Wait {remaining_seconds}s before sharing another session.")
+
+        repeat_body = normalize_chat_repeat_body(normalized_body)
+
+        if repeat_body:
+            remaining_seconds = get_chat_repeat_message_cooldown_remaining(
+                author_snapshot["id"],
+                repeat_body,
+                current_time,
+            )
+
+            if remaining_seconds > 0:
+                raise ValueError(f"Wait {remaining_seconds}s before sending that message again.")
+
+        if session_share:
+            CHAT_SESSION_SHARE_COOLDOWNS[author_snapshot["id"]] = current_time
+
+        if repeat_body:
+            CHAT_REPEAT_MESSAGE_COOLDOWNS[author_snapshot["id"]] = {
+                "body": repeat_body,
+                "last_sent_at": current_time,
+            }
 
     mentions_by_user_id = {
         mention.get("id"): dict(mention)
@@ -2954,8 +3044,8 @@ def add_chat_message(author_user, body, *, shared_game=None, shared_session_id=N
             if session_share
             else None
         ),
-        "timestamp": time.time(),
-        "type": str(message_type or "message").strip().lower() or "message",
+        "timestamp": current_time,
+        "type": message_kind,
     }
     CHAT_MESSAGES.append(message)
     NEXT_CHAT_MESSAGE_ID += 1
@@ -4368,6 +4458,21 @@ def blackjack_table_has_hand_for_seat(table_state, seat_id):
     )
 
 
+def blackjack_table_has_hand_for_user(table_state, user_id):
+    return any(
+        hand.get("user_id") == user_id
+        for hand in table_state.get("hands") or []
+    )
+
+
+def blackjack_round_is_in_progress(table_state):
+    round_state = table_state.get("round_state") or BLACKJACK_ROUND_WAITING
+    return round_state not in {
+        BLACKJACK_ROUND_WAITING,
+        BLACKJACK_ROUND_BETTING,
+    }
+
+
 def remove_blackjack_pending_bets_for_seat(table_state, seat_id):
     table_state["pending_bet_chips"] = [
         chip
@@ -4960,6 +5065,14 @@ def advance_blackjack_after_hand(blackjack_session):
 def reset_blackjack_table_for_next_round(blackjack_session):
     table_state = ensure_blackjack_table_state(blackjack_session)
     seat_claims = blackjack_session.setdefault("seat_claims", {})
+    seat_claimed_at = get_blackjack_seat_claimed_at(blackjack_session)
+    seat_inactive_since = get_blackjack_seat_inactive_since(blackjack_session)
+    current_time = time.time()
+
+    for seat_id in list(seat_claims.keys()):
+        seat_claimed_at[seat_id] = current_time
+        seat_inactive_since.pop(seat_id, None)
+
     table_state["active_hand_index"] = 0
     clear_blackjack_betting_timer(table_state)
     table_state["dealer"] = create_blackjack_dealer_state()
@@ -4974,10 +5087,10 @@ def reset_blackjack_table_for_next_round(blackjack_session):
     table_state["seat_side_bets"] = {}
     table_state["settled_at"] = None
     clear_blackjack_turn_timer(table_state)
-    table_state["updated_at"] = time.time()
+    table_state["updated_at"] = current_time
 
     if seat_claims:
-        start_blackjack_betting_timer(table_state, table_state["updated_at"])
+        start_blackjack_betting_timer(table_state, current_time)
 
 
 def maybe_begin_blackjack_round_on_timeout(blackjack_session, now=None):
@@ -6252,9 +6365,64 @@ def sync_all_dice_sessions():
         sync_dice_session_state(dice_session)
 
 
+def get_game_session_created_at(session_record, current_time):
+    try:
+        return float(session_record.get("created_at") or current_time)
+    except (TypeError, ValueError):
+        return current_time
+
+
+def refund_unresolved_coinflip_or_dice_session(session_record):
+    if session_record.get("winner_id") or session_record.get("result_side"):
+        return
+
+    bet_cents = safe_int(session_record.get("bet_cents"), 0)
+
+    if bet_cents <= 0:
+        return
+
+    for player in (session_record.get("creator"), session_record.get("opponent")):
+        user_id = (player or {}).get("id")
+
+        if not user_id or user_id == BOT_PROFILE["id"]:
+            continue
+
+        set_user_balance(user_id, get_user_balance(user_id) + bet_cents)
+
+
+def cleanup_expired_coinflip_and_dice_sessions(now=None):
+    current_time = now or time.time()
+    expired_sessions = []
+
+    for game, store, canceled_store in (
+        ("coinflip", COINFLIP_SESSIONS, CANCELED_COINFLIP_SESSIONS),
+        ("dice", DICE_SESSIONS, CANCELED_DICE_SESSIONS),
+    ):
+        for session_id, session_record in list(store.items()):
+            created_at = get_game_session_created_at(session_record, current_time)
+
+            if current_time < created_at + COINFLIP_DICE_SESSION_TTL_SECONDS:
+                continue
+
+            expired_sessions.append((game, session_id, session_record, canceled_store))
+
+    for game, session_id, session_record, canceled_store in expired_sessions:
+        refund_unresolved_coinflip_or_dice_session(session_record)
+
+        if game == "coinflip":
+            COINFLIP_SESSIONS.pop(session_id, None)
+        else:
+            DICE_SESSIONS.pop(session_id, None)
+
+        canceled_store.pop(session_id, None)
+
+    return [session_id for _, session_id, _, _ in expired_sessions]
+
+
 def sync_all_game_sessions():
     sync_all_coinflip_sessions()
     sync_all_dice_sessions()
+    cleanup_expired_coinflip_and_dice_sessions()
     cleanup_idle_blackjack_sessions()
     for blackjack_session in list(BLACKJACK_SESSIONS.values()):
         sync_blackjack_table_lifecycle(blackjack_session)
@@ -6996,6 +7164,22 @@ def blackjack_seat_should_release_for_inactivity(table_state, seat_id, user_id, 
     return current_time >= claimed_at_timestamp + BLACKJACK_UNBET_SEAT_TIMEOUT_SECONDS
 
 
+def blackjack_seat_inactive_grace_elapsed(blackjack_session, seat_id, current_time):
+    seat_inactive_since = get_blackjack_seat_inactive_since(blackjack_session)
+    inactive_started_at = seat_inactive_since.get(seat_id)
+
+    try:
+        inactive_started_at = float(inactive_started_at or 0)
+    except (TypeError, ValueError):
+        inactive_started_at = 0
+
+    if inactive_started_at <= 0:
+        inactive_started_at = current_time
+        seat_inactive_since[seat_id] = inactive_started_at
+
+    return current_time >= inactive_started_at + BLACKJACK_UNBET_SEAT_TIMEOUT_SECONDS
+
+
 def sync_blackjack_session_seat_claims(blackjack_session):
     session_path = normalize_presence_path(get_blackjack_session_path(blackjack_session["id"]))
     table_state = ensure_blackjack_table_state(blackjack_session)
@@ -7019,6 +7203,12 @@ def sync_blackjack_session_seat_claims(blackjack_session):
         is_live_at_session = blackjack_user_is_live_at_session(user_id, session_path)
         has_positive_balance = get_user_balance(user_id) > 0
 
+        if blackjack_round_is_in_progress(table_state):
+            if is_live_at_session:
+                seat_inactive_since.pop(seat_id, None)
+            seat_claimed_at[seat_id] = current_time
+            continue
+
         if not is_live_at_session:
             if blackjack_table_has_hand_for_seat(table_state, seat_id):
                 continue
@@ -7027,28 +7217,21 @@ def sync_blackjack_session_seat_claims(blackjack_session):
                 seat_inactive_since.pop(seat_id, None)
                 continue
 
-            if blackjack_seat_was_previous_round_participant(table_state, seat_id, user_id):
-                inactive_started_at = seat_inactive_since.get(seat_id)
-
-                try:
-                    inactive_started_at = float(inactive_started_at or 0)
-                except (TypeError, ValueError):
-                    inactive_started_at = 0
-
-                if inactive_started_at <= 0:
-                    inactive_started_at = current_time
-                    seat_inactive_since[seat_id] = inactive_started_at
-
-                if current_time < inactive_started_at + BLACKJACK_UNBET_SEAT_TIMEOUT_SECONDS:
-                    continue
-
-            stale_seat_ids.append(seat_id)
+            if blackjack_seat_inactive_grace_elapsed(blackjack_session, seat_id, current_time):
+                stale_seat_ids.append(seat_id)
             continue
 
         seat_inactive_since.pop(seat_id, None)
 
+        if blackjack_seat_was_previous_round_participant(table_state, seat_id, user_id):
+            seat_claimed_at[seat_id] = current_time
+            continue
+
         if not has_positive_balance:
-            if blackjack_table_has_hand_for_seat(table_state, seat_id):
+            if (
+                blackjack_table_has_hand_for_seat(table_state, seat_id)
+                or blackjack_table_has_hand_for_user(table_state, user_id)
+            ):
                 continue
 
             stale_seat_ids.append(seat_id)
@@ -8542,6 +8725,8 @@ def admin_reset_runtime_state(actor_user):
     APP_NOTIFICATIONS.clear()
     CHAT_MESSAGES.clear()
     CHAT_MENTION_NOTIFICATION_HISTORY.clear()
+    CHAT_REPEAT_MESSAGE_COOLDOWNS.clear()
+    CHAT_SESSION_SHARE_COOLDOWNS.clear()
     USER_PRESENCE.clear()
     USER_REWARDS.clear()
     USER_AUTH_VERSIONS.clear()
@@ -8570,6 +8755,7 @@ def admin_reset_runtime_state(actor_user):
 
 
 def get_coinflip_session_or_404(session_id):
+    cleanup_expired_coinflip_and_dice_sessions()
     coinflip_session = COINFLIP_SESSIONS.get(session_id)
 
     if not coinflip_session:
@@ -8579,6 +8765,7 @@ def get_coinflip_session_or_404(session_id):
 
 
 def get_dice_session_or_404(session_id):
+    cleanup_expired_coinflip_and_dice_sessions()
     dice_session = DICE_SESSIONS.get(session_id)
 
     if not dice_session:
@@ -8664,6 +8851,8 @@ def inject_auth_state():
         "admin_role": admin_role,
         "is_authenticated": discord_user is not None,
         "notification_cursor": notification_cursor,
+        "online_player_bonus_display": format_money_whole_dollars(ONLINE_PLAYER_BONUS_CENTS),
+        "online_player_bonus_interval_minutes": ONLINE_PLAYER_BONUS_INTERVAL_SECONDS // 60,
         "pending_level_reward_count": pending_level_reward_count,
         "presence_heartbeat_url": url_for("presence_heartbeat") if discord_user else None,
         "presence_offline_url": url_for("presence_offline") if discord_user else None,
@@ -9609,12 +9798,16 @@ def blackjack_table_seats(session_id):
                 owner_name = owner_profile.get("display_name") or owner_profile.get("username") or "Another player"
                 return jsonify({"error": f"{owner_name} already took that seat."}), 409
 
-            claim_blackjack_seat(blackjack_session_data, seat_id, current_user_id)
+            current_time = time.time()
+            claim_blackjack_seat(blackjack_session_data, seat_id, current_user_id, current_time)
             remove_blackjack_ready_user(table_state, current_user_id)
-            ensure_blackjack_betting_timer(table_state, seat_claims, reset=True)
-            table_state["message"] = ""
-            table_state["updated_at"] = time.time()
-            touch_blackjack_session_activity(blackjack_session_data, table_state["updated_at"])
+
+            if not blackjack_round_is_in_progress(table_state):
+                ensure_blackjack_betting_timer(table_state, seat_claims, current_time, reset=True)
+                table_state["message"] = ""
+                table_state["updated_at"] = current_time
+
+            touch_blackjack_session_activity(blackjack_session_data, current_time)
         elif current_owner_id == current_user_id:
             if blackjack_table_has_active_hand_for_seat(table_state, seat_id):
                 return jsonify({"error": "Finish the current hand before leaving that seat."}), 409
@@ -9966,6 +10159,7 @@ def create_coinflip_session():
 def coinflip_session(session_id):
     with STATE_LOCK:
         cleanup_canceled_session_markers()
+        cleanup_expired_coinflip_and_dice_sessions()
         coinflip_session_data = COINFLIP_SESSIONS.get(session_id)
 
         if not coinflip_session_data:
@@ -10033,6 +10227,7 @@ def call_coinflip_bot(session_id):
 def coinflip_session_state(session_id):
     with STATE_LOCK:
         cleanup_canceled_session_markers()
+        cleanup_expired_coinflip_and_dice_sessions()
         coinflip_session_data = COINFLIP_SESSIONS.get(session_id)
 
         if not coinflip_session_data:
@@ -10256,6 +10451,7 @@ def create_dice_session():
 def dice_session(session_id):
     with STATE_LOCK:
         cleanup_canceled_session_markers()
+        cleanup_expired_coinflip_and_dice_sessions()
         dice_session_data = DICE_SESSIONS.get(session_id)
 
         if not dice_session_data:
@@ -10323,6 +10519,7 @@ def call_dice_bot(session_id):
 def dice_session_state(session_id):
     with STATE_LOCK:
         cleanup_canceled_session_markers()
+        cleanup_expired_coinflip_and_dice_sessions()
         dice_session_data = DICE_SESSIONS.get(session_id)
 
         if not dice_session_data:

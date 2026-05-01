@@ -615,6 +615,33 @@
         `;
     };
 
+    const RenderStaffRow = (Row) =>
+    {
+        return `
+            <div
+              class="flex items-center gap-3 px-4 py-3"
+              data-admin-staff-row
+              data-user-id="${EscapeHtml(Row.id)}"
+            >
+              <span class="shrink-0">
+                ${BuildAvatarMarkup(Row, "h-9 w-9")}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-white">${EscapeHtml(Row.display_name)}</div>
+                <div class="mt-0.5 truncate text-xs text-white/34">@${EscapeHtml(Row.username)} · ${EscapeHtml(Row.id)}</div>
+              </div>
+              <button
+                class="inline-flex h-9 items-center justify-center rounded-[8px] border border-red-400/14 bg-red-500/10 px-3 text-xs font-medium text-red-100 transition hover:bg-red-500/16 disabled:cursor-default disabled:opacity-45"
+                data-admin-remove-staff
+                data-url="${EscapeHtml(Row.remove_url || "")}"
+                type="button"
+              >
+                Remove
+              </button>
+            </div>
+        `;
+    };
+
     const InitializeAdminPanelPage = ({ main }) =>
     {
         const PanelRoot = main.querySelector("[data-admin-panel]");
@@ -636,12 +663,22 @@
         let IsResetSubmitting = false;
         let PendingPlayerReset = null;
         let IsPlayerResetSubmitting = false;
+        let IsStaffSubmitting = false;
+        let StaffSuggestionActiveIndex = 0;
+        let StaffSuggestionRequestToken = 0;
+        let StaffSuggestions = [];
         let RenderedCoinflipSignature = "";
         let RenderedDiceSignature = "";
         let RenderedPlayersSignature = "";
+        let RenderedStaffSignature = "";
         let PlayerOrder = [];
         const PlayerCountNode = PanelRoot.querySelector("[data-admin-player-count]");
         const PlayerFilterInput = PanelRoot.querySelector("[data-admin-player-filter]");
+        const StaffCountNode = PanelRoot.querySelector("[data-admin-staff-count]");
+        const StaffForm = PanelRoot.querySelector("[data-admin-staff-form]");
+        const StaffInput = PanelRoot.querySelector("[data-admin-staff-input]");
+        const StaffNode = PanelRoot.querySelector("[data-admin-staff]");
+        const StaffSuggestionsNode = PanelRoot.querySelector("[data-admin-staff-suggestions]");
         const ResetStateButton = PanelRoot.querySelector("[data-admin-reset-state]");
         const PlayersNode = PanelRoot.querySelector("[data-admin-players]");
         const SessionTotalCountNode = PanelRoot.querySelector("[data-admin-session-total-count]");
@@ -759,6 +796,11 @@
         const GetPlayers = () =>
         {
             return Array.isArray(LastState?.players) ? LastState.players : [];
+        };
+
+        const GetStaffRows = () =>
+        {
+            return Array.isArray(LastState?.staff) ? LastState.staff : [];
         };
 
         const GetPlayerId = (Row) =>
@@ -1324,11 +1366,14 @@
             const FilteredPlayers = GetFilteredPlayers();
             const CoinflipSessions = GetSessionsByGame("coinflip");
             const DiceSessions = GetSessionsByGame("dice");
+            const StaffRows = GetStaffRows();
             const PlayersSignature = BuildRenderSignature(FilteredPlayers);
             const CoinflipSignature = BuildRenderSignature(CoinflipSessions);
             const DiceSignature = BuildRenderSignature(DiceSessions);
+            const StaffSignature = BuildRenderSignature(StaffRows);
 
             SetTextContent(PlayerCountNode, `${FilteredPlayers.length} / ${AllPlayers.length}`);
+            SetTextContent(StaffCountNode, `${StaffRows.length} staff`);
             SetTextContent(SessionTotalCountNode, `${GetSessions().length} total / ${Number(LastState?.summary?.sessions_live || 0)} live`);
             SetTextContent(CoinflipCountNode, GetSessionCountCopy("coinflip"));
             SetTextContent(DiceCountNode, GetSessionCountCopy("dice"));
@@ -1349,6 +1394,12 @@
             {
                 SyncList(DiceSessionsNode, DiceSessions, RenderSessionRow, "No dice sessions are active.");
                 RenderedDiceSignature = DiceSignature;
+            }
+
+            if (StaffSignature !== RenderedStaffSignature)
+            {
+                SyncList(StaffNode, StaffRows, RenderStaffRow, "No panel staff yet.");
+                RenderedStaffSignature = StaffSignature;
             }
 
             ApplyGlobalBalance(LastState);
@@ -1433,6 +1484,288 @@
             {
                 Node.disabled = IsBusy;
             });
+        };
+
+        const GetStaffSuggestionsUrl = () =>
+        {
+            return document.body?.dataset?.chatMentionQueryUrl || "";
+        };
+
+        const HideStaffSuggestions = () =>
+        {
+            StaffSuggestions = [];
+            StaffSuggestionActiveIndex = 0;
+
+            if (!StaffSuggestionsNode)
+            {
+                return;
+            }
+
+            StaffSuggestionsNode.innerHTML = "";
+            StaffSuggestionsNode.dataset.open = "false";
+            StaffSuggestionsNode.setAttribute("aria-hidden", "true");
+        };
+
+        const RenderStaffSuggestions = () =>
+        {
+            if (!StaffSuggestionsNode || !StaffSuggestions.length)
+            {
+                HideStaffSuggestions();
+                return;
+            }
+
+            StaffSuggestionsNode.innerHTML = StaffSuggestions.map((Suggestion, Index) => `
+                <button
+                  data-chat-suggestion-item
+                  data-admin-staff-suggestion-item
+                  data-active="${Index === StaffSuggestionActiveIndex ? "true" : "false"}"
+                  data-index="${Index}"
+                  type="button"
+                >
+                  <span data-chat-suggestion-avatar>${BuildAvatarMarkup(Suggestion, "h-8 w-8")}</span>
+                  <span data-chat-suggestion-copy>
+                    <span data-chat-suggestion-title>${EscapeHtml(Suggestion.display_name)}</span>
+                    <span data-chat-suggestion-subtitle>@${EscapeHtml(Suggestion.username)}</span>
+                  </span>
+                </button>
+            `).join("");
+            StaffSuggestionsNode.dataset.open = "true";
+            StaffSuggestionsNode.setAttribute("aria-hidden", "false");
+        };
+
+        const FetchStaffSuggestions = async (Query) =>
+        {
+            const SuggestionsUrl = GetStaffSuggestionsUrl();
+
+            if (!SuggestionsUrl)
+            {
+                return [];
+            }
+
+            const RequestUrl = new URL(SuggestionsUrl, window.location.href);
+
+            if (Query)
+            {
+                RequestUrl.searchParams.set("q", Query.replace(/^@+/, ""));
+            }
+
+            const Response = await fetch(RequestUrl.href, {
+                headers: {
+                    Accept: "application/json",
+                },
+            });
+
+            if (!Response.ok)
+            {
+                return [];
+            }
+
+            const Payload = await Response.json().catch(() => ({}));
+            const ExistingStaffIds = new Set(GetStaffRows().map((Row) => String(Row.id)));
+            return (Array.isArray(Payload?.suggestions) ? Payload.suggestions : [])
+                .filter((Suggestion) => !ExistingStaffIds.has(String(Suggestion.id)))
+                .slice(0, 6);
+        };
+
+        const UpdateStaffSuggestions = async () =>
+        {
+            if (!(StaffInput instanceof HTMLInputElement) || document.activeElement !== StaffInput)
+            {
+                HideStaffSuggestions();
+                return;
+            }
+
+            const Query = StaffInput.value.trim();
+            const RequestToken = ++StaffSuggestionRequestToken;
+
+            try
+            {
+                const Suggestions = await FetchStaffSuggestions(Query);
+
+                if (RequestToken !== StaffSuggestionRequestToken)
+                {
+                    return;
+                }
+
+                StaffSuggestions = Suggestions;
+                StaffSuggestionActiveIndex = 0;
+                RenderStaffSuggestions();
+            }
+            catch (ErrorValue)
+            {
+                console.error(ErrorValue);
+
+                if (RequestToken === StaffSuggestionRequestToken)
+                {
+                    HideStaffSuggestions();
+                }
+            }
+        };
+
+        const ApplyStaffSuggestion = (SuggestionIndex = StaffSuggestionActiveIndex) =>
+        {
+            const Suggestion = StaffSuggestions[SuggestionIndex];
+
+            if (!Suggestion || !(StaffInput instanceof HTMLInputElement))
+            {
+                return false;
+            }
+
+            StaffInput.value = `@${Suggestion.username || Suggestion.display_name || Suggestion.id}`;
+            StaffInput.focus();
+            StaffInput.setSelectionRange(StaffInput.value.length, StaffInput.value.length);
+            HideStaffSuggestions();
+            return true;
+        };
+
+        const MoveStaffSuggestionSelection = (Direction) =>
+        {
+            if (!StaffSuggestions.length)
+            {
+                return false;
+            }
+
+            const LastIndex = StaffSuggestions.length - 1;
+            const NextIndex = StaffSuggestionActiveIndex + Direction;
+
+            if (NextIndex < 0)
+            {
+                StaffSuggestionActiveIndex = LastIndex;
+            }
+            else if (NextIndex > LastIndex)
+            {
+                StaffSuggestionActiveIndex = 0;
+            }
+            else
+            {
+                StaffSuggestionActiveIndex = NextIndex;
+            }
+
+            RenderStaffSuggestions();
+            return true;
+        };
+
+        const SubmitStaffAdd = async () =>
+        {
+            if (!(StaffForm instanceof HTMLFormElement) || IsStaffSubmitting)
+            {
+                return;
+            }
+
+            const RequestUrl = StaffForm.dataset.url || StaffForm.action || "";
+            const RawUser = StaffInput?.value?.trim?.() || "";
+
+            if (!RequestUrl)
+            {
+                return;
+            }
+
+            IsStaffSubmitting = true;
+            SetFormBusy(StaffForm, true);
+
+            try
+            {
+                const Response = await fetch(RequestUrl, {
+                    body: JSON.stringify({
+                        user: RawUser,
+                    }),
+                    headers: {
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    method: "POST",
+                });
+                const Payload = await Response.json().catch(() => ({}));
+
+                if (Response.status === 401 || Response.status === 404)
+                {
+                    HandleUnauthorized();
+                    return;
+                }
+
+                if (!Response.ok)
+                {
+                    throw new Error(Payload?.error || `Request failed with ${Response.status}.`);
+                }
+
+                if (Payload.panel)
+                {
+                    LastState = Payload.panel;
+                }
+
+                if (StaffInput)
+                {
+                    StaffInput.value = "";
+                }
+
+                HideStaffSuggestions();
+                Render({
+                    forcePopoutRefresh: true,
+                });
+                ShowToast("Staff added", "Panel access was granted.", "success");
+            }
+            catch (ErrorValue)
+            {
+                ShowToast("Panel error", ErrorValue.message || "Could not add that staff member.", "error");
+            }
+            finally
+            {
+                IsStaffSubmitting = false;
+                SetFormBusy(StaffForm, false);
+                StaffInput?.focus?.();
+            }
+        };
+
+        const SubmitStaffRemove = async (Button) =>
+        {
+            const RequestUrl = Button.dataset.url || "";
+
+            if (!RequestUrl)
+            {
+                return;
+            }
+
+            Button.disabled = true;
+
+            try
+            {
+                const Response = await fetch(RequestUrl, {
+                    headers: {
+                        Accept: "application/json",
+                    },
+                    method: "DELETE",
+                });
+                const Payload = await Response.json().catch(() => ({}));
+
+                if (Response.status === 401 || Response.status === 404)
+                {
+                    HandleUnauthorized();
+                    return;
+                }
+
+                if (!Response.ok)
+                {
+                    throw new Error(Payload?.error || `Request failed with ${Response.status}.`);
+                }
+
+                if (Payload.panel)
+                {
+                    LastState = Payload.panel;
+                }
+
+                Render({
+                    forcePopoutRefresh: true,
+                });
+                ShowToast("Staff removed", "Panel access was revoked.", "success");
+            }
+            catch (ErrorValue)
+            {
+                ShowToast("Panel error", ErrorValue.message || "Could not remove that staff member.", "error");
+            }
+            finally
+            {
+                Button.disabled = false;
+            }
         };
 
         const SubmitMoneyAdjustment = async (Form) =>
@@ -1805,6 +2138,27 @@
                 return;
             }
 
+            const StaffSuggestionButton = Target.closest("[data-admin-staff-suggestion-item]");
+
+            if (StaffSuggestionButton)
+            {
+                EventValue.preventDefault();
+                ApplyStaffSuggestion(Number(StaffSuggestionButton.dataset.index || 0));
+                return;
+            }
+
+            const RemoveStaffButton = Target.closest("[data-admin-remove-staff]");
+
+            if (RemoveStaffButton)
+            {
+                EventValue.preventDefault();
+                SubmitStaffRemove(RemoveStaffButton).catch((ErrorValue) =>
+                {
+                    console.error(ErrorValue);
+                });
+                return;
+            }
+
             const SettingsButton = Target.closest("[data-admin-row-settings]");
 
             if (SettingsButton)
@@ -1855,6 +2209,13 @@
                 return;
             }
 
+            if (Target.closest("[data-admin-staff-form]"))
+            {
+                return;
+            }
+
+            HideStaffSuggestions();
+
             if (
                 Target.closest("[data-admin-popout]") ||
                 Target.closest("[data-admin-player-row]") ||
@@ -1866,6 +2227,80 @@
 
             ClosePopout({
                 animate: true,
+            });
+        };
+
+        const HandleStaffInput = (EventValue) =>
+        {
+            if (EventValue.target !== StaffInput)
+            {
+                return;
+            }
+
+            UpdateStaffSuggestions().catch((ErrorValue) =>
+            {
+                console.error(ErrorValue);
+            });
+        };
+
+        const HandleStaffInputFocus = () =>
+        {
+            UpdateStaffSuggestions().catch((ErrorValue) =>
+            {
+                console.error(ErrorValue);
+            });
+        };
+
+        const HandleStaffInputKeyDown = (EventValue) =>
+        {
+            if (!StaffSuggestions.length)
+            {
+                return;
+            }
+
+            if (EventValue.key === "ArrowDown")
+            {
+                EventValue.preventDefault();
+                MoveStaffSuggestionSelection(1);
+                return;
+            }
+
+            if (EventValue.key === "ArrowUp")
+            {
+                EventValue.preventDefault();
+                MoveStaffSuggestionSelection(-1);
+                return;
+            }
+
+            if (EventValue.key === "Enter" || EventValue.key === "Tab")
+            {
+                if (ApplyStaffSuggestion())
+                {
+                    EventValue.preventDefault();
+                }
+                return;
+            }
+
+            if (EventValue.key === "Escape")
+            {
+                EventValue.preventDefault();
+                HideStaffSuggestions();
+            }
+        };
+
+        const HandleStaffSubmit = (EventValue) =>
+        {
+            const Form = EventValue.target instanceof HTMLFormElement ? EventValue.target : null;
+
+            if (!Form || Form !== StaffForm)
+            {
+                return;
+            }
+
+            EventValue.preventDefault();
+            SubmitStaffAdd().catch((ErrorValue) =>
+            {
+                console.error(ErrorValue);
             });
         };
 
@@ -2033,6 +2468,10 @@
         };
 
         PlayerFilterInput?.addEventListener("input", HandleFilterInput);
+        StaffInput?.addEventListener("input", HandleStaffInput);
+        StaffInput?.addEventListener("focus", HandleStaffInputFocus);
+        StaffInput?.addEventListener("keydown", HandleStaffInputKeyDown);
+        StaffForm?.addEventListener("submit", HandleStaffSubmit);
         PanelRoot.addEventListener("click", HandlePanelClick);
         PanelRoot.addEventListener("contextmenu", HandleRowContextMenu);
         PopoutNode.addEventListener("submit", HandlePopoutSubmit);
@@ -2069,6 +2508,10 @@
 
             GetResetModalController()?.hideImmediately?.();
             PlayerFilterInput?.removeEventListener("input", HandleFilterInput);
+            StaffInput?.removeEventListener("input", HandleStaffInput);
+            StaffInput?.removeEventListener("focus", HandleStaffInputFocus);
+            StaffInput?.removeEventListener("keydown", HandleStaffInputKeyDown);
+            StaffForm?.removeEventListener("submit", HandleStaffSubmit);
             PanelRoot.removeEventListener("click", HandlePanelClick);
             PanelRoot.removeEventListener("contextmenu", HandleRowContextMenu);
             PopoutNode.removeEventListener("submit", HandlePopoutSubmit);

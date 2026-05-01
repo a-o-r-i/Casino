@@ -183,6 +183,9 @@ class NetworkBlackjackTable {
     this.deferredPollPayload = null;
     this.lastAppliedPayloadUpdatedAt = 0;
     this.pendingOptimisticChipActions = 0;
+    this.pendingSeatClaimIds = new Set();
+    this.optimisticSeatClaimIds = new Set();
+    this.optimisticSeatClaimUpdatedAts = new Map();
     this.hasAppliedPayloadSnapshot = false;
     this.playedBustSoundSignatures = new Set();
     this.playedWinSoundSignatures = new Set();
@@ -405,8 +408,8 @@ class NetworkBlackjackTable {
   ApplyPayloadSnapshot(Payload) {
     const Table = Payload.table_state || {};
     const PayloadUpdatedAt = GetPayloadUpdatedAt(Payload);
-    const SelfSeatIds = Array.isArray(Payload.self_seat_ids) ? Payload.self_seat_ids : [];
-    const InsuranceOfferSeatIds = Array.isArray(Table.insurance_offer_seat_ids) ? Table.insurance_offer_seat_ids.filter(SeatId => SelfSeatIds.includes(SeatId)) : [];
+    const ConfirmedSelfSeatIds = Array.isArray(Payload.self_seat_ids) ? Payload.self_seat_ids : [];
+    const InsuranceOfferSeatIds = Array.isArray(Table.insurance_offer_seat_ids) ? Table.insurance_offer_seat_ids.filter(SeatId => ConfirmedSelfSeatIds.includes(SeatId)) : [];
     const NextHands = Array.isArray(Table.hands) ? Table.hands.map(NormalizeHand) : [];
     const NextSeatSideBets = NormalizeSeatSideBets(Table.seat_side_bets);
     let ActiveSeatId = Table.active_seat_id || this.state.activeSeatId;
@@ -421,6 +424,29 @@ class NetworkBlackjackTable {
         userId: Claim?.user?.id || ""
       };
     });
+    ConfirmedSelfSeatIds.forEach(SeatId => {
+      if (this.optimisticSeatClaimIds.has(SeatId)) {
+        this.optimisticSeatClaimUpdatedAts.set(SeatId, PayloadUpdatedAt || this.lastAppliedPayloadUpdatedAt || 0);
+      }
+    });
+    Object.keys(ExternalSeatClaims).forEach(SeatId => this.ForgetLocalSeatClaim(SeatId, {
+      render: false
+    }));
+    Array.from(this.optimisticSeatClaimIds).forEach(SeatId => {
+      if (ConfirmedSelfSeatIds.includes(SeatId) || ExternalSeatClaims[SeatId]) {
+        return;
+      }
+      const ClaimUpdatedAt = this.optimisticSeatClaimUpdatedAts.get(SeatId);
+      if (Number.isFinite(ClaimUpdatedAt) && PayloadUpdatedAt > 0 && PayloadUpdatedAt >= ClaimUpdatedAt) {
+        this.ForgetLocalSeatClaim(SeatId, {
+          render: false
+        });
+      }
+    });
+    const SelfSeatIds = Array.from(new Set([
+      ...ConfirmedSelfSeatIds,
+      ...Array.from(this.optimisticSeatClaimIds).filter(SeatId => !ExternalSeatClaims[SeatId])
+    ]));
     this.tableState = Table;
     this.seatClaims = Payload.seat_claims || [];
     this.state.roundState = Table.round_state || ROUND_STATES.WAITING;
@@ -1248,6 +1274,9 @@ class NetworkBlackjackTable {
     return {
       lastAppliedPayloadUpdatedAt: this.lastAppliedPayloadUpdatedAt,
       localMessage: this.localMessage,
+      optimisticSeatClaimIds: Array.from(this.optimisticSeatClaimIds),
+      optimisticSeatClaimUpdatedAts: Array.from(this.optimisticSeatClaimUpdatedAts.entries()),
+      seatClaims: ClonePayload(this.seatClaims),
       state: ClonePayload(this.state),
       tableState: ClonePayload(this.tableState)
     };
@@ -1260,10 +1289,144 @@ class NetworkBlackjackTable {
       return false;
     }
     this.localMessage = Snapshot.localMessage || "";
+    this.optimisticSeatClaimIds = new Set(Snapshot.optimisticSeatClaimIds || []);
+    this.optimisticSeatClaimUpdatedAts = new Map(Snapshot.optimisticSeatClaimUpdatedAts || []);
+    this.seatClaims = Snapshot.seatClaims || [];
     this.state = Snapshot.state;
     this.tableState = Snapshot.tableState;
     this.Render();
     return true;
+  }
+  ApplyLocalSeatClaim(SeatId, { optimistic = true } = {}) {
+    if (!SeatId) {
+      return false;
+    }
+    const ExternalSeatClaims = {
+      ...(this.state.externalSeatClaims || {})
+    };
+    delete ExternalSeatClaims[SeatId];
+    this.state.externalSeatClaims = ExternalSeatClaims;
+    if (optimistic) {
+      this.optimisticSeatClaimIds.add(SeatId);
+      this.optimisticSeatClaimUpdatedAts.set(SeatId, Number.POSITIVE_INFINITY);
+    }
+    if (!this.state.selectedSeatIds.includes(SeatId)) {
+      this.state.selectedSeatIds = [...this.state.selectedSeatIds, SeatId];
+    }
+    this.state.activeSeatId = SeatId;
+    const LocalClaim = {
+      is_self: true,
+      seat_id: SeatId,
+      user: {
+        display_name: "You"
+      }
+    };
+    const ExistingClaimIndex = (this.seatClaims || []).findIndex(Claim => {
+      const ClaimSeatId = Claim?.seat_id || Claim?.seatId;
+      return ClaimSeatId === SeatId;
+    });
+    if (ExistingClaimIndex >= 0) {
+      this.seatClaims = this.seatClaims.map((Claim, Index) => Index === ExistingClaimIndex ? {
+        ...Claim,
+        ...LocalClaim
+      } : Claim);
+    } else {
+      this.seatClaims = [...(this.seatClaims || []), LocalClaim];
+    }
+    this.localMessage = "";
+    this.state.message = "";
+    this.Render();
+    return true;
+  }
+  ApplySeatClaimsPayload(Payload, { activeSeatId: ActiveSeatId = "" } = {}) {
+    if (!Payload) {
+      return false;
+    }
+    const ConfirmedSelfSeatIds = Array.isArray(Payload.self_seat_ids) ? Payload.self_seat_ids : [];
+    const ExternalSeatClaims = {};
+    (Payload.seat_claims || []).forEach(Claim => {
+      const SeatId = Claim?.seat_id || Claim?.seatId;
+      if (!SeatId || Claim?.is_self) {
+        return;
+      }
+      ExternalSeatClaims[SeatId] = {
+        displayName: Claim?.user?.display_name || Claim?.user?.username || "Player",
+        userId: Claim?.user?.id || ""
+      };
+    });
+
+    const PayloadUpdatedAt = GetPayloadUpdatedAt(Payload) || this.lastAppliedPayloadUpdatedAt || 0;
+    ConfirmedSelfSeatIds.forEach(SeatId => {
+      if (this.optimisticSeatClaimIds.has(SeatId)) {
+        this.optimisticSeatClaimUpdatedAts.set(SeatId, PayloadUpdatedAt);
+      }
+    });
+    Object.keys(ExternalSeatClaims).forEach(SeatId => this.ForgetLocalSeatClaim(SeatId, {
+      render: false
+    }));
+
+    this.seatClaims = Payload.seat_claims || [];
+    this.state.selectedSeatIds = ConfirmedSelfSeatIds;
+    if (ActiveSeatId && ConfirmedSelfSeatIds.includes(ActiveSeatId)) {
+      this.state.activeSeatId = ActiveSeatId;
+    } else if (!ConfirmedSelfSeatIds.includes(this.state.activeSeatId)) {
+      this.state.activeSeatId = ConfirmedSelfSeatIds[0] || "";
+    }
+    this.state.externalSeatClaims = ExternalSeatClaims;
+    this.state.balance = GetInitialBalanceAmount(Payload);
+    this.localMessage = "";
+    this.state.message = "";
+    this.Render();
+    return true;
+  }
+  ForgetLocalSeatClaim(SeatId, { render = true } = {}) {
+    if (!SeatId) {
+      return false;
+    }
+    this.optimisticSeatClaimIds.delete(SeatId);
+    this.optimisticSeatClaimUpdatedAts.delete(SeatId);
+    this.state.selectedSeatIds = (this.state.selectedSeatIds || []).filter(SelectedSeatId => SelectedSeatId !== SeatId);
+    if (this.state.activeSeatId === SeatId) {
+      this.state.activeSeatId = this.state.selectedSeatIds[0] || "";
+    }
+    this.seatClaims = (this.seatClaims || []).filter(Claim => {
+      const ClaimSeatId = Claim?.seat_id || Claim?.seatId;
+      return ClaimSeatId !== SeatId || !Claim?.is_self;
+    });
+    if (render) {
+      this.Render();
+    }
+    return true;
+  }
+  async ClaimSeat(SeatId) {
+    if (!SeatId || this.pendingSeatClaimIds.has(SeatId)) {
+      return false;
+    }
+    const Snapshot = this.CreateOptimisticSnapshot();
+    this.ApplyLocalSeatClaim(SeatId);
+    this.pendingSeatClaimIds.add(SeatId);
+    try {
+      const Claimed = await this.PostSeatAction("claim", SeatId, {
+        applyPayload: false
+      });
+      if (!Claimed) {
+        const FailureMessage = this.localMessage;
+        this.ForgetLocalSeatClaim(SeatId, {
+          render: false
+        });
+        this.RestoreOptimisticSnapshot(Snapshot);
+        if (FailureMessage) {
+          this.SetLocalMessage(FailureMessage);
+        }
+        return false;
+      }
+      this.ApplyLocalSeatClaim(SeatId, {
+        optimistic: false
+      });
+      return true;
+    } finally {
+      this.pendingSeatClaimIds.delete(SeatId);
+    }
   }
   AddChipToLocalState(SeatId, ChipValue, BetType = BET_TYPES.MAIN) {
     const NormalizedChipValue = Number(ChipValue) || 0;
@@ -1315,7 +1478,7 @@ class NetworkBlackjackTable {
     PlayBlackjackSound("placeChip");
     return true;
   }
-  async PostSeatAction(Action, SeatId) {
+  async PostSeatAction(Action, SeatId, Options = {}) {
     if (!this.seatActionUrl) {
       return false;
     }
@@ -1335,9 +1498,20 @@ class NetworkBlackjackTable {
       if (HandleCanceledSessionPayload(Payload)) {
         return false;
       }
-      await this.ApplyPayload(Payload, {
-        source: "action"
-      });
+      if (Response.ok && Action === "claim" && !Payload?.self_seat_ids?.includes?.(SeatId)) {
+        this.SetLocalMessage(Payload?.error || "Seat update failed.");
+        return false;
+      }
+      if (Response.ok && Action === "claim" && Options.applyPayload === false) {
+        this.ApplySeatClaimsPayload(Payload, {
+          activeSeatId: SeatId
+        });
+      } else if (Payload?.table_state) {
+        await this.ApplyPayload(Payload, {
+          animate: Options.animate !== false,
+          source: "action"
+        });
+      }
       if (!Response.ok) {
         this.SetLocalMessage(Payload?.error || "Seat update failed.");
         return false;
@@ -1427,6 +1601,9 @@ class NetworkBlackjackTable {
     }
   }
   async ToggleSeat(SeatId, ClickCount = 1) {
+    if (this.pendingSeatClaimIds.has(SeatId)) {
+      return;
+    }
     const IsSelfSeat = this.state.selectedSeatIds.includes(SeatId);
     const ExternalSeatClaim = this.state.externalSeatClaims?.[SeatId];
     const SelectedChipValue = Number(this.state.selectedChipValue) || 0;
@@ -1436,8 +1613,8 @@ class NetworkBlackjackTable {
       return;
     }
     if (!IsSelfSeat) {
-      const Claimed = await this.PostSeatAction("claim", SeatId);
-      if (Claimed && SelectedChipValue > 0) {
+      const Claimed = await this.ClaimSeat(SeatId);
+      if (Claimed && SelectedChipValue > 0 && this.CanUseBettingControls()) {
         await this.AddChipToSeat(SeatId, SelectedChipValue, BET_TYPES.MAIN);
       }
       return;
@@ -1456,9 +1633,15 @@ class NetworkBlackjackTable {
       this.Render();
       return;
     }
-    await this.PostSeatAction("release", SeatId);
+    const Released = await this.PostSeatAction("release", SeatId);
+    if (Released) {
+      this.ForgetLocalSeatClaim(SeatId);
+    }
   }
   async ToggleSideBetSpot(SeatId, BetType) {
+    if (this.pendingSeatClaimIds.has(SeatId)) {
+      return;
+    }
     if (![BET_TYPES.PERFECT_PAIRS, BET_TYPES.TWENTY_ONE_PLUS_THREE].includes(BetType)) {
       return;
     }
@@ -1474,7 +1657,7 @@ class NetworkBlackjackTable {
     }
     this.state.activeSeatId = SeatId;
     if (!IsSelfSeat) {
-      const Claimed = await this.PostSeatAction("claim", SeatId);
+      const Claimed = await this.ClaimSeat(SeatId);
       if (Claimed && SelectedChipValue > 0 && [ROUND_STATES.WAITING, ROUND_STATES.BETTING].includes(this.state.roundState)) {
         await this.AddChipToSeat(SeatId, SelectedChipValue, BetType);
       }

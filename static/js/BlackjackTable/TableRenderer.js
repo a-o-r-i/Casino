@@ -338,14 +338,35 @@ export function CreateTableRenderer({
       metrics: Metrics
     };
   }
+  function EnsureSeatNode(Seat) {
+    let Node = Elements.seatLayer.querySelector(`[data-seat-id="${Seat.id}"]`);
+    if (Node) {
+      return Node;
+    }
+
+    Node = ScopeDocument.createElement("button");
+    Node.className = "Seat";
+    Node.dataset.seatId = Seat.id;
+    Node.type = "button";
+    Node.style.setProperty("--SeatX", Seat.x);
+    Node.style.setProperty("--SeatY", Seat.y);
+    Node.innerHTML = `
+      <span class="SeatReady" hidden>Ready</span>
+      <span class="SeatOwner" hidden></span>
+      <span class="SeatYou">You</span>
+      <span class="SeatNumber"></span>
+    `;
+    Elements.seatLayer.append(Node);
+    return Node;
+  }
   function RenderSeats(State, View) {
-    const SeatMarkup = SEAT_POSITIONS.map(Seat => {
+    SEAT_POSITIONS.forEach(Seat => {
       const IsClaimed = State.selectedSeatIds.includes(Seat.id);
       const IsActive = Seat.id === State.activeSeatId;
       const ExternalSeatClaim = View.externalSeatClaims?.[Seat.id] || null;
       const IsOccupied = Boolean(ExternalSeatClaim);
       const IsReady = Array.isArray(View.readySeatIds) && View.readySeatIds.includes(Seat.id);
-      const Disabled = View.disableSeatSelection || (IsOccupied && !View.canAdminKickSeats) ? "disabled" : "";
+      const Disabled = Boolean(View.disableSeatSelection || (IsOccupied && !View.canAdminKickSeats));
       let SeatAction = IsOccupied ? `${ExternalSeatClaim.displayName} already took ${Seat.name}` : `Select ${Seat.name}`;
       if (!IsOccupied) {
         if (State.roundState === ROUND_STATES.INSURANCE && IsClaimed) {
@@ -358,26 +379,30 @@ export function CreateTableRenderer({
           SeatAction = `Leave ${Seat.name}`;
         }
       }
-      const SeatBadgeMarkup = IsOccupied ? `<span class="SeatOwner">${EscapeHtml(ExternalSeatClaim.displayName)}</span>` : '<span class="SeatYou">You</span>';
-      const ReadyBadgeMarkup = IsReady ? '<span class="SeatReady">Ready</span>' : "";
-      return `
-        <button
-          class="Seat${IsClaimed ? " IsClaimed" : ""}${IsActive ? " IsActive" : ""}${IsOccupied ? " IsOccupied" : ""}${IsReady ? " IsReady" : ""}"
-          data-seat-id="${Seat.id}"
-          style="--SeatX: ${Seat.x}; --SeatY: ${Seat.y};"
-          type="button"
-          aria-pressed="${String(IsClaimed)}"
-          aria-label="${SeatAction}"
-          title="${SeatAction}"
-          ${Disabled}
-        >
-          ${ReadyBadgeMarkup}
-          ${SeatBadgeMarkup}
-          <span class="SeatNumber">${Seat.label}</span>
-        </button>
-      `;
-    }).join("");
-    Elements.seatLayer.innerHTML = SeatMarkup;
+      const Node = EnsureSeatNode(Seat);
+      const ClassName = `Seat${IsClaimed ? " IsClaimed" : ""}${IsActive ? " IsActive" : ""}${IsOccupied ? " IsOccupied" : ""}${IsReady ? " IsReady" : ""}`;
+      if (Node.className !== ClassName) {
+        Node.className = ClassName;
+      }
+      Node.disabled = Disabled;
+      Node.setAttribute("aria-pressed", String(IsClaimed));
+      Node.setAttribute("aria-label", SeatAction);
+      Node.title = SeatAction;
+
+      const ReadyNode = Node.querySelector(".SeatReady");
+      const OwnerNode = Node.querySelector(".SeatOwner");
+      const NumberNode = Node.querySelector(".SeatNumber");
+      if (ReadyNode) {
+        ReadyNode.hidden = !IsReady;
+      }
+      if (OwnerNode) {
+        OwnerNode.hidden = !IsOccupied;
+        OwnerNode.textContent = IsOccupied ? ExternalSeatClaim.displayName : "";
+      }
+      if (NumberNode) {
+        NumberNode.textContent = Seat.label;
+      }
+    });
     RenderSeatBetSpots(State, View);
     RenderSeatBetStacks(View);
   }

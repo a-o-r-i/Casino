@@ -3,6 +3,19 @@
 {% block title %}Shuffling | Panel{% endblock %}
 {% block page_key %}admin-panel{% endblock %}
 
+{% block head %}
+  <style>
+    [data-admin-staff-suggestions][data-chat-suggestions]
+    {
+      top: calc(100% + 0.45rem);
+      right: 0;
+      bottom: auto;
+      left: 0;
+      z-index: 20;
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
   <section class="mx-auto w-full max-w-[960px] px-4 py-8 md:px-6">
     <div
@@ -42,17 +55,27 @@
           </div>
           <form
             class="mb-3 flex flex-col gap-2 rounded-[8px] border border-white/10 bg-white/[0.02] p-3 sm:flex-row"
+            action="{{ url_for('admin_add_staff_user') }}"
             data-admin-staff-form
             data-url="{{ url_for('admin_add_staff_user') }}"
+            method="post"
           >
-            <input
-              class="h-11 min-w-0 flex-1 rounded-[8px] border border-white/10 bg-white/[0.03] px-4 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/18 focus:bg-white/[0.05]"
-              data-admin-staff-input
-              name="user"
-              placeholder="Player id, @username, display name"
-              type="text"
-              autocomplete="off"
-            >
+            <div class="relative min-w-0 flex-1">
+              <input
+                class="h-11 w-full rounded-[8px] border border-white/10 bg-white/[0.03] px-4 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/18 focus:bg-white/[0.05]"
+                data-admin-staff-input
+                name="user"
+                placeholder="Player id, @username, display name"
+                type="text"
+                autocomplete="off"
+              >
+              <div
+                data-admin-staff-suggestions
+                data-chat-suggestions
+                data-open="false"
+                aria-hidden="true"
+              ></div>
+            </div>
             <button
               class="inline-flex h-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] px-4 text-sm font-medium text-white transition hover:bg-white/[0.08] disabled:cursor-default disabled:opacity-45"
               type="submit"
@@ -60,6 +83,9 @@
               Add staff
             </button>
           </form>
+          <div class="overflow-hidden rounded-[8px] border border-white/10 bg-white/[0.02]">
+            <div class="divide-y divide-white/10" data-admin-staff></div>
+          </div>
         </section>
       {% endif %}
 
