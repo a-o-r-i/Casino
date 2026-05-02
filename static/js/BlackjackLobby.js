@@ -338,3 +338,4 @@ const InitializeBlackjackLobbyPage = ({ main }) =>
 
 window.GamblingApp?.registerPageInitializer("blackjack-lobby", InitializeBlackjackLobbyPage);
 })();
+/* github-refresh: 2026-05-02T02:31:53Z */

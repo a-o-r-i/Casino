@@ -725,3 +725,4 @@
 
     window.GamblingApp?.registerPageInitializer("profile", InitializeProfilePage);
 })();
+/* github-refresh: 2026-05-02T02:31:53Z */

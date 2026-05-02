@@ -1520,3 +1520,4 @@ const InitializeDiceViewerPage = ({ main }) =>
 };
 
 window.GamblingApp?.registerPageInitializer("dice-session", InitializeDiceViewerPage);
+/* github-refresh: 2026-05-02T02:31:53Z */

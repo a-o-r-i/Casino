@@ -266,3 +266,4 @@ export const PAYOUT_RULES = Object.freeze({
 export function FindSeat(SeatId) {
   return SEAT_POSITIONS.find(Seat => Seat.id === SeatId) || null;
 }
+/* github-refresh: 2026-05-02T02:31:53Z */
