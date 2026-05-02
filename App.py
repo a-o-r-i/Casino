@@ -5329,6 +5329,48 @@ def reset_blackjack_table_for_next_round(blackjack_session):
         start_blackjack_betting_timer(table_state, current_time)
 
 
+def get_underfunded_blackjack_bet_user_ids(table_state, seat_claims, pending_bets_by_seat, pending_side_bets_by_seat):
+    user_bet_totals = {}
+
+    for seat_id, user_id in (seat_claims or {}).items():
+        if not user_id:
+            continue
+
+        seat_total_cents = pending_bets_by_seat.get(seat_id, 0) + sum(
+            int(amount_cents or 0)
+            for amount_cents in (pending_side_bets_by_seat.get(seat_id) or {}).values()
+        )
+
+        if seat_total_cents <= 0:
+            continue
+
+        user_bet_totals[user_id] = user_bet_totals.get(user_id, 0) + seat_total_cents
+
+    return {
+        user_id
+        for user_id, bet_cents in user_bet_totals.items()
+        if get_user_balance(user_id) < bet_cents
+    }
+
+
+def release_underfunded_blackjack_seats(blackjack_session, table_state, underfunded_user_ids):
+    if not underfunded_user_ids:
+        return []
+
+    released_names = []
+    seat_claims = blackjack_session.setdefault("seat_claims", {})
+
+    for seat_id, user_id in list(seat_claims.items()):
+        if user_id not in underfunded_user_ids:
+            continue
+
+        user_profile = USER_PROFILES.get(user_id) or {}
+        released_names.append(user_profile.get("display_name") or user_profile.get("username") or "A player")
+        release_blackjack_seat(blackjack_session, table_state, seat_id)
+
+    return released_names
+
+
 def maybe_begin_blackjack_round_on_timeout(blackjack_session, now=None):
     min_bet_cents, max_bet_cents = ensure_blackjack_session_limits(blackjack_session)
     table_state = ensure_blackjack_table_state(blackjack_session)
@@ -5342,6 +5384,25 @@ def maybe_begin_blackjack_round_on_timeout(blackjack_session, now=None):
         return False
 
     pending_bets_by_seat = get_blackjack_pending_bets_by_seat(table_state, BLACKJACK_BET_TYPE_MAIN)
+    pending_side_bets_by_seat = get_blackjack_pending_side_bets_by_seat(table_state)
+    underfunded_user_ids = get_underfunded_blackjack_bet_user_ids(
+        table_state,
+        seat_claims,
+        pending_bets_by_seat,
+        pending_side_bets_by_seat,
+    )
+
+    if underfunded_user_ids:
+        released_names = release_underfunded_blackjack_seats(blackjack_session, table_state, underfunded_user_ids)
+        start_blackjack_betting_timer(table_state, current_time)
+        table_state["message"] = (
+            f"{', '.join(released_names)} no longer had enough balance for that bet."
+            if released_names
+            else "A player no longer had enough balance for that bet."
+        )
+        table_state["updated_at"] = current_time
+        return False
+
     has_participating_seat = any(
         seat_claims.get(seat_id)
         and min_bet_cents <= pending_bets_by_seat.get(seat_id, 0) <= max_bet_cents
@@ -5349,7 +5410,13 @@ def maybe_begin_blackjack_round_on_timeout(blackjack_session, now=None):
     )
 
     if has_participating_seat:
-        begin_blackjack_round(blackjack_session)
+        try:
+            begin_blackjack_round(blackjack_session)
+        except ValueError as exc:
+            start_blackjack_betting_timer(table_state, current_time)
+            table_state["message"] = str(exc)
+            table_state["updated_at"] = current_time
+            return False
         return True
 
     start_blackjack_betting_timer(table_state, current_time)
