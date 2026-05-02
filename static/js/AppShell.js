@@ -21,6 +21,8 @@
         "chatSendUrl",
         "chatStateUrl",
         "chatUserProfileUrl",
+        "csrfToken",
+        "guestUser",
         "notificationCursor",
         "notificationStateUrl",
         "presenceHeartbeatUrl",
@@ -38,6 +40,99 @@
     let NotificationCursor = null;
     let NotificationPollTimeout = 0;
     let SoundUnlockListenersAttached = false;
+    const NativeFetch = typeof ExistingApp.NativeFetch === "function"
+        ? ExistingApp.NativeFetch
+        : window.fetch.bind(window);
+
+    ExistingApp.NativeFetch = NativeFetch;
+
+    const GetCsrfToken = () =>
+    {
+        return document.body?.dataset?.csrfToken || "";
+    };
+
+    const IsSameOriginUrl = (UrlValue) =>
+    {
+        try
+        {
+            return new URL(UrlValue, window.location.href).origin === window.location.origin;
+        }
+        catch (_ErrorValue)
+        {
+            return false;
+        }
+    };
+
+    const IsMutatingMethod = (MethodValue) =>
+    {
+        const Method = String(MethodValue || "GET").toUpperCase();
+        return !["GET", "HEAD", "OPTIONS", "TRACE"].includes(Method);
+    };
+
+    const GetFetchMethod = (InputValue, InitValue) =>
+    {
+        return InitValue?.method || (InputValue instanceof Request ? InputValue.method : "GET");
+    };
+
+    const GetFetchUrl = (InputValue) =>
+    {
+        return InputValue instanceof Request ? InputValue.url : String(InputValue || window.location.href);
+    };
+
+    const SecureFetch = (InputValue, InitValue = {}) =>
+    {
+        const Method = GetFetchMethod(InputValue, InitValue);
+        const RequestUrl = GetFetchUrl(InputValue);
+        const Token = GetCsrfToken();
+
+        if (!Token || !IsMutatingMethod(Method) || !IsSameOriginUrl(RequestUrl))
+        {
+            return NativeFetch(InputValue, InitValue);
+        }
+
+        const HeadersValue = new Headers(InitValue.headers || (InputValue instanceof Request ? InputValue.headers : undefined));
+        if (!HeadersValue.has("X-CSRF-Token"))
+        {
+            HeadersValue.set("X-CSRF-Token", Token);
+        }
+
+        return NativeFetch(InputValue, {
+            ...InitValue,
+            credentials: InitValue.credentials || "same-origin",
+            headers: HeadersValue,
+        });
+    };
+
+    window.fetch = SecureFetch;
+
+    const EnsureFormCsrfField = (Form) =>
+    {
+        if (!(Form instanceof HTMLFormElement))
+        {
+            return;
+        }
+
+        const Method = String(Form.method || "GET").toUpperCase();
+        const Action = Form.action || window.location.href;
+        const Token = GetCsrfToken();
+
+        if (!Token || Method !== "POST" || !IsSameOriginUrl(Action))
+        {
+            return;
+        }
+
+        let TokenInput = Form.querySelector('input[name="csrf_token"]');
+
+        if (!(TokenInput instanceof HTMLInputElement))
+        {
+            TokenInput = document.createElement("input");
+            TokenInput.type = "hidden";
+            TokenInput.name = "csrf_token";
+            Form.prepend(TokenInput);
+        }
+
+        TokenInput.value = Token;
+    };
 
     const GetAppHeader = () =>
     {
@@ -3340,6 +3435,71 @@
         CloseProfileMenus();
     };
 
+    const HandleCsrfFormSubmit = (EventValue) =>
+    {
+        const Form = EventValue.target instanceof HTMLFormElement ? EventValue.target : null;
+        EnsureFormCsrfField(Form);
+    };
+
+    const HandleGuestLogoutClick = (EventValue) =>
+    {
+        if (document.body.dataset.guestUser !== "true")
+        {
+            return;
+        }
+
+        const Target = EventValue.target instanceof Element ? EventValue.target : null;
+        const Link = Target?.closest("a[href]");
+
+        if (!Link)
+        {
+            return;
+        }
+
+        let UrlValue = null;
+
+        try
+        {
+            UrlValue = new URL(Link.href, window.location.href);
+        }
+        catch (_ErrorValue)
+        {
+            return;
+        }
+
+        if (UrlValue.origin !== window.location.origin || UrlValue.pathname !== "/logout")
+        {
+            return;
+        }
+
+        if (Link.hasAttribute("data-guest-logout-confirm"))
+        {
+            return;
+        }
+
+        EventValue.preventDefault();
+        EventValue.stopPropagation();
+
+        const ConfirmLink = document.querySelector("[data-guest-logout-confirm]");
+        const Controller = GetModalController("guest-logout");
+
+        if (ConfirmLink)
+        {
+            ConfirmLink.href = UrlValue.href;
+        }
+
+        if (!Controller)
+        {
+            window.location.href = UrlValue.href;
+            return;
+        }
+
+        Controller.open().catch((ErrorValue) =>
+        {
+            console.error(ErrorValue);
+        });
+    };
+
     MasterSoundVolume = ReadStoredMasterSoundVolume();
     RegisterBuiltInSounds();
 
@@ -3374,6 +3534,12 @@
         stopSound: StopSound,
     };
 
+    document.addEventListener("submit", HandleCsrfFormSubmit, {
+        capture: true,
+    });
+    document.addEventListener("click", HandleGuestLogoutClick, {
+        capture: true,
+    });
     document.addEventListener("click", HandleModalTriggerClick);
     document.addEventListener("click", HandleDocumentClick);
     document.addEventListener("click", HandleProfileMenuDocumentClick);

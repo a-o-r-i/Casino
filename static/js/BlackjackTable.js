@@ -58,6 +58,12 @@ function GetInitialBalanceAmount(InitialState) {
   const ParsedBalance = Number(InitialState?.current_balance_amount);
   return Number.isFinite(ParsedBalance) ? ParsedBalance : 0;
 }
+function GetCsrfHeaders() {
+  const Token = document.body?.dataset?.csrfToken || "";
+  return Token ? {
+    "X-CSRF-Token": Token
+  } : {};
+}
 function NormalizeDealer(Dealer = {}) {
   return {
     cards: Array.isArray(Dealer.cards) ? Dealer.cards.filter(Boolean) : [],
@@ -1486,6 +1492,7 @@ class NetworkBlackjackTable {
       const Response = await fetch(this.seatActionUrl, {
         method: "POST",
         headers: {
+          ...GetCsrfHeaders(),
           "Content-Type": "application/json",
           Accept: "application/json"
         },
@@ -1554,6 +1561,7 @@ class NetworkBlackjackTable {
       const Response = await fetch(this.actionUrl, {
         method: "POST",
         headers: {
+          ...GetCsrfHeaders(),
           "Content-Type": "application/json",
           Accept: "application/json"
         },

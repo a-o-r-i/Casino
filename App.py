@@ -215,6 +215,14 @@ SESSION_LIFETIME_DAYS = max(env_int("SESSION_LIFETIME_DAYS", 30), 1)
 SESSION_COOKIE_SECURE = env_flag("SESSION_COOKIE_SECURE", default=False)
 GUEST_USER_ID_PREFIX = "guest-"
 GUEST_USERNAME_PATTERN = re.compile(r"^Guest([1-9]\d*)$")
+CSRF_SESSION_KEY = "csrf_token"
+GUEST_ACCOUNT_DAILY_IP_LIMIT = max(env_int("GUEST_ACCOUNT_DAILY_IP_LIMIT", 3), 1)
+GUEST_ACCOUNT_IP_WINDOW_SECONDS = 24 * 60 * 60
+GUEST_IP_HASH_SALT = os.environ.get("GUEST_IP_HASH_SALT") or "coinflip-guest-ip-v1"
+MAX_ACTIVE_COINFLIP_SESSIONS_PER_USER = max(env_int("MAX_ACTIVE_COINFLIP_SESSIONS_PER_USER", 4), 1)
+MAX_ACTIVE_DICE_SESSIONS_PER_USER = max(env_int("MAX_ACTIVE_DICE_SESSIONS_PER_USER", 4), 1)
+MAX_ACTIVE_BLACKJACK_SESSIONS_PER_USER = max(env_int("MAX_ACTIVE_BLACKJACK_SESSIONS_PER_USER", 2), 1)
+RATE_LIMIT_MAX_BUCKETS = 5000
 
 USER_BALANCES = {}
 USER_VAULTS = {}
@@ -295,9 +303,124 @@ ONLINE_PLAYER_BONUS_STATE = {
 }
 USER_REWARDS = {}
 USER_AUTH_VERSIONS = {}
+REQUEST_RATE_LIMITS = {}
 PENDING_DISCORD_OAUTH_STATES = {}
 ADMIN_PANEL_STAFF = {}
 ADMIN_BALANCE_ADJUSTMENTS = {}
+CSRF_EXEMPT_ENDPOINTS = {
+    "presence_offline",
+}
+POST_RATE_LIMIT_RULES = {
+    "guest_login": (
+        {"scope": "ip", "limit": 2, "window": 15 * 60},
+        {"scope": "ip", "limit": GUEST_ACCOUNT_DAILY_IP_LIMIT, "window": GUEST_ACCOUNT_IP_WINDOW_SECONDS},
+    ),
+    "create_blackjack_session": (
+        {"scope": "user_or_ip", "limit": 3, "window": 5 * 60},
+        {"scope": "ip", "limit": 10, "window": 60 * 60},
+    ),
+    "create_coinflip_session": (
+        {"scope": "user_or_ip", "limit": 6, "window": 5 * 60},
+        {"scope": "ip", "limit": 24, "window": 60 * 60},
+    ),
+    "create_dice_session": (
+        {"scope": "user_or_ip", "limit": 6, "window": 5 * 60},
+        {"scope": "ip", "limit": 24, "window": 60 * 60},
+    ),
+    "redo_coinflip_session": (
+        {"scope": "user_or_ip", "limit": 6, "window": 5 * 60},
+    ),
+    "redo_dice_session": (
+        {"scope": "user_or_ip", "limit": 6, "window": 5 * 60},
+    ),
+    "call_coinflip_bot": (
+        {"scope": "user_or_ip", "limit": 12, "window": 60},
+    ),
+    "call_dice_bot": (
+        {"scope": "user_or_ip", "limit": 12, "window": 60},
+    ),
+    "join_coinflip_session": (
+        {"scope": "user_or_ip", "limit": 30, "window": 60},
+    ),
+    "join_dice_session": (
+        {"scope": "user_or_ip", "limit": 30, "window": 60},
+    ),
+    "blackjack_table_seats": (
+        {"scope": "user_or_ip", "limit": 60, "window": 60},
+    ),
+    "blackjack_table_actions": (
+        {"scope": "user_or_ip", "limit": 150, "window": 60},
+    ),
+    "blackjack_table_balance": (
+        {"scope": "user_or_ip", "limit": 30, "window": 60},
+    ),
+    "presence_heartbeat": (
+        {"scope": "user_or_ip", "limit": 40, "window": 60},
+    ),
+    "update_vault": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+    "chat_messages": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+    "chat_rains": (
+        {"scope": "user_or_ip", "limit": 3, "window": 10 * 60},
+    ),
+    "join_chat_rain": (
+        {"scope": "user_or_ip", "limit": 60, "window": 60},
+    ),
+    "tip_chat_user": (
+        {"scope": "user_or_ip", "limit": 12, "window": 60},
+    ),
+    "claim_rakeback": (
+        {"scope": "user_or_ip", "limit": 6, "window": 60},
+    ),
+    "claim_level_reward": (
+        {"scope": "user_or_ip", "limit": 6, "window": 60},
+    ),
+    "claim_daily_rakeback_reward": (
+        {"scope": "user_or_ip", "limit": 6, "window": 60},
+    ),
+    "claim_weekly_bonus_reward": (
+        {"scope": "user_or_ip", "limit": 6, "window": 60},
+    ),
+    "claim_leader_reward": (
+        {"scope": "user_or_ip", "limit": 6, "window": 60},
+    ),
+    "claim_daily_leader_reward": (
+        {"scope": "user_or_ip", "limit": 6, "window": 60},
+    ),
+    "admin_reset_state": (
+        {"scope": "user_or_ip", "limit": 3, "window": 10 * 60},
+    ),
+    "admin_add_staff_user": (
+        {"scope": "user_or_ip", "limit": 12, "window": 60},
+    ),
+    "admin_remove_staff_user": (
+        {"scope": "user_or_ip", "limit": 12, "window": 60},
+    ),
+    "admin_adjust_user_balance": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+    "admin_adjust_user_vault": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+    "admin_reset_user_data": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+    "admin_force_logout_user": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+    "admin_cancel_game_session": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+    "save_hand_slot_layout_state": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+    "save_blackjack_side_bet_layout_state": (
+        {"scope": "user_or_ip", "limit": 20, "window": 60},
+    ),
+}
 RAKEBACK_RATE_BPS = 300
 RAKEBACK_CLAIM_COOLDOWN_SECONDS = 60 * 60
 DAILY_RAKEBACK_RATE_BPS = 200
@@ -740,6 +863,22 @@ def format_money_whole_dollars(amount_cents):
     return f"${normalize_money_cents(amount_cents) // 100:,}"
 
 
+def format_feed_money(amount_cents):
+    amount_cents = normalize_money_cents(amount_cents)
+    sign = "+" if amount_cents >= 0 else "-"
+    return f"{sign}${abs(amount_cents) / 100:,.2f}"
+
+
+def format_win_multiplier(payout_cents, bet_cents):
+    payout_cents = normalize_money_cents(payout_cents)
+    bet_cents = normalize_money_cents(bet_cents)
+
+    if bet_cents <= 0:
+        return "0.00x"
+
+    return f"{payout_cents / bet_cents:,.2f}x"
+
+
 def format_duration(seconds):
     seconds = max(int(math.ceil(seconds)), 0)
 
@@ -1057,7 +1196,14 @@ def remember_user_profile(user_profile):
     )
     if existing_profile.get("last_active_at") or user_profile.get("last_active_at"):
         user_snapshot["last_active_at"] = existing_profile.get("last_active_at") or user_profile.get("last_active_at")
-    USER_PROFILES[user_snapshot["id"]] = user_snapshot
+
+    profile_record = dict(user_snapshot)
+    for metadata_field in ("guest_created_at", "guest_created_ip_hash"):
+        metadata_value = existing_profile.get(metadata_field) or user_profile.get(metadata_field)
+        if metadata_value is not None:
+            profile_record[metadata_field] = metadata_value
+
+    USER_PROFILES[user_snapshot["id"]] = profile_record
     return user_snapshot
 
 
@@ -1074,7 +1220,7 @@ def build_guest_user_profile(guest_number):
     }
 
 
-def create_guest_user_profile():
+def create_guest_user_profile(client_ip=None):
     global NEXT_GUEST_NUMBER
 
     with STATE_LOCK:
@@ -1085,6 +1231,11 @@ def create_guest_user_profile():
 
         guest_profile = remember_user_profile(build_guest_user_profile(guest_number))
         NEXT_GUEST_NUMBER = guest_number + 1
+        profile_record = USER_PROFILES.get(guest_profile["id"], guest_profile)
+        profile_record["guest_created_at"] = profile_record.get("registered_at") or time.time()
+        if client_ip:
+            profile_record["guest_created_ip_hash"] = hash_client_ip_address(client_ip)
+        USER_PROFILES[guest_profile["id"]] = profile_record
         ensure_user_balance(guest_profile)
         return guest_profile
 
@@ -1333,6 +1484,77 @@ def get_user_stats(user_id):
 
 def get_user_bet_history(user_id):
     return list(USER_BET_HISTORY.get(user_id, []))
+
+
+def build_recent_win_rows(limit=8):
+    wins = []
+
+    for user_id, user_bets in USER_BET_HISTORY.items():
+        if not isinstance(user_bets, list):
+            continue
+
+        user_profile = normalize_user_profile(USER_PROFILES.get(user_id) or {})
+        display_name = user_profile.get("display_name") or user_profile.get("username") or str(user_id)
+        avatar_url = user_profile.get("avatar_static_url") or user_profile.get("avatar_url")
+
+        for bet in user_bets:
+            if not isinstance(bet, dict) or not bet.get("did_win"):
+                continue
+
+            payout_cents = safe_int(bet.get("pot_cents"), 0)
+            bet_cents = safe_int(bet.get("bets_cents"), 0)
+            game_name = str(bet.get("game") or "Game")
+            choice = str(bet.get("choice") or "").strip()
+            result_side = str(bet.get("result_side") or "").strip()
+            detail_parts = []
+
+            if choice:
+                detail_parts.append(choice)
+
+            if result_side:
+                detail_parts.append(result_side)
+
+            wins.append({
+                "avatar_url": avatar_url,
+                "bet_cents": bet_cents,
+                "bet_display": bet.get("bet_display") or format_money(bet_cents),
+                "detail": " / ".join(detail_parts),
+                "display_name": display_name,
+                "game": game_name,
+                "game_key": game_name.lower(),
+                "multiplier_display": format_win_multiplier(payout_cents, bet_cents),
+                "payout_cents": payout_cents,
+                "payout_feed_display": format_feed_money(payout_cents),
+                "payout_display": bet.get("pot_display") or format_money(payout_cents),
+                "session_id": bet.get("session_id"),
+                "timestamp": safe_float(bet.get("timestamp"), 0),
+                "user_id": user_profile.get("id") or user_id,
+            })
+
+    wins.sort(key=lambda row: row["timestamp"], reverse=True)
+    return wins[:limit]
+
+
+def build_play_page_state():
+    recent_wins = build_recent_win_rows(11)
+    total_recent_paid_cents = sum(row["payout_cents"] for row in recent_wins)
+    biggest_recent_win = max((row["payout_cents"] for row in recent_wins), default=0)
+    game_counts = {}
+
+    for row in recent_wins:
+        game_counts[row["game"]] = game_counts.get(row["game"], 0) + 1
+
+    top_game = max(game_counts.items(), key=lambda item: item[1])[0] if game_counts else "None"
+
+    return {
+        "recent_wins": recent_wins,
+        "stats": {
+            "biggest_recent_win_display": format_money(biggest_recent_win),
+            "recent_win_count": len(recent_wins),
+            "recent_paid_display": format_money(total_recent_paid_cents),
+            "top_game": top_game,
+        },
+    }
 
 
 def get_utc_day_start(now=None, offset_days=0):
@@ -6430,6 +6652,210 @@ def request_prefers_json_response():
     return "application/json" in accepted_content and "text/html" not in accepted_content
 
 
+def ensure_csrf_token():
+    token = session.get(CSRF_SESSION_KEY)
+
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session[CSRF_SESSION_KEY] = token
+
+    return token
+
+
+def get_submitted_csrf_token():
+    header_token = request.headers.get("X-CSRF-Token") or request.headers.get("X-CSRFToken")
+
+    if header_token:
+        return str(header_token)
+
+    form_token = request.form.get("csrf_token")
+
+    if form_token:
+        return str(form_token)
+
+    return ""
+
+
+def validate_csrf_token():
+    expected_token = ensure_csrf_token()
+    submitted_token = get_submitted_csrf_token()
+    return bool(
+        expected_token
+        and submitted_token
+        and secrets.compare_digest(expected_token, submitted_token)
+    )
+
+
+def get_client_ip_address():
+    for header_name in ("CF-Connecting-IP", "Fly-Client-IP", "X-Real-IP"):
+        header_value = request.headers.get(header_name)
+        if header_value:
+            return header_value.split(",", 1)[0].strip()
+
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()
+
+    return request.remote_addr or "unknown"
+
+
+def hash_client_ip_address(client_ip):
+    normalized_ip = str(client_ip or "unknown").strip().lower()
+    return hashlib.sha256(f"{GUEST_IP_HASH_SALT}:{normalized_ip}".encode("utf-8")).hexdigest()
+
+
+def count_recent_guest_profiles_for_ip(client_ip, current_time=None):
+    ip_hash = hash_client_ip_address(client_ip)
+    now = current_time or time.time()
+    cutoff = now - GUEST_ACCOUNT_IP_WINDOW_SECONDS
+    guest_count = 0
+
+    for user_profile in USER_PROFILES.values():
+        if not isinstance(user_profile, dict) or not is_guest_user_profile(user_profile):
+            continue
+
+        if user_profile.get("guest_created_ip_hash") != ip_hash:
+            continue
+
+        guest_created_at = safe_float(
+            user_profile.get("guest_created_at") or user_profile.get("registered_at"),
+            0,
+        )
+
+        if guest_created_at >= cutoff:
+            guest_count += 1
+
+    return guest_count
+
+
+def validate_guest_account_creation(client_ip):
+    if count_recent_guest_profiles_for_ip(client_ip) >= GUEST_ACCOUNT_DAILY_IP_LIMIT:
+        raise ValueError(
+            f"Guest account limit reached. You can create up to {GUEST_ACCOUNT_DAILY_IP_LIMIT} guest "
+            "accounts per day from the same network. Connect Discord to keep playing."
+        )
+
+
+def prune_rate_limit_buckets(current_time):
+    if len(REQUEST_RATE_LIMITS) <= RATE_LIMIT_MAX_BUCKETS:
+        return
+
+    expired_keys = [
+        bucket_key
+        for bucket_key, timestamps in REQUEST_RATE_LIMITS.items()
+        if not timestamps or max(timestamps) < current_time - GUEST_ACCOUNT_IP_WINDOW_SECONDS
+    ]
+
+    for bucket_key in expired_keys:
+        REQUEST_RATE_LIMITS.pop(bucket_key, None)
+
+    if len(REQUEST_RATE_LIMITS) <= RATE_LIMIT_MAX_BUCKETS:
+        return
+
+    oldest_keys = sorted(
+        REQUEST_RATE_LIMITS,
+        key=lambda bucket_key: max(REQUEST_RATE_LIMITS.get(bucket_key) or [0]),
+    )
+    for bucket_key in oldest_keys[: max(len(oldest_keys) - RATE_LIMIT_MAX_BUCKETS, 0)]:
+        REQUEST_RATE_LIMITS.pop(bucket_key, None)
+
+
+def get_rate_limit_identity(scope):
+    client_ip = get_client_ip_address()
+
+    if scope == "ip":
+        return f"ip:{client_ip}"
+
+    if scope == "user":
+        current_user_id = get_current_user_id()
+        return f"user:{current_user_id}" if current_user_id else f"ip:{client_ip}"
+
+    current_user_id = get_current_user_id()
+    return f"user:{current_user_id}" if current_user_id else f"ip:{client_ip}"
+
+
+def check_rate_limit(bucket_key, limit, window_seconds, current_time):
+    timestamps = REQUEST_RATE_LIMITS.get(bucket_key, [])
+    cutoff = current_time - window_seconds
+    timestamps = [timestamp for timestamp in timestamps if timestamp > cutoff]
+
+    if len(timestamps) >= limit:
+        retry_after = max(1, math.ceil(window_seconds - (current_time - timestamps[0])))
+        REQUEST_RATE_LIMITS[bucket_key] = timestamps
+        return False, retry_after
+
+    timestamps.append(current_time)
+    REQUEST_RATE_LIMITS[bucket_key] = timestamps
+    return True, 0
+
+
+def build_security_error_response(message, status_code=403, retry_after_seconds=None):
+    if request_prefers_json_response():
+        payload = {"error": message}
+
+        if retry_after_seconds:
+            payload["retry_after_seconds"] = retry_after_seconds
+
+        response = jsonify(payload)
+        response.status_code = status_code
+    else:
+        response = redirect(request.referrer if is_safe_redirect_target(request.referrer) else url_for("play"))
+        response.status_code = 303
+        flash(message, "error")
+
+    if retry_after_seconds:
+        response.headers["Retry-After"] = str(int(retry_after_seconds))
+
+    return response
+
+
+def enforce_endpoint_rate_limit():
+    rules = POST_RATE_LIMIT_RULES.get(request.endpoint)
+
+    if not rules:
+        return None
+
+    current_time = time.time()
+
+    with STATE_LOCK:
+        prune_rate_limit_buckets(current_time)
+
+        for rule in rules:
+            scope = rule.get("scope", "user_or_ip")
+            limit = max(safe_int(rule.get("limit"), 1), 1)
+            window_seconds = max(safe_int(rule.get("window"), 60), 1)
+            identity = get_rate_limit_identity(scope)
+            bucket_key = f"{request.endpoint}:{scope}:{identity}:{window_seconds}"
+            is_allowed, retry_after = check_rate_limit(bucket_key, limit, window_seconds, current_time)
+
+            if not is_allowed:
+                return build_security_error_response(
+                    "Too many requests. Please slow down and try again in a moment.",
+                    429,
+                    retry_after,
+                )
+
+    return None
+
+
+def enforce_mutating_request_security():
+    if request.method != "POST":
+        return None
+
+    rate_limit_response = enforce_endpoint_rate_limit()
+
+    if rate_limit_response:
+        return rate_limit_response
+
+    if request.endpoint in CSRF_EXEMPT_ENDPOINTS:
+        return None
+
+    if not validate_csrf_token():
+        return build_security_error_response("Security check failed. Refresh the page and try again.", 403)
+
+    return None
+
+
 def is_admin_user(user_profile):
     normalized_user = normalize_user_profile(user_profile)
     return bool(normalized_user and normalized_user.get("id") == ADMIN_PANEL_USER_ID)
@@ -6812,6 +7238,62 @@ def game_session_is_resolved(game, session_record):
         return False
 
     raise ValueError("Choose a valid game.")
+
+
+def count_active_created_sessions_for_user(game, user_id):
+    if not user_id:
+        return 0
+
+    if game == "coinflip":
+        return sum(
+            1
+            for session_record in COINFLIP_SESSIONS.values()
+            if (
+                (session_record.get("creator") or {}).get("id") == user_id
+                and not coinflip_session_is_resolved(session_record)
+            )
+        )
+
+    if game == "dice":
+        return sum(
+            1
+            for session_record in DICE_SESSIONS.values()
+            if (
+                (session_record.get("creator") or {}).get("id") == user_id
+                and not dice_session_is_resolved(session_record)
+            )
+        )
+
+    if game == "blackjack":
+        return sum(
+            1
+            for session_record in BLACKJACK_SESSIONS.values()
+            if (session_record.get("creator") or {}).get("id") == user_id
+        )
+
+    return 0
+
+
+def validate_user_can_create_game_session(game, user_id):
+    session_limits = {
+        "blackjack": MAX_ACTIVE_BLACKJACK_SESSIONS_PER_USER,
+        "coinflip": MAX_ACTIVE_COINFLIP_SESSIONS_PER_USER,
+        "dice": MAX_ACTIVE_DICE_SESSIONS_PER_USER,
+    }
+    session_limit = session_limits.get(game)
+
+    if not session_limit:
+        return
+
+    active_count = count_active_created_sessions_for_user(game, user_id)
+
+    if active_count >= session_limit:
+        game_label = get_game_label(game).lower()
+        raise ValueError(
+            f"You already have {active_count} active {game_label} "
+            f"{'table' if game == 'blackjack' else 'session'}{'s' if active_count != 1 else ''}. "
+            "Finish or wait for one to expire before creating another."
+        )
 
 
 def build_session_refund_participants(session_record):
@@ -9152,6 +9634,11 @@ def get_blackjack_canceled_payload(session_id):
 
 @app.before_request
 def load_current_user():
+    security_response = enforce_mutating_request_security()
+
+    if security_response:
+        return security_response
+
     g.discord_user = get_current_user()
     g.admin_role = get_admin_role(g.discord_user)
     g.is_admin_user = g.admin_role is not None
@@ -9214,6 +9701,7 @@ def inject_auth_state():
         "current_balance_display": format_money(g.current_balance_cents) if g.current_balance_cents is not None else None,
         "current_vault_cents": get_user_vault_balance(discord_user["id"]) if discord_user else None,
         "current_vault_display": format_money(get_user_vault_balance(discord_user["id"])) if discord_user else None,
+        "csrf_token": ensure_csrf_token(),
         "discord_oauth_ready": is_discord_oauth_ready(),
         "discord_user": discord_user,
         "is_admin_user": admin_user,
@@ -9234,12 +9722,20 @@ def inject_auth_state():
 
 @app.route("/")
 def index():
-    return render_template("Index.html", active_page="play")
+    with STATE_LOCK:
+        sync_all_game_sessions()
+        play_page_state = build_play_page_state()
+
+    return render_template("Index.html", active_page="play", play_page=play_page_state)
 
 
 @app.route("/play")
 def play():
-    return render_template("Index.html", active_page="play")
+    with STATE_LOCK:
+        sync_all_game_sessions()
+        play_page_state = build_play_page_state()
+
+    return render_template("Index.html", active_page="play", play_page=play_page_state)
 
 
 @app.route("/how-to-play")
@@ -10046,6 +10542,14 @@ def create_blackjack_session():
         return redirect(url_for("blackjack_game"))
 
     with STATE_LOCK:
+        cleanup_idle_blackjack_sessions()
+
+        try:
+            validate_user_can_create_game_session("blackjack", current_user["id"])
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("blackjack_game"))
+
         blackjack_session = create_blackjack_session_record(
             current_user,
             table_name,
@@ -10498,7 +11002,14 @@ def create_coinflip_session():
     current_user_id = current_user["id"]
 
     with STATE_LOCK:
+        cleanup_expired_coinflip_and_dice_sessions()
         current_balance = get_user_balance(current_user_id)
+
+        try:
+            validate_user_can_create_game_session("coinflip", current_user_id)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("coinflip_game"))
 
         if bet_cents > current_balance:
             flash("You do not have enough balance for that bet.", "error")
@@ -10658,6 +11169,12 @@ def redo_coinflip_session(session_id):
             if joined_existing_session:
                 return redirect(url_for("coinflip_session", session_id=existing_redo_session["id"]))
 
+        try:
+            validate_user_can_create_game_session("coinflip", current_user_id)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("coinflip_session", session_id=session_id))
+
         current_balance = get_user_balance(current_user_id)
 
         if bet_cents > current_balance:
@@ -10773,7 +11290,14 @@ def create_dice_session():
     current_user_id = current_user["id"]
 
     with STATE_LOCK:
+        cleanup_expired_coinflip_and_dice_sessions()
         current_balance = get_user_balance(current_user_id)
+
+        try:
+            validate_user_can_create_game_session("dice", current_user_id)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("dice_game"))
 
         if bet_cents > current_balance:
             flash("You do not have enough balance for that bet.", "error")
@@ -10953,6 +11477,12 @@ def redo_dice_session(session_id):
             if joined_existing_session:
                 return redirect(url_for("dice_session", session_id=existing_redo_session["id"]))
 
+        try:
+            validate_user_can_create_game_session("dice", current_user_id)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("dice_session", session_id=session_id))
+
         current_balance = get_user_balance(current_user_id)
 
         if bet_cents > current_balance:
@@ -11027,8 +11557,14 @@ def guest_login():
         )
         return redirect(redirect_target)
 
-    with STATE_LOCK:
-        guest_user = create_guest_user_profile()
+    client_ip = get_client_ip_address()
+
+    try:
+        with STATE_LOCK:
+            validate_guest_account_creation(client_ip)
+            guest_user = create_guest_user_profile(client_ip)
+    except ValueError as exc:
+        return build_security_error_response(str(exc), 429)
 
     session["discord_user"] = guest_user
     session.permanent = True

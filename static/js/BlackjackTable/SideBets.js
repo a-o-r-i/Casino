@@ -1,5 +1,11 @@
 import { SIDE_BET_LAYOUT_DEFAULTS } from "./TableConfig.js";
 const SIDE_BET_LAYOUT_API = "/api/blackjack-side-bet-layout";
+function GetCsrfHeaders() {
+  const Token = document.body?.dataset?.csrfToken || "";
+  return Token ? {
+    "X-CSRF-Token": Token
+  } : {};
+}
 function ToFiniteNumber(Value, Fallback) {
   const Parsed = Number(Value);
   return Number.isFinite(Parsed) ? Parsed : Fallback;
@@ -58,6 +64,7 @@ export async function SaveSideBets(Layout) {
   const Response = await fetch(SIDE_BET_LAYOUT_API, {
     method: "POST",
     headers: {
+      ...GetCsrfHeaders(),
       "Content-Type": "application/json",
       Accept: "application/json"
     },

@@ -1,5 +1,11 @@
 import { PLAYER_HAND_SLOT_BOXES } from "./TableConfig.js";
 const HAND_SLOT_LAYOUT_API = "/api/hand-slot-layout";
+function GetCsrfHeaders() {
+  const Token = document.body?.dataset?.csrfToken || "";
+  return Token ? {
+    "X-CSRF-Token": Token
+  } : {};
+}
 function ToFiniteNumber(Value, Fallback) {
   const Parsed = Number(Value);
   return Number.isFinite(Parsed) ? Parsed : Fallback;
@@ -48,6 +54,7 @@ export async function SaveHandSlots(Layout) {
   const Response = await fetch(HAND_SLOT_LAYOUT_API, {
     method: "POST",
     headers: {
+      ...GetCsrfHeaders(),
       "Content-Type": "application/json",
       Accept: "application/json"
     },

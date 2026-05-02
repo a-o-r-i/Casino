@@ -323,7 +323,7 @@
       </aside>
     </section>
 
-    <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+    <div class="mt-6 flex flex-wrap items-center justify-center gap-3" data-route-card>
       <button
         class="{% if not session_state.can_share_chat %}hidden{% else %}inline-flex{% endif %} h-12 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
         data-share-chat-session
@@ -349,7 +349,7 @@
       </form>
     </div>
 
-    <div class="mt-5 flex justify-center">
+    <div class="mt-5 flex justify-center" data-route-card>
       <button
         class="text-sm font-medium text-white/42 underline decoration-white/22 underline-offset-4 transition hover:text-white hover:decoration-white"
         data-open-modal="coinflip-provably-fair"
