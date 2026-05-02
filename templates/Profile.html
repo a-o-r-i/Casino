@@ -6,6 +6,18 @@
 {% block content %}
   <section class="mx-auto w-full max-w-[980px] px-4 py-8 md:px-6">
     <div class="rounded-[8px] border border-white/8 bg-[#07090e] p-6" data-route-card>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="mb-6 space-y-3">
+            {% for category, message in messages %}
+              <div class="break-words rounded-[8px] border px-4 py-3 text-sm leading-6 {% if category == 'error' %}border-red-400/20 bg-red-500/10 text-red-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
       <div class="flex items-start gap-6">
         {% if discord_user.avatar_url %}
           <img
@@ -26,7 +38,11 @@
             {{ discord_user.display_name }}
           </h1>
           <p class="mt-2 text-[15px] leading-8 text-white/58">
-            Signed in as <span class="text-white/88">@{{ discord_user.username }}</span>.
+            {% if is_guest_user %}
+              Playing as <span class="text-white/88">@{{ discord_user.username }}</span>.
+            {% else %}
+              Signed in as <span class="text-white/88">@{{ discord_user.username }}</span>.
+            {% endif %}
           </p>
         </div>
       </div>
@@ -38,9 +54,37 @@
         </div>
         <div class="flex items-center justify-between gap-4">
           <dt class="text-white/44">Access</dt>
-          <dd class="text-white/88">Authenticated</dd>
+          <dd class="text-white/88">{% if is_guest_user %}Guest{% else %}Authenticated{% endif %}</dd>
         </div>
       </dl>
+
+      {% if is_guest_user %}
+        <section class="mt-6 rounded-[8px] border border-indigo-400/14 bg-indigo-500/[0.06] p-5">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-[13px] font-semibold text-indigo-200/70">Discord not connected</p>
+            </div>
+            {% if discord_oauth_ready %}
+              <a
+                class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[8px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0)_100%),linear-gradient(180deg,#6673ff_0%,#5562ee_100%)] px-5 text-sm font-semibold text-white shadow-[inset_0_0px_0_rgba(255,255,255,0.07),0_0px_24px_rgba(76,90,255,0.12)] hover:border-white/14 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.18)_0%,rgba(255,255,255,0.02)_100%),linear-gradient(180deg,#7380ff_0%,#606df4_100%)] hover:shadow-[inset_0_0px_0_rgba(255,255,255,0.18),0_0px_24px_rgba(76,90,255,0.15)]"
+                data-profile-discord-action
+                data-full-reload="true"
+                href="{{ url_for('discord_login', next=url_for('profile')) }}"
+              >
+                <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" role="presentation">
+                  <path
+                    d="M19.54 5.57A16.67 16.67 0 0 0 15.4 4.3a.07.07 0 0 0-.07.03c-.18.33-.38.76-.52 1.1a15.44 15.44 0 0 0-4.62 0c-.14-.35-.35-.78-.53-1.1a.08.08 0 0 0-.07-.03A16.58 16.58 0 0 0 5.46 5.57a.07.07 0 0 0-.03.03C2.8 9.52 2.08 13.35 2.43 17.13a.08.08 0 0 0 .03.06 16.8 16.8 0 0 0 5.05 2.55.08.08 0 0 0 .09-.03c.39-.53.73-1.08 1.02-1.67a.08.08 0 0 0-.04-.1 10.9 10.9 0 0 1-1.55-.74.08.08 0 0 1-.01-.13c.1-.08.2-.17.29-.26a.08.08 0 0 1 .08-.02c3.27 1.49 6.8 1.49 10.03 0a.08.08 0 0 1 .08.02c.09.09.19.18.29.26a.08.08 0 0 1-.01.13c-.49.29-1.01.54-1.55.74a.08.08 0 0 0-.04.1c.29.59.63 1.14 1.02 1.67a.08.08 0 0 0 .09.03 16.74 16.74 0 0 0 5.06-2.55.08.08 0 0 0 .03-.06c.42-4.37-.71-8.16-3-11.53a.06.06 0 0 0-.03-.03ZM9.32 14.81c-.98 0-1.78-.9-1.78-2s.79-2 1.78-2c1 0 1.8.9 1.78 2 0 1.1-.79 2-1.78 2Zm5.36 0c-.98 0-1.78-.9-1.78-2s.79-2 1.78-2 1.79.9 1.78 2c0 1.1-.79 2-1.78 2Z"
+                    fill="currentColor"
+                  ></path>
+                </svg>
+                Connect Discord
+              </a>
+            {% else %}
+              <span class="text-sm leading-6 text-amber-200/80">Discord OAuth is not configured.</span>
+            {% endif %}
+          </div>
+        </section>
+      {% endif %}
 
       <div class="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <div class="rounded-[8px] border border-white/8 bg-white/[0.03] p-5 transition hover:bg-white/[0.05]">
@@ -72,7 +116,8 @@
       <div class="mt-8 flex items-center gap-3">
         <button
           id="bet-history-btn"
-          class="inline-flex h-11 items-center rounded-[8px] border border-violet-400/15 bg-violet-500/10 px-5 text-sm font-medium text-violet-100 transition hover:bg-violet-500/16"
+          class="inline-flex h-11 cursor-pointer items-center rounded-[8px] border border-violet-400/15 bg-[linear-gradient(180deg,#1a1630_0%,#141025_100%)] px-5 text-sm font-medium text-violet-100"
+          data-profile-action
           type="button"
         >
           <svg class="pointer-events-none mr-2 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -82,7 +127,8 @@
           Bet History
         </button>
         <a
-          class="inline-flex h-11 cursor-pointer items-center rounded-[8px] border border-red-400/15 bg-red-500/10 px-5 text-sm font-medium text-red-100 transition hover:bg-red-500/16"
+          class="inline-flex h-11 cursor-pointer items-center rounded-[8px] border border-red-400/15 bg-[linear-gradient(180deg,#301317_0%,#251014_100%)] px-5 text-sm font-medium text-red-100"
+          data-profile-action
           href="{{ url_for('logout') }}"
         >
           Log out

@@ -147,6 +147,104 @@
         text-decoration-color: rgba(255, 255, 255, 0.76) !important;
       }
 
+      [data-modal-panel] a[data-auth-discord-button][data-auth-discord-button]
+      {
+        border-color: transparent !important;
+        background: linear-gradient(180deg, #6c78ff 0%, #5e69f2 100%) !important;
+        color: #fff !important;
+        box-shadow: 0 0px 20px rgba(78, 92, 255, 0.16) !important;
+        transform: scale(1) !important;
+        transform-origin: center !important;
+        transition:
+          transform 580ms cubic-bezier(0.22, 1, 0.36, 1),
+          background 180ms ease,
+          box-shadow 180ms ease !important;
+      }
+
+      [data-modal-panel] a[data-auth-discord-button][data-auth-discord-button]:hover
+      {
+        background: linear-gradient(180deg, #7580ff 0%, #6570f5 100%) !important;
+        color: #fff !important;
+        box-shadow: 0 0px 20px rgba(78, 92, 255, 0.2) !important;
+      }
+
+      [data-modal-panel] a[data-auth-discord-button][data-auth-discord-button]:active
+      {
+        transform: scale(0.98) !important;
+        transition-duration: 580ms !important;
+      }
+
+      [data-modal-panel] button[data-auth-guest-button][data-auth-guest-button]
+      {
+        width: auto !important;
+        height: 2.25rem !important;
+        padding: 0 0.85rem !important;
+        border-color: rgba(255, 255, 255, 0.09) !important;
+        background: rgba(255, 255, 255, 0.04) !important;
+        color: rgba(255, 255, 255, 0.58) !important;
+        font-size: 0.86rem !important;
+        font-weight: 600 !important;
+        transform: scale(1) !important;
+        transform-origin: center !important;
+        transition:
+          transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+          background-color 180ms ease,
+          border-color 180ms ease,
+          color 180ms ease !important;
+      }
+
+      [data-modal-panel] button[data-auth-guest-button][data-auth-guest-button]:hover
+      {
+        border-color: rgba(255, 255, 255, 0.14) !important;
+        background: rgba(255, 255, 255, 0.075) !important;
+        color: rgba(255, 255, 255, 0.86) !important;
+      }
+
+      [data-modal-panel] button[data-auth-guest-button][data-auth-guest-button]:active
+      {
+        transform: scale(0.98) !important;
+        transition-duration: 180ms !important;
+      }
+
+      [data-profile-action]
+      {
+        transform: scale(1);
+        transform-origin: center;
+        transition:
+          transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+          filter 180ms ease;
+        will-change: transform, filter;
+      }
+
+      [data-profile-action]:hover
+      {
+        filter: brightness(1.1);
+      }
+
+      [data-profile-action]:active
+      {
+        transform: scale(0.97);
+        transition-duration: 340ms, 180ms;
+      }
+
+      [data-profile-discord-action]
+      {
+        transform: scale(1);
+        transform-origin: center;
+        transition:
+          transform 760ms cubic-bezier(0.22, 1, 0.36, 1),
+          background 200ms ease,
+          box-shadow 200ms ease,
+          border-color 200ms ease;
+        will-change: transform;
+      }
+
+      [data-profile-discord-action]:active
+      {
+        transform: scale(0.975);
+        transition-duration: 820ms, 200ms, 200ms, 200ms;
+      }
+
       body[data-route-busy="true"] [data-app-main]
       {
         pointer-events: none;
@@ -2684,15 +2782,17 @@
               >
                 Sign in
               </h1>
-              <p class="mt-4 max-w-[22rem] text-[15px] leading-8 text-white/56" id="auth-sign-in-copy">
-                Connect your Discord account to access the dashboard.
+              <p class="mt-4 max-w-[22rem] text-[15px] leading-6 text-white/56" id="auth-sign-in-copy">
+                Connect with Discord for a better experience.
               </p>
             </div>
 
             {% if discord_oauth_ready %}
               <a
-                class="mt-8 inline-flex h-12 w-full items-center justify-center gap-3 rounded-[8px] bg-[linear-gradient(180deg,#6c78ff_0%,#5e69f2_100%)] px-5 text-[17px] font-semibold text-white shadow-[0_18px_42px_rgba(78,92,255,0.26)] transition hover:translate-y-[-1px] hover:shadow-[0_22px_46px_rgba(78,92,255,0.32)]"
-                href="{{ url_for('discord_login', next=request.path) }}"
+                class="mt-8 inline-flex h-12 w-full items-center justify-center gap-3 rounded-[8px] bg-[linear-gradient(180deg,#6c78ff_0%,#5e69f2_100%)] px-5 text-[17px] font-semibold text-white shadow-[0_0px_20px_rgba(78,92,255,0.13)] transition hover:shadow-[0_0px_20px_rgba(78,92,255,0.16)]"
+                data-auth-discord-button
+                data-full-reload="true"
+                href="{{ url_for('discord_login', next=session.get('post_login_redirect') or request.path) }}"
               >
                 <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" role="presentation">
                   <path
@@ -2709,6 +2809,17 @@
               </div>
             {% endif %}
 
+            <form action="{{ url_for('guest_login') }}" class="mt-4 flex justify-center" data-full-reload="true" method="post">
+              <input type="hidden" name="next" value="{{ session.get('post_login_redirect') or request.path }}">
+              <button
+                class="inline-flex items-center justify-center rounded-[8px] border px-3 text-sm font-semibold transition"
+                data-auth-guest-button
+                type="submit"
+              >
+                Continue as guest
+              </button>
+            </form>
+
             <a
               data-auth-help-link
               href="{{ url_for('why_discord') }}"
@@ -2717,8 +2828,7 @@
             </a>
 
             <p class="mt-4 leading-4 border-t border-white/8 pt-5 text-center text-[15px] text-white/42">
-              By signing in you agree to our terms. Only users with a valid license will have full
-              access.
+              Guest profiles can be connected to Discord later.
             </p>
           </section>
         </section>

@@ -40,6 +40,7 @@ DISCORD_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 DISCORD_TOKEN_URL = f"{DISCORD_API_BASE_URL}/oauth2/token"
 DISCORD_USER_URL = f"{DISCORD_API_BASE_URL}/users/@me"
 DISCORD_SCOPE = "identify"
+DISCORD_OAUTH_STATE_TTL_SECONDS = 10 * 60
 DISCORD_HTTP_HEADERS = {
     "Accept": "application/json",
     "Accept-Language": "en-US,en;q=0.9",
@@ -212,6 +213,8 @@ APP_STATE_PATH = resolve_runtime_path("APP_STATE_PATH", DATA_DIR / "app-state.js
 FLASK_SECRET_KEY_PATH = resolve_runtime_path("FLASK_SECRET_KEY_PATH", DATA_DIR / "flask-secret.key")
 SESSION_LIFETIME_DAYS = max(env_int("SESSION_LIFETIME_DAYS", 30), 1)
 SESSION_COOKIE_SECURE = env_flag("SESSION_COOKIE_SECURE", default=False)
+GUEST_USER_ID_PREFIX = "guest-"
+GUEST_USERNAME_PATTERN = re.compile(r"^Guest([1-9]\d*)$")
 
 USER_BALANCES = {}
 USER_VAULTS = {}
@@ -234,6 +237,7 @@ MAX_APP_NOTIFICATIONS = 250
 MAX_NOTIFICATION_DELIVERY = 8
 NOTIFICATION_POLL_INTERVAL_MS = 2600
 NEXT_NOTIFICATION_ID = 1
+NEXT_GUEST_NUMBER = 1
 CHAT_MESSAGES = []
 MAX_CHAT_MESSAGES = 180
 CHAT_INITIAL_MESSAGE_LIMIT = 60
@@ -291,6 +295,7 @@ ONLINE_PLAYER_BONUS_STATE = {
 }
 USER_REWARDS = {}
 USER_AUTH_VERSIONS = {}
+PENDING_DISCORD_OAUTH_STATES = {}
 ADMIN_PANEL_STAFF = {}
 ADMIN_BALANCE_ADJUSTMENTS = {}
 RAKEBACK_RATE_BPS = 300
@@ -449,6 +454,7 @@ def build_persistent_state_payload():
     return {
         "schema_version": PERSISTENT_STATE_SCHEMA_VERSION,
         "next_chat_message_id": NEXT_CHAT_MESSAGE_ID,
+        "next_guest_number": NEXT_GUEST_NUMBER,
         "next_notification_id": NEXT_NOTIFICATION_ID,
         "next_rain_id": NEXT_RAIN_ID,
         "user_balances": USER_BALANCES,
@@ -478,8 +484,51 @@ def build_persistent_state_json():
     return json.dumps(build_persistent_state_payload(), indent=2, sort_keys=True)
 
 
+def is_guest_user_id(user_id):
+    return str(user_id or "").startswith(GUEST_USER_ID_PREFIX)
+
+
+def is_guest_user_profile(user_profile):
+    if not user_profile:
+        return False
+
+    return bool(user_profile.get("is_guest") or is_guest_user_id(user_profile.get("id")))
+
+
+def get_next_guest_number_from_user_state():
+    max_guest_number = 0
+
+    for user_id in (
+        set(USER_PROFILES.keys())
+        | set(USER_BALANCES.keys())
+        | set(USER_VAULTS.keys())
+        | set(USER_STATS.keys())
+        | set(USER_BET_HISTORY.keys())
+        | set(USER_REWARDS.keys())
+    ):
+        normalized_user_id = str(user_id or "")
+
+        if normalized_user_id.startswith(GUEST_USER_ID_PREFIX):
+            max_guest_number = max(
+                max_guest_number,
+                safe_int(normalized_user_id[len(GUEST_USER_ID_PREFIX):], 0),
+            )
+
+    for user_profile in USER_PROFILES.values():
+        if not isinstance(user_profile, dict):
+            continue
+
+        for name_field in ("username", "display_name"):
+            match = GUEST_USERNAME_PATTERN.match(str(user_profile.get(name_field) or ""))
+            if match:
+                max_guest_number = max(max_guest_number, safe_int(match.group(1), 0))
+
+    return max_guest_number + 1
+
+
 def load_persistent_state():
     global NEXT_CHAT_MESSAGE_ID
+    global NEXT_GUEST_NUMBER
     global NEXT_NOTIFICATION_ID
     global NEXT_RAIN_ID
     global LAST_PERSISTED_STATE_DIGEST
@@ -606,6 +655,10 @@ def load_persistent_state():
         NEXT_CHAT_MESSAGE_ID = max(
             latest_chat_message_id + 1,
             safe_int(payload.get("next_chat_message_id"), 1),
+        )
+        NEXT_GUEST_NUMBER = max(
+            get_next_guest_number_from_user_state(),
+            safe_int(payload.get("next_guest_number"), 1),
         )
         NEXT_RAIN_ID = max(
             latest_rain_id + 1,
@@ -873,6 +926,10 @@ def relative_time_filter(timestamp):
 def get_current_user():
     current_user = normalize_user_profile(session.get("discord_user"))
 
+    if current_user and is_guest_user_profile(current_user) and current_user["id"] not in USER_PROFILES:
+        clear_login_session()
+        return None
+
     if current_user:
         session.permanent = True
         current_auth_version = USER_AUTH_VERSIONS.setdefault(current_user["id"], 1)
@@ -901,6 +958,8 @@ def get_current_user_id():
 
 def clear_login_session():
     session.pop("auth_version", None)
+    session.pop("discord_link_guest_user_id", None)
+    session.pop("notification_cursor_override", None)
     session.pop("discord_oauth_state", None)
     session.pop("discord_user", None)
     session.pop("post_login_redirect", None)
@@ -963,13 +1022,18 @@ def normalize_user_profile(user_profile):
 def make_user_snapshot(user_profile):
     normalized_user = normalize_user_profile(user_profile)
 
-    return {
+    user_snapshot = {
         "avatar_static_url": normalized_user.get("avatar_static_url"),
         "avatar_url": normalized_user.get("avatar_url"),
         "display_name": normalized_user.get("display_name") or normalized_user.get("username"),
         "id": normalized_user["id"],
         "username": normalized_user["username"],
     }
+
+    if normalized_user.get("is_guest"):
+        user_snapshot["is_guest"] = True
+
+    return user_snapshot
 
 
 def remember_user_profile(user_profile):
@@ -987,6 +1051,170 @@ def remember_user_profile(user_profile):
         user_snapshot["last_active_at"] = existing_profile.get("last_active_at") or user_profile.get("last_active_at")
     USER_PROFILES[user_snapshot["id"]] = user_snapshot
     return user_snapshot
+
+
+def build_guest_user_profile(guest_number):
+    guest_name = f"Guest{guest_number}"
+
+    return {
+        "avatar_static_url": None,
+        "avatar_url": None,
+        "display_name": guest_name,
+        "id": f"{GUEST_USER_ID_PREFIX}{guest_number}",
+        "is_guest": True,
+        "username": guest_name,
+    }
+
+
+def create_guest_user_profile():
+    global NEXT_GUEST_NUMBER
+
+    with STATE_LOCK:
+        guest_number = max(safe_int(NEXT_GUEST_NUMBER, 1), 1)
+
+        while f"{GUEST_USER_ID_PREFIX}{guest_number}" in USER_PROFILES:
+            guest_number += 1
+
+        guest_profile = remember_user_profile(build_guest_user_profile(guest_number))
+        NEXT_GUEST_NUMBER = guest_number + 1
+        ensure_user_balance(guest_profile)
+        return guest_profile
+
+
+def user_identity_exists(user_id):
+    normalized_user_id = str(user_id or "").strip()
+
+    if not normalized_user_id:
+        return False
+
+    return any(
+        normalized_user_id in user_store
+        for user_store in (
+            USER_PROFILES,
+            USER_BALANCES,
+            USER_VAULTS,
+            USER_STATS,
+            USER_BET_HISTORY,
+            USER_REWARDS,
+            ADMIN_BALANCE_ADJUSTMENTS,
+        )
+    )
+
+
+def remap_user_reference_key(key, old_user_id, new_user_id):
+    if key == old_user_id:
+        return new_user_id
+
+    if isinstance(key, tuple):
+        return tuple(new_user_id if item == old_user_id else item for item in key)
+
+    return key
+
+
+def remap_user_snapshot_fields(record, old_user_id, new_user_profile):
+    if record.get("id") != old_user_id:
+        return
+
+    record.update({
+        "avatar_static_url": new_user_profile.get("avatar_static_url"),
+        "avatar_url": new_user_profile.get("avatar_url"),
+        "display_name": new_user_profile.get("display_name"),
+        "id": new_user_profile["id"],
+        "username": new_user_profile["username"],
+    })
+    record.pop("is_guest", None)
+
+
+def remap_user_name_fields(record, new_user_profile):
+    if record.get("winner_id") == new_user_profile["id"] and "winner_name" in record:
+        record["winner_name"] = new_user_profile.get("display_name") or new_user_profile["username"]
+
+
+def remap_user_id_references(value, old_user_id, new_user_profile):
+    new_user_id = new_user_profile["id"]
+
+    if isinstance(value, dict):
+        remapped_items = {}
+
+        for key, child_value in list(value.items()):
+            remapped_key = remap_user_reference_key(key, old_user_id, new_user_id)
+            remapped_items[remapped_key] = remap_user_id_references(child_value, old_user_id, new_user_profile)
+
+        value.clear()
+        value.update(remapped_items)
+        remap_user_snapshot_fields(value, old_user_id, new_user_profile)
+        remap_user_name_fields(value, new_user_profile)
+        return value
+
+    if isinstance(value, list):
+        for index, child_value in enumerate(value):
+            value[index] = remap_user_id_references(child_value, old_user_id, new_user_profile)
+        return value
+
+    if value == old_user_id:
+        return new_user_id
+
+    return value
+
+
+def migrate_guest_user_to_discord(guest_user_id, discord_user_profile):
+    if not is_guest_user_id(guest_user_id):
+        raise ValueError("Only guest profiles can be linked to Discord.")
+
+    discord_snapshot = make_user_snapshot(discord_user_profile)
+    discord_user_id = discord_snapshot["id"]
+
+    if user_identity_exists(discord_user_id):
+        raise ValueError("That Discord account is already registered.")
+
+    current_time = time.time()
+    guest_profile = USER_PROFILES.get(guest_user_id, {})
+    old_auth_version = safe_int(USER_AUTH_VERSIONS.pop(guest_user_id, 1), 1)
+
+    USER_PROFILES.pop(guest_user_id, None)
+    discord_snapshot["guest_claimed_at"] = current_time
+    discord_snapshot["linked_from_guest_id"] = guest_user_id
+    discord_snapshot["registered_at"] = guest_profile.get("registered_at") or current_time
+    discord_snapshot["last_active_at"] = guest_profile.get("last_active_at") or current_time
+    USER_PROFILES[discord_user_id] = discord_snapshot
+
+    if guest_user_id in USER_BALANCES:
+        USER_BALANCES[discord_user_id] = USER_BALANCES.pop(guest_user_id)
+    else:
+        USER_BALANCES.setdefault(discord_user_id, STARTING_BALANCE_CENTS)
+
+    for user_store in (
+        USER_VAULTS,
+        USER_STATS,
+        USER_BET_HISTORY,
+        USER_REWARDS,
+        ADMIN_BALANCE_ADJUSTMENTS,
+        USER_PRESENCE,
+        CHAT_REPEAT_MESSAGE_COOLDOWNS,
+        CHAT_SESSION_SHARE_COOLDOWNS,
+    ):
+        if guest_user_id in user_store:
+            user_store[discord_user_id] = user_store.pop(guest_user_id)
+
+    USER_AUTH_VERSIONS[guest_user_id] = old_auth_version + 1
+    USER_AUTH_VERSIONS[discord_user_id] = old_auth_version
+
+    for record_store in (
+        COINFLIP_SESSIONS,
+        DICE_SESSIONS,
+        BLACKJACK_SESSIONS,
+        CANCELED_COINFLIP_SESSIONS,
+        CANCELED_DICE_SESSIONS,
+        CANCELED_BLACKJACK_SESSIONS,
+        SITE_RAINS,
+    ):
+        remap_user_id_references(record_store, guest_user_id, discord_snapshot)
+
+    for record_list in (APP_NOTIFICATIONS, CHAT_MESSAGES):
+        remap_user_id_references(record_list, guest_user_id, discord_snapshot)
+
+    remap_user_id_references(CHAT_MENTION_NOTIFICATION_HISTORY, guest_user_id, discord_snapshot)
+    return discord_snapshot
 
 
 def ensure_user_balance(user_profile):
@@ -6061,12 +6289,65 @@ def get_discord_oauth_config():
     }
 
 
+def cleanup_pending_discord_oauth_states(now=None):
+    current_time = now or time.time()
+    expired_states = [
+        oauth_state
+        for oauth_state, state_record in PENDING_DISCORD_OAUTH_STATES.items()
+        if current_time >= float(state_record.get("created_at") or 0) + DISCORD_OAUTH_STATE_TTL_SECONDS
+    ]
+
+    for oauth_state in expired_states:
+        PENDING_DISCORD_OAUTH_STATES.pop(oauth_state, None)
+
+
+def remember_pending_discord_oauth_state(oauth_state, current_user, redirect_target):
+    cleanup_pending_discord_oauth_states()
+
+    PENDING_DISCORD_OAUTH_STATES[oauth_state] = {
+        "created_at": time.time(),
+        "guest_user_id": current_user["id"] if is_guest_user_profile(current_user) else None,
+        "redirect_target": redirect_target if is_post_auth_redirect_target(redirect_target) else None,
+    }
+
+
+def pop_pending_discord_oauth_state(oauth_state):
+    if not oauth_state:
+        return None
+
+    cleanup_pending_discord_oauth_states()
+    return PENDING_DISCORD_OAUTH_STATES.pop(oauth_state, None)
+
+
 def is_safe_redirect_target(target):
     if not target:
         return False
 
     parsed_target = urlparse(target)
     return not parsed_target.scheme and not parsed_target.netloc and target.startswith("/")
+
+
+def is_post_auth_redirect_target(target):
+    if not is_safe_redirect_target(target):
+        return False
+
+    parsed_target = urlparse(target)
+    blocked_prefixes = (
+        "/auth/",
+        "/presence/",
+        "/chat/",
+        "/api/",
+        "/notifications/",
+    )
+    return not any(parsed_target.path.startswith(prefix) for prefix in blocked_prefixes)
+
+
+def get_post_auth_redirect_target(*candidates, default_endpoint="play"):
+    for candidate in candidates:
+        if is_post_auth_redirect_target(candidate):
+            return candidate
+
+    return url_for(default_endpoint)
 
 
 def request_prefers_json_response():
@@ -6225,8 +6506,9 @@ def login_required(view_function):
                 "redirect_url": url_for("play"),
             }), 401
 
-        session["post_login_redirect"] = request.path
-        flash("Sign in with Discord to access that page.", "error")
+        if is_post_auth_redirect_target(request.path):
+            session["post_login_redirect"] = request.path
+        flash("Continue as guest or sign in with Discord to access that page.", "error")
         return redirect(url_for("play"))
 
     return wrapped_view
@@ -8703,6 +8985,7 @@ def admin_cancel_session(actor_user, game, session_id):
 
 def admin_reset_runtime_state(actor_user):
     global NEXT_CHAT_MESSAGE_ID
+    global NEXT_GUEST_NUMBER
     global NEXT_NOTIFICATION_ID
     global LAST_PERSISTED_STATE_DIGEST
 
@@ -8727,6 +9010,7 @@ def admin_reset_runtime_state(actor_user):
     CHAT_MENTION_NOTIFICATION_HISTORY.clear()
     CHAT_REPEAT_MESSAGE_COOLDOWNS.clear()
     CHAT_SESSION_SHARE_COOLDOWNS.clear()
+    PENDING_DISCORD_OAUTH_STATES.clear()
     USER_PRESENCE.clear()
     USER_REWARDS.clear()
     USER_AUTH_VERSIONS.clear()
@@ -8734,6 +9018,7 @@ def admin_reset_runtime_state(actor_user):
     ADMIN_BALANCE_ADJUSTMENTS.clear()
     NEXT_NOTIFICATION_ID = 1
     NEXT_CHAT_MESSAGE_ID = 1
+    NEXT_GUEST_NUMBER = 1
     LAST_PERSISTED_STATE_DIGEST = None
 
     ensure_user_balance(actor_snapshot)
@@ -8830,6 +9115,14 @@ def inject_auth_state():
     if discord_user:
         with STATE_LOCK:
             notification_cursor = get_latest_notification_id()
+            notification_cursor_override = session.pop("notification_cursor_override", None)
+
+            if notification_cursor_override is not None:
+                notification_cursor = min(
+                    notification_cursor,
+                    max(safe_int(notification_cursor_override, notification_cursor), 0),
+                )
+
             pending_level_reward_count = build_reward_state(discord_user["id"]).get("pending_level_reward_count", 0)
 
     return {
@@ -8850,6 +9143,7 @@ def inject_auth_state():
         "is_admin_user": admin_user,
         "admin_role": admin_role,
         "is_authenticated": discord_user is not None,
+        "is_guest_user": is_guest_user_profile(discord_user),
         "notification_cursor": notification_cursor,
         "online_player_bonus_display": format_money_whole_dollars(ONLINE_PLAYER_BONUS_CENTS),
         "online_player_bonus_interval_minutes": ONLINE_PLAYER_BONUS_INTERVAL_SECONDS // 60,
@@ -9145,9 +9439,12 @@ def presence_heartbeat():
     })
 
 
-@app.route("/presence/offline", methods=["POST"])
+@app.route("/presence/offline", methods=["GET", "POST"])
 @login_required
 def presence_offline():
+    if request.method == "GET":
+        return redirect(url_for("play"))
+
     with STATE_LOCK:
         mark_user_presence_offline(get_current_user_id())
         online_count = get_online_player_count()
@@ -10640,6 +10937,36 @@ def redo_dice_session(session_id):
     return redirect(url_for("dice_session", session_id=next_session["id"]))
 
 
+@app.route("/auth/guest", methods=["GET", "POST"])
+def guest_login():
+    if request.method == "GET":
+        return redirect(url_for("profile") if get_current_user() else url_for("play"))
+
+    current_user = get_current_user()
+
+    if current_user:
+        redirect_target = get_post_auth_redirect_target(
+            request.form.get("next"),
+            request.args.get("next"),
+        )
+        return redirect(redirect_target)
+
+    with STATE_LOCK:
+        guest_user = create_guest_user_profile()
+
+    session["discord_user"] = guest_user
+    session.permanent = True
+    assign_session_auth_version(guest_user)
+
+    redirect_target = get_post_auth_redirect_target(
+        session.pop("post_login_redirect", None)
+        or request.form.get("next"),
+        request.args.get("next"),
+    )
+
+    return redirect(redirect_target)
+
+
 @app.route("/auth/discord/login")
 def discord_login():
     oauth_config = get_discord_oauth_config()
@@ -10652,12 +10979,18 @@ def discord_login():
         return redirect(url_for("play"))
 
     next_url = request.args.get("next")
+    redirect_target = next_url if is_post_auth_redirect_target(next_url) else None
 
-    if is_safe_redirect_target(next_url):
-        session["post_login_redirect"] = next_url
+    if redirect_target:
+        session["post_login_redirect"] = redirect_target
+
+    current_user = get_current_user()
+    if is_guest_user_profile(current_user):
+        session["discord_link_guest_user_id"] = current_user["id"]
 
     oauth_state = secrets.token_urlsafe(32)
     session["discord_oauth_state"] = oauth_state
+    remember_pending_discord_oauth_state(oauth_state, current_user, redirect_target)
 
     authorization_url = (
         f"{DISCORD_AUTHORIZE_URL}?"
@@ -10683,8 +11016,9 @@ def discord_callback():
 
     returned_state = request.args.get("state")
     expected_state = session.pop("discord_oauth_state", None)
+    pending_oauth_state = pop_pending_discord_oauth_state(returned_state)
 
-    if not returned_state or returned_state != expected_state:
+    if not returned_state or (returned_state != expected_state and not pending_oauth_state):
         flash("Discord sign-in failed state validation. Please try again.", "error")
         return redirect(url_for("play"))
 
@@ -10701,15 +11035,48 @@ def discord_callback():
         flash(str(exc), "error")
         return redirect(url_for("play"))
 
-    session["discord_user"] = build_discord_user_profile(discord_user)
+    discord_profile = build_discord_user_profile(discord_user)
+    guest_user_id = (
+        session.pop("discord_link_guest_user_id", None)
+        or (pending_oauth_state or {}).get("guest_user_id")
+    )
+
+    if guest_user_id:
+        guest_profile = USER_PROFILES.get(guest_user_id)
+
+        if not is_guest_user_profile(guest_profile):
+            flash("Guest account linking expired. Please try again.", "error")
+            return redirect(url_for("profile") if get_current_user() else url_for("play"))
+
+        try:
+            with STATE_LOCK:
+                session["discord_user"] = migrate_guest_user_to_discord(guest_user_id, discord_profile)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("profile"))
+
+        merged_username = session["discord_user"].get("username") or session["discord_user"].get("display_name")
+        notification = add_app_notification(
+            actor_user=session["discord_user"],
+            event_type="guest_discord_merge",
+            message=f"You've successfully merged into @{merged_username}.",
+            recipient_user_id=session["discord_user"]["id"],
+            title="Discord connected",
+            tone="success",
+        )
+        session["notification_cursor_override"] = max(safe_int(notification.get("id"), 1) - 1, 0)
+        flash(f"You've successfully merged into @{merged_username}.", "success")
+    else:
+        session["discord_user"] = discord_profile
+
     session.permanent = True
     assign_session_auth_version(session["discord_user"])
     ensure_user_balance(session["discord_user"])
 
-    redirect_target = session.pop("post_login_redirect", None)
-
-    if not is_safe_redirect_target(redirect_target):
-        redirect_target = url_for("play")
+    redirect_target = get_post_auth_redirect_target(
+        session.pop("post_login_redirect", None),
+        (pending_oauth_state or {}).get("redirect_target"),
+    )
 
     return redirect(redirect_target)
 
