@@ -719,7 +719,15 @@ DEFAULT_BLACKJACK_SIDE_BET_LAYOUT = (
 load_persistent_state()
 
 
+def normalize_money_cents(amount_cents, default=0):
+    try:
+        return int(amount_cents)
+    except (TypeError, ValueError):
+        return default
+
+
 def format_money(amount_cents):
+    amount_cents = normalize_money_cents(amount_cents)
     dollars = amount_cents / 100
 
     if amount_cents % 100 == 0:
@@ -729,7 +737,7 @@ def format_money(amount_cents):
 
 
 def format_money_whole_dollars(amount_cents):
-    return f"${int(amount_cents) // 100:,}"
+    return f"${normalize_money_cents(amount_cents) // 100:,}"
 
 
 def format_duration(seconds):
@@ -8172,6 +8180,7 @@ def build_leaderboard_payload(current_user_id):
 
 
 def format_signed_money(amount_cents):
+    amount_cents = normalize_money_cents(amount_cents)
     absolute_display = format_money(abs(amount_cents))
 
     if amount_cents > 0:
