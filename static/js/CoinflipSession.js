@@ -349,6 +349,47 @@ const SetBalance = (State) =>
     BalanceValue.textContent = State.current_balance_display;
 };
 
+const BuildLiveStatsSignature = (State) =>
+{
+    if (!State?.id || State?.status !== "resolved" || typeof State.did_win !== "boolean")
+    {
+        return "";
+    }
+
+    return JSON.stringify({
+        betCents: State.bet_cents || 0,
+        game: "coinflip",
+        id: State.id,
+        resultSide: State.result_side || "",
+        winnerId: State.winner_id || "",
+    });
+};
+
+const RecordLiveStatsResult = (State, RecordedSignatures) =>
+{
+    const Signature = BuildLiveStatsSignature(State);
+
+    if (!Signature || RecordedSignatures.has(Signature))
+    {
+        return;
+    }
+
+    const BetCents = Math.max(Math.round(Number(State.bet_cents) || 0), 0);
+
+    if (BetCents <= 0)
+    {
+        return;
+    }
+
+    RecordedSignatures.add(Signature);
+    window.ShufflingLiveStats?.recordResult?.({
+        game: "coinflip",
+        profitCents: State.did_win ? BetCents : -BetCents,
+        signature: Signature,
+        wageredCents: BetCents,
+    });
+};
+
 const RenderViewerState = (Main, State) =>
 {
     const CountNode = Main.querySelector("[data-session-viewer-count]");
@@ -869,6 +910,17 @@ const InitializeCoinflipSessionPage = ({ main }) =>
     let LastState = InitialState;
     let PendingRevealState = null;
     let HasShownResult = InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState);
+    const RecordedLiveStatsSignatures = new Set();
+
+    if (InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState))
+    {
+        const InitialStatsSignature = BuildLiveStatsSignature(InitialState);
+
+        if (InitialStatsSignature)
+        {
+            RecordedLiveStatsSignatures.add(InitialStatsSignature);
+        }
+    }
     let IsDisposed = false;
     let IsRedirectingForCancel = false;
     let IsHoldingBalanceDisplay = false;
@@ -1021,6 +1073,7 @@ const InitializeCoinflipSessionPage = ({ main }) =>
             ReleaseGlobalBalanceDisplay(BalanceContext);
             SetBalance(UiState);
             ApplyResolvedState(main, BuildUiState(LastState));
+            RecordLiveStatsResult(LastState, RecordedLiveStatsSignatures);
             return;
         }
 
@@ -1048,6 +1101,7 @@ const InitializeCoinflipSessionPage = ({ main }) =>
         SetBalance(BuildUiState(ResolvedState));
         ApplyResolvedState(main, BuildUiState(ResolvedState));
         MaybePlayWinSound(ResolvedState);
+        RecordLiveStatsResult(ResolvedState, RecordedLiveStatsSignatures);
         PendingRevealState = null;
     };
 

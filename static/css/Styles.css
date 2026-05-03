@@ -1892,3 +1892,392 @@ body {
   }
 }
 /* github-refresh: 2026-05-02T02:31:53Z */
+
+@keyframes FloatingPanelSpringIn
+{
+  0%
+  {
+    filter: blur(12px);
+    opacity: 0;
+    scale: 0.92;
+    translate: 0 30px;
+  }
+
+  72%
+  {
+    filter: blur(0px);
+    opacity: 1;
+    scale: 1.018;
+    translate: 0 -5px;
+  }
+
+  100%
+  {
+    filter: blur(0px);
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes FloatingPanelSpringOut
+{
+  0%
+  {
+    filter: blur(0px);
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+
+  32%
+  {
+    filter: blur(1px);
+    opacity: 0.92;
+    scale: 1.012;
+    translate: 0 -4px;
+  }
+
+  100%
+  {
+    filter: blur(12px);
+    opacity: 0;
+    scale: 0.9;
+    translate: 0 24px;
+  }
+}
+
+.LiveStatsRoot
+{
+  position: relative;
+  z-index: 9998;
+}
+
+.LiveStatsTitle svg,
+.LiveStatsActions svg
+{
+  height: 1rem;
+  width: 1rem;
+}
+
+.LiveStatsPanel
+{
+  background: rgba(7, 9, 14, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(14px);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  height: 188px;
+  min-height: 180px;
+  min-width: 288px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
+  filter: blur(12px);
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: fixed;
+  scale: 0.92;
+  translate: 0 18px;
+  transform-origin: bottom right;
+  transition:
+    opacity 220ms ease,
+    filter 220ms ease,
+    scale 220ms cubic-bezier(0.4, 0, 1, 1),
+    translate 220ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s linear 220ms;
+  visibility: hidden;
+  will-change: opacity, filter, scale, translate, transform;
+  width: 320px;
+  z-index: 9999;
+}
+
+.LiveStatsPanel[data-open="true"]
+{
+  filter: blur(0px);
+  opacity: 1;
+  pointer-events: auto;
+  scale: 1;
+  translate: 0 0;
+  transition:
+    opacity 220ms ease,
+    filter 260ms ease,
+    scale 220ms cubic-bezier(0.4, 0, 1, 1),
+    translate 220ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s linear 0s;
+  visibility: visible;
+}
+
+.LiveStatsPanel[data-open="false"]
+{
+  animation: none;
+  filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  scale: 0.92;
+  translate: 0 18px;
+  visibility: hidden;
+}
+
+.LiveStatsPanel[data-motion="opening"]
+{
+  animation: FloatingPanelSpringIn 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.LiveStatsPanel[data-motion="closing"]
+{
+  animation: FloatingPanelSpringOut 320ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+  visibility: visible;
+}
+
+.LiveStatsPanel[data-has-chart="true"]
+{
+  min-height: 330px;
+}
+
+.LiveStatsPanel[data-has-chart="false"]
+{
+  height: 188px !important;
+  min-height: 188px;
+}
+
+.LiveStatsPanel[hidden]
+{
+  display: none;
+}
+
+.LiveStatsPanel[data-dragging="true"]
+{
+  user-select: none;
+}
+
+.LiveStatsPanel[data-dragging="true"] .LiveStatsHeader
+{
+  cursor: grabbing;
+}
+
+.LiveStatsPanel[data-resizing="true"]
+{
+  user-select: none;
+}
+
+.LiveStatsHeader
+{
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: grab;
+  display: flex;
+  justify-content: space-between;
+  min-height: 2.6rem;
+  padding: 0.58rem 0.7rem;
+  touch-action: none;
+  user-select: none;
+}
+
+.LiveStatsTitle
+{
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.LiveStatsTitle svg
+{
+  color: #34d399;
+}
+
+.LiveStatsTitle span
+{
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.LiveStatsActions
+{
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
+.LiveStatsActions button
+{
+  align-items: center;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  display: inline-flex;
+  height: 1.8rem;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+  width: 1.8rem;
+}
+
+.LiveStatsActions button:hover
+{
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.LiveStatsBody
+{
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.68rem;
+}
+
+.LiveStatsGrid
+{
+  display: grid;
+  gap: 0.48rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.LiveStatsCard
+{
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 0.58rem 0.65rem;
+}
+
+.LiveStatsCard span
+{
+  color: rgba(255, 255, 255, 0.46);
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.LiveStatsCard strong
+{
+  color: rgba(255, 255, 255, 0.88);
+  display: block;
+  font-size: 1rem;
+  font-weight: 750;
+  line-height: 1.1;
+  margin-top: 0.42rem;
+  overflow-wrap: anywhere;
+}
+
+.LiveStatsCard strong[data-tone="positive"]
+{
+  color: #34d399;
+}
+
+.LiveStatsCard strong[data-tone="negative"]
+{
+  color: #f87171;
+}
+
+.LiveStatsCard strong[data-tone="neutral"]
+{
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.LiveStatsChartShell
+{
+  cursor: grab;
+  flex: 1 1 auto;
+  margin-top: 0.62rem;
+  min-height: 126px;
+  overflow: hidden;
+  transform-origin: center top;
+}
+
+.LiveStatsChartShell[data-panning="true"]
+{
+  cursor: grabbing;
+}
+
+.LiveStatsChartShell[hidden]
+{
+  display: none;
+}
+
+.LiveStatsChart
+{
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  height: 100%;
+  min-height: 126px;
+  overflow: hidden;
+}
+
+.LiveStatsResizeGrip
+{
+  background: transparent;
+  border: 0;
+  bottom: 3px;
+  color: rgba(255, 255, 255, 0.46);
+  cursor: nwse-resize;
+  display: inline-flex;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  position: absolute;
+  right: 3px;
+  width: 20px;
+}
+
+.LiveStatsResizeGrip:hover
+{
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.LiveStatsResizeGrip svg
+{
+  height: 15px;
+  pointer-events: none;
+  width: 15px;
+}
+
+.LiveStatsTooltip
+{
+  background: rgba(7, 9, 14, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(14px);
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.46rem 0.55rem;
+}
+
+.LiveStatsTooltip span
+{
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.LiveStatsTooltip strong
+{
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.76rem;
+}
+
+@media (max-width: 640px)
+{
+  .LiveStatsPanel
+  {
+    width: calc(100vw - 20px);
+  }
+}

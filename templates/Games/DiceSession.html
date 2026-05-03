@@ -505,6 +505,16 @@
         Share in chat
       </button>
 
+      <button
+        aria-expanded="false"
+        class="inline-flex h-12 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+        data-live-stats-game="dice"
+        data-live-stats-inline-toggle
+        type="button"
+      >
+        <span>Live stats</span>
+      </button>
+
       <form
         action="{{ session_state.redo_url or '#' }}"
         class="{% if not session_state.can_redo %}hidden{% else %}flex{% endif %}"
@@ -549,6 +559,10 @@
       </a>
     </div>
 
+    <script
+      data-live-stats-game="dice"
+      type="application/json"
+    >{}</script>
     <script data-dice-state type="application/json">{{ session_state | tojson }}</script>
     {% set fairness_modal_id = "dice-provably-fair" %}
     {% set fairness_state = session_state.fairness %}

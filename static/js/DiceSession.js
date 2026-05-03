@@ -842,6 +842,50 @@ const SetBalance = (State) =>
     BalanceValue.textContent = State.current_balance_display;
 };
 
+const BuildLiveStatsSignature = (State) =>
+{
+    if (!State?.id || State?.status !== "resolved" || typeof State.did_win !== "boolean")
+    {
+        return "";
+    }
+
+    return JSON.stringify({
+        betCents: State.bet_cents || 0,
+        creatorScore: State.creator_score ?? 0,
+        game: "dice",
+        id: State.id,
+        opponentScore: State.opponent_score ?? 0,
+        resultFace: State.result_face || "",
+        rounds: Array.isArray(State.rounds) ? State.rounds.length : 0,
+        winnerId: State.winner_id || "",
+    });
+};
+
+const RecordLiveStatsResult = (State, RecordedSignatures) =>
+{
+    const Signature = BuildLiveStatsSignature(State);
+
+    if (!Signature || RecordedSignatures.has(Signature))
+    {
+        return;
+    }
+
+    const BetCents = Math.max(Math.round(Number(State.bet_cents) || 0), 0);
+
+    if (BetCents <= 0)
+    {
+        return;
+    }
+
+    RecordedSignatures.add(Signature);
+    window.ShufflingLiveStats?.recordResult?.({
+        game: "dice",
+        profitCents: State.did_win ? BetCents : -BetCents,
+        signature: Signature,
+        wageredCents: BetCents,
+    });
+};
+
 const HoldGlobalBalanceDisplay = (Context) =>
 {
     if (Context.isHoldingBalanceDisplay)
@@ -1100,6 +1144,17 @@ const InitializeDiceSessionPage = ({ main }) =>
     let PendingRevealState = null;
     let HasShownResult = InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState);
     let HasAppliedResolvedFace = false;
+    const RecordedLiveStatsSignatures = new Set();
+
+    if (InitialState.status === "resolved" && !IsRevealPlaybackPending(InitialState))
+    {
+        const InitialStatsSignature = BuildLiveStatsSignature(InitialState);
+
+        if (InitialStatsSignature)
+        {
+            RecordedLiveStatsSignatures.add(InitialStatsSignature);
+        }
+    }
     let IsDisposed = false;
     let IsRedirectingForCancel = false;
     let IsHoldingBalanceDisplay = false;
@@ -1477,6 +1532,7 @@ const InitializeDiceSessionPage = ({ main }) =>
             SetBalance(BuildUiState(State));
             ApplyResolvedState(main, BuildUiState(State));
             MaybePlayWinSound(State);
+            RecordLiveStatsResult(State, RecordedLiveStatsSignatures);
             return;
         }
 
@@ -1617,6 +1673,7 @@ const InitializeDiceSessionPage = ({ main }) =>
                     SetBalance(BuildUiState(State));
                     ApplyResolvedState(main, BuildUiState(State));
                     MaybePlayWinSound(State);
+                    RecordLiveStatsResult(State, RecordedLiveStatsSignatures);
                 }
 
                 await WaitFor(GetRemainingPlaybackDelayMs(RoundResultProgress, ResultHoldMs));
@@ -1696,6 +1753,7 @@ const InitializeDiceSessionPage = ({ main }) =>
         SetBalance(BuildUiState(State));
         ApplyResolvedState(main, BuildUiState(State));
         MaybePlayWinSound(State);
+        RecordLiveStatsResult(State, RecordedLiveStatsSignatures);
         PendingRevealState = null;
     };
 
@@ -1839,6 +1897,7 @@ const InitializeDiceSessionPage = ({ main }) =>
                                 SetBalance(BuildUiState(LastState));
                                 ApplyResolvedState(main, BuildUiState(LastState));
                                 MaybePlayWinSound(LastState);
+                                RecordLiveStatsResult(LastState, RecordedLiveStatsSignatures);
                             }
                         });
                         return;
@@ -1876,6 +1935,7 @@ const InitializeDiceSessionPage = ({ main }) =>
                 ReleaseGlobalBalanceDisplay(BalanceContext);
                 SetBalance(BuildUiState(LastState));
                 ApplyResolvedState(main, BuildUiState(LastState));
+                RecordLiveStatsResult(LastState, RecordedLiveStatsSignatures);
                 return;
             }
 
@@ -1948,6 +2008,7 @@ const InitializeDiceSessionPage = ({ main }) =>
             ReleaseGlobalBalanceDisplay(BalanceContext);
             SetBalance(BuildUiState(LastState));
             ApplyResolvedState(main, BuildUiState(LastState));
+            RecordLiveStatsResult(LastState, RecordedLiveStatsSignatures);
             return;
         }
 
@@ -1978,6 +2039,7 @@ const InitializeDiceSessionPage = ({ main }) =>
         SetBalance(BuildUiState(ResolvedState));
         ApplyResolvedState(main, BuildUiState(ResolvedState));
         MaybePlayWinSound(ResolvedState);
+        RecordLiveStatsResult(ResolvedState, RecordedLiveStatsSignatures);
         HasAppliedResolvedFace = true;
         PendingRevealState = null;
     };

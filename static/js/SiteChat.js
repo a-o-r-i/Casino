@@ -18,6 +18,8 @@
     const ChatMinWidthPx = 320;
     const ChatMaxHeightPx = 640;
     const ChatMaxWidthPx = 520;
+    const ChatMotionDurationMs = 700;
+    const ChatMotionOutDurationMs = 340;
     const FocusedMessageHighlightMs = 2600;
     const LocalTypingWindowMs = 3200;
     const PresenceHeartbeatIntervalMs = 4000;
@@ -134,6 +136,7 @@
     };
     let ChatDragState = null;
     let ChatResizeState = null;
+    let ChatMotionTimer = 0;
 
     const EscapeHtml = (Value) =>
     {
@@ -659,8 +662,13 @@
     {
         const FocusComposer = Options.FocusComposer ?? true;
         const Persist = Options.Persist ?? true;
+        const WasOpen = ChatShell.dataset.chatOpen === "true";
 
+        window.clearTimeout(ChatMotionTimer);
         ChatShell.dataset.chatOpen = ShouldOpen ? "true" : "false";
+        ChatShell.dataset.chatMotion = ShouldOpen
+            ? (WasOpen ? "idle" : "opening")
+            : (WasOpen ? "closing" : "idle");
 
         if (Persist)
         {
@@ -683,7 +691,30 @@
             HideComposerSuggestions();
             HideProfileCard();
             ResetTypingState();
+
+            if (WasOpen)
+            {
+                ChatMotionTimer = window.setTimeout(() =>
+                {
+                    if (ChatShell.dataset.chatOpen === "false")
+                    {
+                        ChatShell.dataset.chatMotion = "idle";
+                    }
+                }, ChatMotionOutDurationMs);
+            }
+
             return;
+        }
+
+        if (!WasOpen)
+        {
+            ChatMotionTimer = window.setTimeout(() =>
+            {
+                if (ChatShell.dataset.chatOpen === "true")
+                {
+                    ChatShell.dataset.chatMotion = "idle";
+                }
+            }, ChatMotionDurationMs);
         }
 
         requestAnimationFrame(() =>

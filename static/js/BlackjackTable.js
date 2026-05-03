@@ -159,6 +159,50 @@ function WaitForAnimation(Animation) {
     Animation.cancel();
   });
 }
+function BuildBlackjackLiveStatsResult(Table, Hands, SeatSideBets, SelfSeatIds) {
+  const SelfSeatSet = new Set(Array.isArray(SelfSeatIds) ? SelfSeatIds : []);
+  const SelfHands = (Array.isArray(Hands) ? Hands : []).filter(Hand => Hand?.isSelf && Hand.result);
+  if (!SelfHands.length || !Table?.round_id) {
+    return null;
+  }
+  let WageredCents = 0;
+  let ProfitCents = 0;
+  const SignatureParts = [];
+  SelfHands.forEach(Hand => {
+    const BetCents = Math.round((Number(Hand.bet) || 0) * 100);
+    const PayoutCents = Math.round((Number(Hand.payout) || 0) * 100);
+    WageredCents += BetCents;
+    ProfitCents += PayoutCents - BetCents;
+    SignatureParts.push(`main:${Hand.id}:${Hand.result}:${BetCents}:${PayoutCents}`);
+  });
+  Object.entries(SeatSideBets || {}).forEach(([SeatId, Bets]) => {
+    if (!SelfSeatSet.has(SeatId)) {
+      return;
+    }
+    Object.entries(Bets || {}).forEach(([BetType, Bet]) => {
+      const BetCents = Math.round((Number(Bet?.bet) || 0) * 100);
+      const PayoutCents = Math.round((Number(Bet?.payout) || 0) * 100);
+      if (BetCents <= 0) {
+        return;
+      }
+      WageredCents += BetCents;
+      ProfitCents += PayoutCents - BetCents;
+      SignatureParts.push(`side:${SeatId}:${BetType}:${Bet?.status || ""}:${BetCents}:${PayoutCents}`);
+    });
+  });
+  if (WageredCents <= 0) {
+    return null;
+  }
+  return {
+    game: "blackjack",
+    profitCents: ProfitCents,
+    signature: JSON.stringify({
+      parts: SignatureParts.sort(),
+      roundId: Table.round_id
+    }),
+    wageredCents: WageredCents
+  };
+}
 class NetworkBlackjackTable {
   constructor({
     animator,
@@ -193,6 +237,7 @@ class NetworkBlackjackTable {
     this.optimisticSeatClaimIds = new Set();
     this.optimisticSeatClaimUpdatedAts = new Map();
     this.hasAppliedPayloadSnapshot = false;
+    this.liveStatsSignatures = new Set();
     this.playedBustSoundSignatures = new Set();
     this.playedWinSoundSignatures = new Set();
     this.sideBetEditor = {
@@ -486,6 +531,11 @@ class NetworkBlackjackTable {
     this.SyncTurnCountdownState();
     this.state.message = this.localMessage || Table.message || "";
     this.PlayPayloadOutcomeSounds(Table, NextHands, NextSeatSideBets, SelfSeatIds);
+    const LiveStatsResult = BuildBlackjackLiveStatsResult(Table, NextHands, NextSeatSideBets, SelfSeatIds);
+    if (LiveStatsResult && !this.liveStatsSignatures.has(LiveStatsResult.signature)) {
+      this.liveStatsSignatures.add(LiveStatsResult.signature);
+      window.ShufflingLiveStats?.recordResult?.(LiveStatsResult);
+    }
     this.hasAppliedPayloadSnapshot = true;
     if (PayloadUpdatedAt > 0) {
       this.lastAppliedPayloadUpdatedAt = Math.max(this.lastAppliedPayloadUpdatedAt, PayloadUpdatedAt);
